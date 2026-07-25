@@ -1,0 +1,49 @@
+name: JIT routing test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  any-fast:
+    name: Any fast slot
+    runs-on: [self-hosted, fast]
+    steps:
+      - name: Show runner
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          echo "Arch: $RUNNER_ARCH"
+          uname -a
+
+  linux-fast:
+    name: Linux fast slot
+    runs-on: [self-hosted, fast, Linux, X64]
+    steps:
+      - name: Verify Linux
+        run: |
+          test "$RUNNER_OS" = "Linux"
+          test "$RUNNER_ARCH" = "X64"
+          echo "Runner: $RUNNER_NAME"
+          uname -a
+
+  mac-fast:
+    name: macOS fast slot
+    runs-on: [self-hosted, fast, macOS, ARM64]
+    steps:
+      - name: Verify macOS
+        run: |
+          test "$RUNNER_OS" = "macOS"
+          test "$RUNNER_ARCH" = "ARM64"
+          echo "Runner: $RUNNER_NAME"
+          uname -a
+
+  backtester:
+    name: Backtester slot
+    runs-on: [self-hosted, backtester]
+    steps:
+      - name: Verify backtester machine
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          echo "Arch: $RUNNER_ARCH"
+          uname -a
