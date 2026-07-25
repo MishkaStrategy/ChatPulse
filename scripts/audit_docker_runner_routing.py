@@ -8,11 +8,14 @@ from pathlib import Path
 WORKFLOW_ROOT = Path(".github/workflows")
 POLICY_WORKFLOW = Path(".github/workflows/docker-runner-policy.yml")
 WORKFLOW_PATTERNS = ("*.yml", "*.yaml")
+LABEL_ORDER = ("docker", "postgresql", "redis")
 
 JOB_RE = re.compile(r"^  (?P<job>[A-Za-z0-9_.-]+):(?:\s*(?:#.*)?)$")
 RUNS_ON_RE = re.compile(r"^    runs-on:\s*(?P<value>.*?)(?:\s+#.*)?$")
 JOB_LEVEL_DOCKER_RE = re.compile(r"^    (?:container|services):(?:\s|$)")
-USES_RE = re.compile(r"^\s+(?:-\s+)?uses:\s*(?P<value>.+?)\s*(?:#.*)?$")
+USES_RE = re.compile(
+    r"^(?P<indent>\s+)(?:-\s+)?uses:\s*(?P<value>.+?)\s*(?:#.*)?$"
+)
 RUN_RE = re.compile(r"^(?P<indent>\s+)(?:-\s+)?run:\s*(?P<value>.*)$")
 
 DOCKER_COMMAND_RE = re.compile(
@@ -32,9 +35,69 @@ DOCKER_COMMAND_RE = re.compile(
     (?:\./)?[\w./-]*docker[\w./-]*\.(?:sh|py)(?:\s|$)
     """
 )
-DOCKER_LABEL_RE = re.compile(
-    r"(?i)(?:^|[\s,\[\]{}'\"-])docker(?:$|[\s,\[\]{}'\"-])"
+POSTGRES_COMMAND_RE = re.compile(
+    r"""(?ix)
+    (?:^|[\s;&|()])
+    (?:sudo\s+)?
+    (?:psql|pg_isready|pg_dump|pg_dumpall|pg_restore|postgres|initdb|createdb|dropdb)
+    (?:\s|$)
+    |
+    (?:docker(?:\s+compose)?|docker-compose)\s+[^\n#]*(?:postgres|postgresql)
+    |
+    \b(?:make|just|task)\s+[^\n#]*(?:postgres|postgresql)
+    |
+    postgres(?:ql)?://
+    |
+    \b(?:POSTGRES_[A-Z0-9_]+|PG(?:HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE))\b
+    """
 )
+REDIS_COMMAND_RE = re.compile(
+    r"""(?ix)
+    (?:^|[\s;&|()])
+    (?:sudo\s+)?
+    redis-(?:cli|server|benchmark|sentinel)
+    (?:\s|$)
+    |
+    (?:docker(?:\s+compose)?|docker-compose)\s+[^\n#]*\bredis\b
+    |
+    \b(?:make|just|task)\s+[^\n#]*\bredis\b
+    |
+    redis(?:s)?://
+    |
+    \bREDIS_[A-Z0-9_]+\b
+    """
+)
+
+POSTGRES_CONFIG_RE = re.compile(
+    r"""(?ix)
+    ^\s+(?:postgres|postgresql):(?:\s|$)
+    |
+    ^\s+image:\s*["']?postgres(?:ql)?(?::|@|\s|["']|$)
+    |
+    ^\s+(?:POSTGRES_[A-Z0-9_]+|PG(?:HOST|PORT|USER|PASSWORD|DATABASE|SSLMODE)):\s*
+    |
+    postgres(?:ql)?://
+    """
+)
+REDIS_CONFIG_RE = re.compile(
+    r"""(?ix)
+    ^\s+redis:\s*(?:\s|$)
+    |
+    ^\s+image:\s*["']?redis(?::|@|\s|["']|$)
+    |
+    ^\s+REDIS_[A-Z0-9_]+:\s*
+    |
+    redis(?:s)?://
+    """
+)
+
+LABEL_RES = {
+    label: re.compile(
+        rf"(?i)(?:^|[\s,\[\]{{}}'\"-]){re.escape(label)}"
+        rf"(?:$|[\s,\[\]{{}}'\"-])"
+    )
+    for label in LABEL_ORDER
+}
 
 
 @dataclass(frozen=True)
@@ -112,18 +175,8 @@ def _runs_on_selector(lines: list[str]) -> str | None:
     return None
 
 
-def _docker_evidence(lines: list[str]) -> str | None:
-    for line in lines:
-        if JOB_LEVEL_DOCKER_RE.match(line):
-            return line.strip()
-
-        uses_match = USES_RE.match(line)
-        if uses_match:
-            value = uses_match.group("value").strip().strip("\"'")
-            normalized = value.lower()
-            if normalized.startswith("docker/") or normalized.startswith("docker://"):
-                return f"uses: {value}"
-
+def _run_commands(lines: list[str]) -> list[str]:
+    commands: list[str] = []
     for index, line in enumerate(lines):
         run_match = RUN_RE.match(line)
         if not run_match:
@@ -139,15 +192,91 @@ def _docker_evidence(lines: list[str]) -> str | None:
             stripped = continuation.strip()
             if stripped and _indent(continuation) <= run_indent:
                 break
-            if stripped:
+            if stripped and not stripped.startswith("#"):
                 command_lines.append(stripped)
 
-        command = "\n".join(command_lines)
-        if DOCKER_COMMAND_RE.search(command):
-            compact = " ".join(command.split())
-            return f"run: {compact[:160]}"
+        commands.append("\n".join(command_lines))
+    return commands
 
+
+def _docker_evidence(lines: list[str], commands: list[str]) -> str | None:
+    for line in lines:
+        if JOB_LEVEL_DOCKER_RE.match(line):
+            return line.strip()
+
+        uses_match = USES_RE.match(line)
+        if uses_match and len(uses_match.group("indent")) >= 6:
+            value = uses_match.group("value").strip().strip("\"'")
+            normalized = value.lower()
+            if normalized.startswith("docker/") or normalized.startswith("docker://"):
+                return f"uses: {value}"
+
+    for command in commands:
+        if DOCKER_COMMAND_RE.search(command):
+            return f"run: {' '.join(command.split())[:160]}"
     return None
+
+
+def _postgresql_evidence(lines: list[str], commands: list[str]) -> str | None:
+    for line in lines:
+        if line.lstrip().startswith("#"):
+            continue
+        if POSTGRES_CONFIG_RE.search(line):
+            return line.strip()
+
+        uses_match = USES_RE.match(line)
+        if uses_match and len(uses_match.group("indent")) >= 6:
+            value = uses_match.group("value").strip().strip("\"'")
+            if re.search(r"(?i)postgres(?:ql)?", value):
+                return f"uses: {value}"
+
+    for command in commands:
+        if POSTGRES_COMMAND_RE.search(command):
+            return f"run: {' '.join(command.split())[:160]}"
+    return None
+
+
+def _redis_evidence(lines: list[str], commands: list[str]) -> str | None:
+    for line in lines:
+        if line.lstrip().startswith("#"):
+            continue
+        if REDIS_CONFIG_RE.search(line):
+            return line.strip()
+
+        uses_match = USES_RE.match(line)
+        if uses_match and len(uses_match.group("indent")) >= 6:
+            value = uses_match.group("value").strip().strip("\"'")
+            if re.search(r"(?i)(?:^|[/_.-])redis(?:[/_.@-]|$)", value):
+                return f"uses: {value}"
+
+    for command in commands:
+        if REDIS_COMMAND_RE.search(command):
+            return f"run: {' '.join(command.split())[:160]}"
+    return None
+
+
+def _dependency_evidence(lines: list[str]) -> dict[str, str]:
+    commands = _run_commands(lines)
+    evidence: dict[str, str] = {}
+
+    docker = _docker_evidence(lines, commands)
+    if docker is not None:
+        evidence["docker"] = docker
+
+    postgresql = _postgresql_evidence(lines, commands)
+    if postgresql is not None:
+        evidence["postgresql"] = postgresql
+
+    redis = _redis_evidence(lines, commands)
+    if redis is not None:
+        evidence["redis"] = redis
+
+    return evidence
+
+
+def _recommended_selector(required_labels: list[str]) -> str:
+    labels = ", ".join(("self-hosted", *required_labels))
+    return f"[{labels}]"
 
 
 def audit(root: Path) -> list[str]:
@@ -157,23 +286,35 @@ def audit(root: Path) -> list[str]:
         relative_path = path.relative_to(root)
 
         for job in _job_blocks(text):
-            evidence = _docker_evidence(job.lines)
-            if evidence is None:
+            evidence = _dependency_evidence(job.lines)
+            if not evidence:
                 continue
 
+            required_labels = [label for label in LABEL_ORDER if label in evidence]
             selector = _runs_on_selector(job.lines)
+            evidence_summary = "; ".join(
+                f"{label}: {evidence[label]}" for label in required_labels
+            )
+
             if selector is None:
                 errors.append(
-                    f"{relative_path}:{job.name}: Docker workload detected ({evidence}), "
-                    "but the job has no runs-on selector"
+                    f"{relative_path}:{job.name}: dependency workload detected "
+                    f"({evidence_summary}), but the job has no runs-on selector; use "
+                    f"runs-on: {_recommended_selector(required_labels)}"
                 )
                 continue
 
-            if DOCKER_LABEL_RE.search(selector) is None:
+            missing_labels = [
+                label
+                for label in required_labels
+                if LABEL_RES[label].search(selector) is None
+            ]
+            if missing_labels:
                 errors.append(
-                    f"{relative_path}:{job.name}: Docker workload detected ({evidence}), "
-                    f"but runs-on is {selector!r}; add the docker label, normally "
-                    "runs-on: [self-hosted, docker]"
+                    f"{relative_path}:{job.name}: dependency workload detected "
+                    f"({evidence_summary}), but runs-on is {selector!r}; missing label(s): "
+                    f"{', '.join(missing_labels)}. Normally use runs-on: "
+                    f"{_recommended_selector(required_labels)}"
                 )
     return errors
 
@@ -182,12 +323,12 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
     errors = audit(root)
     if errors:
-        print("Docker runner routing violations:", file=sys.stderr)
+        print("Dependency runner routing violations:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
 
-    print("Docker runner routing policy passed.")
+    print("Dependency runner routing policy passed.")
     return 0
 
 
