@@ -72,7 +72,7 @@ body[data-theme="preview"] .background-glow { opacity: 0.13; }
 .glow-one { background: #743cff; right: -130px; top: -120px; }
 .glow-two { background: #008cff; left: -170px; bottom: -170px; }
 
-button, select, textarea { font: inherit; color: inherit; }
+button, select, textarea, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 
 .layout {
@@ -95,7 +95,10 @@ button { cursor: pointer; }
 .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .top-actions { display: flex; align-items: center; gap: 10px; }
 
-select, textarea {
+select,
+textarea,
+input[type="text"],
+input[type="password"] {
   border: 1px solid var(--border);
   background: var(--control);
   border-radius: 11px;
@@ -107,6 +110,12 @@ textarea {
   resize: vertical;
   min-height: 84px;
   line-height: 1.5;
+}
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
 }
 
 .primary-button,
@@ -178,6 +187,39 @@ textarea {
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .action-field { align-content: end; }
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.integration-box {
+  margin: 4px 0 18px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--control) 74%, transparent);
+}
+.integration-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 13px;
+}
+.integration-heading h3 { margin: 4px 0 0; font-size: 16px; }
+.toggle-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.toggle-line input { width: 17px; height: 17px; accent-color: var(--accent-a); }
+.telegram-actions { align-items: center; margin-top: -2px; }
+.telegram-actions small { color: var(--muted); }
+.integration-note {
+  margin: 11px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
 
 .message-bar {
   margin-top: 13px;
@@ -276,8 +318,11 @@ footer {
   padding: 2px 4px;
 }
 
-button:disabled, select:disabled, textarea:disabled { cursor: progress; opacity: 0.55; }
-button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent-a); outline-offset: 2px; }
+button:disabled, select:disabled, textarea:disabled, input:disabled { cursor: progress; opacity: 0.55; }
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible { outline: 2px solid var(--accent-a); outline-offset: 2px; }
 
 @media (max-width: 980px) {
   body { min-width: 720px; }
