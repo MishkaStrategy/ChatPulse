@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 7
-updated_at: 2026-09-02T01:32:30Z
+critical_path_revision: 8
+updated_at: 2026-09-02T01:37:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: INFERRED
@@ -16,7 +16,7 @@ basis_sha: 2e6d79971ccd58619acac28551ddcf6d457c71a1
 
 ## 1. Current Release Contract
 
-Primary release target remains ChatPulse 0.5.4 beta: per-chat stop phrase that stops monitoring only the matching chat while preserving the Chrome MV3 safety boundary.
+Primary release target remains ChatPulse 0.5.4 beta: add a per-chat stop phrase that stops monitoring only the matching chat while preserving the Chrome MV3 safety boundary.
 
 Primary release surface:
 - 0.5.4 product source integrated into `main`.
@@ -24,37 +24,38 @@ Primary release surface:
 - Required artifact SHA-256: `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
 - Required source payload SHA-256: `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
 
-Definition of RELEASED for the current primary release is unchanged:
+Definition of RELEASED:
 - canonical pinned payload recovered and applied without weakening the source pin;
 - exact candidate validation/package/security gates pass;
-- expected Actions artifact is published;
+- expected beta artifact is published;
 - canonical 0.5.4 PR is verified, merge-ready and merged into live `main`;
-- post-merge live `main` and retained artifact satisfy the contract.
+- post-merge `main` and retained artifact satisfy the contract.
 
 Explicit exclusions from the current 0.5.4 release:
 - Draft PR #17 runner-selector refactor unless proven prerequisite;
-- owner-requested Telegram notifications in Draft PR #18 until the 0.5.4 product base is resolved/reconciled;
-- legacy macOS cleanup, Chrome Web Store, GitHub Release/tag, native/Safari packaging unless separately proven required.
+- verified Telegram notifications Draft PR #18 until the 0.5.4 product base is resolved/reconciled;
+- legacy macOS cleanup, Chrome Web Store, GitHub Release/tag and native/Safari packaging unless separately proven required.
 
-## 2. Owner Decisions
+## 2. Owner Decision — Telegram Notifications
 
-### Telegram notifications — ACTIVE OWNER REQUEST
+Owner request on 2026-09-02: `Добавь уведомления в тг`.
 
-On 2026-09-02 the owner explicitly requested: `Добавь уведомления в тг`.
+Implemented product decision:
+- Telegram integration is optional and disabled by default;
+- after an automatic continuation, ChatPulse may send a Telegram notification;
+- settings UI contains enable toggle, chat ID, bot token and test-send action;
+- permanent host access remains ChatGPT only;
+- `https://api.telegram.org/*` exists only in `optional_host_permissions` and is requested by Chrome on a direct user gesture;
+- Telegram bot token is stored in separate `chrome.storage.local` config, never returned in public runtime state and never intentionally written to logs;
+- Telegram receives only tracked chat title + continuation outcome, not ChatGPT response text or conversation URL;
+- Telegram delivery failure is non-critical and cannot change at-most-once continuation state or trigger a duplicate ChatGPT command;
+- unrelated settings remain independent of Telegram permission even if the user later revokes access to `api.telegram.org`.
 
-HQ interpretation implemented as the smallest safe product slice:
-- Telegram is optional and disabled by default;
-- notification is sent after ChatPulse performs an automatic continuation;
-- settings UI includes enable toggle, chat ID, bot token and test-send action;
-- permanent host access remains only ChatGPT; `https://api.telegram.org/*` is declared only in `optional_host_permissions` and requested by Chrome from a direct user gesture;
-- Telegram bot token is stored only in a separate `chrome.storage.local` config and is never returned in public runtime state or intentionally written to action logs;
-- Telegram receives tracked chat title + continuation outcome only, not ChatGPT response text or conversation URL;
-- Telegram delivery failure is non-critical and must not alter the at-most-once continuation state or trigger a duplicate ChatGPT command.
-
-Integration decision:
-- Telegram work is intentionally isolated on `feature/telegram-notifications` and PR #18 is Draft.
-- It does not supersede the current 0.5.4 release contract.
-- Merge is deferred until the canonical 0.5.4 product state is resolved or the owner explicitly supersedes that release ordering.
+Integration ordering:
+- branch: `feature/telegram-notifications`;
+- Draft PR #18: `Добавить опциональные Telegram-уведомления`;
+- exact verified head: `308f8e362f3c93a607f6a2bbc21ea11a74523959`;
+- PR remains Draft until the canonical 0.5.4 product state is resolved/reconciled or the owner explicitly supersedes that ordering.
 
 ## 3. Repository Basis
 
@@ -65,20 +66,20 @@ Canonical 0.5.4 PR: #15 `Добавить стоп-фразу для остан�
 Pinned 0.5.4 pre-integration head: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
 Issue payload source: #14 `Temporary verified payload for ChatPulse 0.5.4`.
 
-Telegram feature branch: `feature/telegram-notifications`.
-Telegram Draft PR: #18 `Добавить опциональные Telegram-уведомления`.
-Current Telegram head: `308f8e362f3c93a607f6a2bbc21ea11a74523959`.
+Telegram feature:
+- branch `feature/telegram-notifications`;
+- Draft PR #18;
+- exact head `308f8e362f3c93a607f6a2bbc21ea11a74523959`.
 
-Temporary 0.5.4 execution bridge on `main` remains present and required for payload recovery/retry:
+Temporary 0.5.4 execution bridge remains on `main`:
 `.github/workflows/hq-0.5.4-release-bridge.yml`.
+It is still required for bounded payload diagnostics/retry and must be removed after the 0.5.4 recovery path becomes terminal.
 
-Temporary Telegram validation bridge currently present during exact-head revalidation:
-`.github/workflows/hq-telegram-validation.yml`.
-It must be deleted immediately after the terminal validation result is captured.
+Telegram validation bridge `.github/workflows/hq-telegram-validation.yml` has been removed from `main` after successful exact-head validation.
 
-## 4. Primary 0.5.4 Live Evidence
+## 4. Primary 0.5.4 Evidence
 
-The exact-head 0.5.4 execution route is proven:
+Exact-head execution route is proven:
 - bridge run `33578907906`;
 - job `100088820763`;
 - runner `mac-MacBook-Pro-MishkaStrategy-02`;
@@ -86,42 +87,44 @@ The exact-head 0.5.4 execution route is proven:
 - Node.js 22 PASS;
 - payload integrity FAIL before extraction.
 
-Exact payload blocker:
-- current live Issue #14 body + seven comments sorted by ID and whitespace-normalized decodes to SHA-256 `fe85f7384d7b8e1d85106ab4adae0f9d94cfb3a4e3c99a72cbf84c64a3d4753c`;
+Exact primary blocker:
+- live Issue #14 body + seven comments sorted by ID and whitespace-normalized decodes to SHA-256 `fe85f7384d7b8e1d85106ab4adae0f9d94cfb3a4e3c99a72cbf84c64a3d4753c`;
 - release contract requires `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`;
 - bridge rejected mismatch before extraction;
-- no 0.5.4 product source or release artifact was produced.
+- no 0.5.4 product commit or release artifact was produced.
 
-PR #15 remains open, non-draft, head unchanged at `2e6d7997...`.
+Issue #14 was created `2026-07-23T05:34:00Z` and last updated `2026-07-23T05:48:01Z`, matching the last payload comment time. Sample first/last comment metadata show `created_at == updated_at`; no later edit evidence has yet been found.
 
-## 5. Telegram Feature Evidence
+## 5. Telegram Feature Evidence — VERIFIED / PARKED
 
-Implementation branch was created from live `main` and currently contains:
-- `chrome-extension/background/telegram.js` separate Telegram config/send module;
-- service-worker integration after continuation with non-critical notification failure handling;
+Implemented surfaces:
+- `chrome-extension/background/telegram.js`;
+- service-worker notification integration with non-critical failure handling;
 - Telegram settings/test UI;
 - Manifest optional host permission only;
-- README, PRIVACY and SECURITY updates;
+- README / PRIVACY / SECURITY updates;
 - `tests/chrome-extension/telegram.test.mjs`;
-- syntax gate extended to include `telegram.js`;
-- static validator extended to enforce the optional-permission boundary.
+- syntax gate includes `telegram.js`;
+- static validator enforces Telegram permission/security boundary.
 
-First exact-head validation evidence:
-- feature head `963f1cdb543d4aff29319ec922a41b6457766a4b`;
-- Actions run `33579566937`, job `100090766183`;
+Final exact-head validation:
+- head `308f8e362f3c93a607f6a2bbc21ea11a74523959`;
+- Actions run `33579882175`;
+- job `100091700358`;
+- runner `mac-MacBook-Pro-MishkaStrategy-20`;
 - exact-head assertion PASS;
 - `npm run audit:extension` PASS;
 - syntax PASS;
-- 25/25 tests PASS;
-- Telegram privacy/send/permission tests PASS;
+- 25/25 tests PASS, 0 failures;
+- `telegram_config_privacy` PASS;
+- `telegram_send` PASS;
+- `telegram_permission_gate` PASS;
+- `unrelated_settings_isolation` PASS;
 - Manifest V3 + optional Telegram permission boundary PASS.
 
-Post-audit adversarial review found one UX isolation edge case: if Telegram remained enabled after permission revocation, an unrelated settings save could revalidate Telegram and fail. This was repaired by making `updateTelegramConfig()` a no-op for patches without Telegram keys and covered by a new `unrelated_settings_isolation` test.
+PR #18 body has been updated with the final exact-head evidence. It remains Draft intentionally. No Telegram validation execution remains active and its temporary workflow was deleted from `main` in commit `c6c1cda5b71f1ff862342f249f7d5f8f4939fc74`.
 
-Current exact head after repair: `308f8e362f3c93a607f6a2bbc21ea11a74523959`.
-Because the head changed, the previous PASS is historical evidence only; exact-head revalidation is active.
-
-Draft PR #18 is open against `main` and intentionally not merge-ready until exact-head revalidation finishes and 0.5.4 integration ordering is reconciled.
+TG-1 status: VERIFIED / PARKED.
 
 ## 6. Release Gates — Primary 0.5.4
 
@@ -131,41 +134,43 @@ Evidence: PR #15, branch/head pin, Issue #14 source reference and expected sourc
 
 ### GATE-2A — Executable exact-head release route
 Status: SATISFIED.
-Evidence: bridge run `33578907906` executed on self-hosted runner and passed exact-head assertion.
+Evidence: bridge run `33578907906` passed runner, checkout and exact-head assertion.
 
 ### GATE-2B — Canonical payload integrity/recovery
 Status: UNSATISFIED.
-Blocking item: recover the exact archive bytes or intended reconstruction producing pinned SHA `f1a702...`; do not accept live `fe85f7...` by changing the pin.
+Blocking item: recover the exact archive bytes or exact intended reconstruction producing pinned SHA `f1a702...`; never replace the pin with live `fe85f7...` by guess.
 
 ### GATE-2C — Product tests/package/security/artifact
 Status: UNSATISFIED.
-Blocks on GATE-2B.
+Depends on GATE-2B.
 
 ### GATE-3 — Final merge readiness
 Status: UNSATISFIED.
-Blocks on GATE-2C and final exact-head diff/base reconciliation.
+Depends on GATE-2C and current-base reconciliation.
 
-### GATE-4 — Merge/post-merge verification
+### GATE-4 — Merge/post-merge release verification
 Status: UNSATISFIED.
-Blocks on GATE-3.
+Depends on GATE-3.
 
 ## 7. Current Critical Path
 
 ### CP-1 — Recover and prove the pinned 0.5.4 payload
 Status: ACTIVE.
 
-Why critical: the execution plane is proven, but the live Issue #14 reconstruction fails the immutable source-integrity pin before product code can be trusted or applied.
+Why critical:
+The execution plane is proven, but the live Issue #14 reconstruction fails the immutable source-integrity pin before product code can be trusted or applied.
 
-Execution plane: HQ_DIRECT read/audit; PROJECT_RUNNER for deterministic diagnostics or final verified recovery.
+Execution plane: HQ_DIRECT read/audit; bounded PROJECT_RUNNER diagnostics when repository reads cannot discriminate the canonical reconstruction.
 
 Exact scope:
-1. Inspect Issue #14 body/comment provenance, timestamps, IDs and boundaries for reconstruction errors or contamination.
-2. Search repository/PR/issue/commit history for the source SHA, artifact SHA, payload-generation provenance, alternate canonical archive/source or prior exact product snapshot.
-3. If repository reads cannot discriminate the canonical chunk set, use the existing exact-pinned bridge for non-secret hash diagnostics only.
-4. Accept a source only when it reproducibly yields exact pinned SHA `f1a702...` and passes member/path/type checks.
-5. If canonical bytes are unrecoverable after exhausting live evidence, escalate the minimal integrity decision rather than changing the pin by guess.
+1. Inspect Issue #14 body/comment provenance, timestamps, IDs, lengths and chunk boundaries for edits, omissions, contamination or reconstruction semantics.
+2. Search repository/PR/commit history for source hash, artifact hash, payload-generation provenance, alternate canonical source or prior exact product snapshot.
+3. If needed, run a read-only diagnostic that never logs payload contents and computes only metadata/hashes for ordered subsets/permutations of the seven comment chunks plus the Issue body.
+4. Validate archive member count/paths/types only after a candidate byte stream is decoded; never execute payload code unless the source SHA exactly matches `f1a702...`.
+5. If authoritative live evidence cannot recover the pinned bytes, escalate only the minimal integrity decision rather than silently changing the source pin.
 
-Acceptance: exact archive SHA `f1a702...` reproducibly recovered from authoritative evidence.
+Acceptance:
+Exact archive SHA `f1a702...` is reproducibly recovered from authoritative evidence with a documented reconstruction/source path.
 
 ### CP-2 — Run full 0.5.4 gate and publish product commit/artifact
 Status: PENDING.
@@ -181,86 +186,66 @@ Depends on CP-3.
 
 ## 8. Safe Parallel / Follow-up Work
 
-### TG-1 — Validate and park Telegram feature PR
-Status: ACTIVE NON-CRITICAL PARALLEL WORK.
+Telegram PR #18: VERIFIED / PARKED. No active write or validation execution. Do not merge until 0.5.4 base reconciliation.
 
-Why safe: Telegram product writes are isolated to `feature/telegram-notifications`; PR #18 is Draft and no writes overlap PR #15. The one-shot validation runner is read-only against the feature branch.
+PR #17: Draft and non-critical unless proven prerequisite.
 
-Current exact head: `308f8e362f3c93a607f6a2bbc21ea11a74523959`.
-
-Current validation trigger:
-- upstream `Dependency runner policy` run `33578876592`, attempt 3, accepted by GitHub and last observed `pending` before job materialization;
-- once it completes, `.github/workflows/hq-telegram-validation.yml` should emit the exact-head audit;
-- validation bridge must then be removed from `main`.
-
-Acceptance:
-- exact-head `npm run audit:extension` PASS on `308f8e...`;
-- PR #18 body updated to current evidence;
-- temporary Telegram validation workflow removed;
-- PR remains Draft until 0.5.4 product-base reconciliation.
+No other independent product slice should be opened while CP-1 integrity recovery is active.
 
 ## 9. Active Execution Registry
 
 HQ primary:
-- Scope: 0.5.4 payload provenance/integrity recovery.
-- Ref: PR #15 / `feature/stop-phrase-0.5.4` / `2e6d7997...`.
+- scope: 0.5.4 payload provenance/integrity recovery;
+- ref: PR #15 / `feature/stop-phrase-0.5.4` / `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
 
-HQ parallel:
-- Scope: exact-head Telegram revalidation and Draft PR parking.
-- Ref: PR #18 / `feature/telegram-notifications` / `308f8e362f3c93a607f6a2bbc21ea11a74523959`.
-- Temporary main write: `.github/workflows/hq-telegram-validation.yml` only until terminal validation.
+HQ follow-up:
+- Telegram PR #18 is parked at verified exact head `308f8e...`; no active execution.
 
-PROJECT_RUNNER:
-- Upstream trigger run `33578876592`, attempt 3, currently pending materialization.
-- Expected downstream validation target: Telegram feature `308f8e...`.
-
-Workers: NONE — product branches are already isolated and deterministic HQ control is cheaper than handoff.
+PROJECT_RUNNER: NONE active for product work at this checkpoint.
+Workers: NONE — current integrity chain is single-source evidence correlation; handoff adds overhead without independent closure.
 Codex: NONE.
 
 ## 10. Safety / Adversarial Controls
 
 - Never weaken 0.5.4 source SHA to match the current Issue reconstruction.
-- Never extract or execute the 0.5.4 archive before exact source hash match.
+- Never execute the 0.5.4 payload before exact source-hash match.
 - Do not merge PR #15 before payload/test/artifact gates complete.
-- Do not merge PR #18 into `main` before exact-head revalidation and 0.5.4 product-base reconciliation.
-- Telegram must remain optional host permission; do not add permanent `api.telegram.org` host access.
-- Do not expose Telegram bot token through runtime state, logs, PR text or test output.
-- Telegram notification failure cannot be allowed to affect at-most-once continuation semantics.
-- Temporary validation workflows must be deleted after their terminal purpose.
+- Do not merge PR #18 before 0.5.4 product-base reconciliation.
+- Telegram must remain optional host permission; never promote `api.telegram.org` into permanent host access without a new owner/security decision.
+- Never expose Telegram bot token through runtime state, logs, PR text or test output.
+- Telegram failure cannot affect at-most-once continuation semantics.
 - PR #17 remains unrelated unless evidence proves otherwise.
 
 ## 11. Critical Path Audits
 
-Repository Coverage Audit: PASS — primary release, payload provenance, open PRs #15/#17/#18, execution bridges, current runner evidence and product/security surfaces are covered.
-Evidence Audit: PASS — primary blocker is tied to exact hashes/run logs; Telegram implementation is tied to exact branch heads and runner evidence, with current-head PASS still pending after the edge-case fix.
-Release Alignment Audit: PASS — owner requested Telegram, but it is explicitly isolated as non-critical follow-up so it does not silently mutate the active 0.5.4 release contract.
-Dependency & Ordering Audit: PASS — 0.5.4 integrity precedes its product integration; Telegram merge waits for exact-head validation and base reconciliation.
-Execution & Parallelism Audit: PASS — PR #15 and PR #18 have non-overlapping write ownership; Telegram validation is read-only; no competing product writes exist.
-Adversarial Audit: PASS — rejected source-hash relaxation, premature Telegram merge, permanent Telegram host permission, token exposure, notification-to-continuation coupling, stale validation evidence and unrelated PR #17 scope creep.
+Repository Coverage Audit: PASS — active release, Issue #14, PR #15, PR #17, verified PR #18, execution bridges, runner evidence and security surfaces covered.
+Evidence Audit: PASS — primary blocker is exact hash evidence; Telegram closure is exact-head Actions evidence, not inferred state.
+Release Alignment Audit: PASS — Telegram owner request is implemented and parked without silently redefining the active 0.5.4 release contract.
+Dependency & Ordering Audit: PASS — payload integrity precedes 0.5.4 execution/merge; Telegram merge waits for final product-base reconciliation.
+Execution & Parallelism Audit: PASS — Telegram slice has no active writes; CP-1 is now the sole active product path.
+Adversarial Audit: PASS — source-hash relaxation, premature merges, permanent Telegram permission, token exposure, stale validation evidence and unrelated PR #17 scope creep are all explicitly rejected.
 
-## 12. Current Blockers / Unblock Conditions
+## 12. Current Blocker / Unblock Condition
 
-Primary release blocker:
-- live Issue #14 reconstruction SHA `fe85f738...` does not match required `f1a702c1...`.
-- Unblock: recover/prove exact canonical source.
+Primary blocker:
+Live Issue #14 reconstruction SHA `fe85f738...` does not match required source SHA `f1a702c1...`.
 
-Telegram follow-up blocker:
-- current head `308f8e...` requires a fresh exact-head audit because the prior PASS covered `963f1cdb...`.
-- Unblock: current one-shot validation run completes PASS; then remove validation workflow and park Draft PR #18.
+Unblock:
+Recover/prove the exact canonical byte stream or authoritative equivalent source that yields `f1a702...`.
 
-Project remains EXECUTING, not BLOCKED.
+Telegram blocker: NONE for implementation/validation. Integration remains intentionally PARKED by release ordering.
+
+Project state: EXECUTING, not BLOCKED.
 Human action: NOT REQUIRED.
 
 ## 13. Next Action
 
-1. Observe `33578876592` attempt 3 until completion and capture downstream Telegram exact-head validation result.
-2. If PASS, remove `.github/workflows/hq-telegram-validation.yml`, update PR #18 evidence and mark TG-1 VERIFIED/PARKED.
-3. Immediately resume CP-1 Issue #14 provenance/reconstruction search.
+Run bounded payload-provenance diagnostics on Issue #14: correlate chunk metadata and compute safe subset/permutation hashes without logging payload contents; if a matching reconstruction exists, feed it into the existing exact-pinned 0.5.4 bridge. Otherwise continue provenance search before any integrity decision.
 
 ## 14. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: persisted owner-requested Telegram feature, Draft PR #18 and active exact-head revalidation while preserving the primary 0.5.4 contract.
-Active external execution: `Dependency runner policy` run `33578876592`, attempt 3, pending; expected downstream Telegram validation on `308f8e...`.
+Last completed atomic action: Telegram notifications reached exact-head PASS, temporary validation workflow was removed, PR #18 evidence was updated, and the feature was parked as Draft without changing the primary release contract.
+Active external product execution: NONE.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live-fetch HQ state revision 7, PR #15 head, PR #18 head and run `33578876592`; if Telegram validation workflow is still present, remove it only after terminal validation evidence is captured.
+Recovery entrypoint: live-fetch revision 8, PR #15 head and Issue #14; confirm PR #18 remains Draft at `308f8e...`; resume CP-1 payload diagnostics.
