@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 beta — GitHub Actions inactivity watchdog
+
+- add an optional per-chat GitHub Actions watchdog bound to a public `owner/repo`;
+- interpret repository activity as creation of a new GitHub Actions workflow run and restart a stalled project chat after configured `N` idle minutes;
+- establish a fresh baseline on the first successful observation so an old historical run can never cause an immediate restart;
+- deduplicate repository polling, throttle public API reads to a 10-minute minimum cadence and cap active unique repositories at eight;
+- treat permission, network, 403/404, rate-limit and malformed GitHub API responses as errors only — never as inactivity;
+- allow at most one controlled restart-send per workflow-run activity marker until a new run appears;
+- preserve existing ChatGPT run counters, runtime limits, stop phrase, `controlRevision`, global session, draft/generation protection and master-stop semantics during watchdog restart;
+- persist the real dispatch fingerprint/count/restart key before optional notification work;
+- add `api.github.com` only as an `optional_host_permission`; the public v1 client sends no GitHub token/Authorization and performs no repository writes or workflow dispatches;
+- expose `owner/repo`, idle timeout and runtime watchdog status in each Control Center profile;
+- include watcher configuration in portable JSON while excluding run IDs, activity timestamps, restart history and errors;
+- move deterministic beta package/provenance output to ChatPulse 0.7.0.
+
 ## 0.6.0 beta — Control Center and guarded task profiles
 
 - add per-chat profiles with inherited/custom continuation command, interval and stop phrase;
