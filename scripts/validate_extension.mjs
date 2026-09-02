@@ -66,7 +66,9 @@ for (const testFile of [
   "control-revision.test.mjs",
   "telegram.test.mjs",
   "profile-task.test.mjs",
-  "task-service-worker.test.mjs"
+  "task-service-worker.test.mjs",
+  "dispatch-checkpoint.test.mjs",
+  "configuration-safety.test.mjs"
 ]) {
   await stat(path.join(root, "tests/chrome-extension", testFile));
 }
@@ -110,18 +112,23 @@ assert.ok(content.includes("MutationObserver"));
 assert.ok(content.includes("hasDraft"));
 assert.ok(content.includes("document.wasDiscarded"));
 
-// 0.6.0 state/profile/task contract.
+// 0.6.0 state/profile/task/configuration contract.
 for (const token of [
   "schemaVersion: 4",
+  "taskOnly: false",
   "defaultChatProfile",
   "effectiveChatProfile",
+  "applyGlobalSettingsPatch",
   "completionGuardReason",
   "startChatRun",
+  "stopTaskMode",
   "scheduleNextChatCheck",
   "continuationCount",
   "runtimeAutoStop",
+  "mergeDispatchCheckpoint",
   "createPortableConfig",
   "applyPortableConfig",
+  "seenURLs",
   "credentialsIncluded: false",
   "runtimeStateIncluded: false"
 ]) {
@@ -134,7 +141,13 @@ for (const token of [
   'case "EXPORT_CONFIG"',
   'case "IMPORT_CONFIG"',
   "sameControlRevision",
+  "sameSession",
+  "taskOnly",
+  "assertIdentityMutationSafe",
+  "persistDispatchCheckpoint",
   "completionGuardReason",
+  "applyGlobalSettingsPatch",
+  "stopTaskMode",
   "profile.commandText",
   "profile.intervalMinutes",
   "profile.stopPhrase"
@@ -142,13 +155,21 @@ for (const token of [
   assert.ok(background.includes(token), `Service worker missing 0.6.0 invariant: ${token}`);
 }
 assert.ok(
-  background.indexOf("recordDispatch(") < background.indexOf('"continuation",\n        outcome'),
-  "Continuation notification must happen after at-most-once dispatch is recorded"
+  background.indexOf("recordDispatch(") < background.indexOf("persistDispatchCheckpoint(observedState.chats[index])"),
+  "Dispatch must be recorded before durable checkpoint"
+);
+assert.ok(
+  background.indexOf("persistDispatchCheckpoint(observedState.chats[index])") < background.indexOf('"continuation",\n        outcome'),
+  "Continuation notification must happen after durable at-most-once checkpoint"
 );
 assert.ok(
   background.indexOf("const liveGuard = completionGuardReason") < background.indexOf("CHATPULSE_SEND"),
   "Live limit guard must run before send"
 );
+assert.ok(background.includes('runCheck("task-start", false, selectedChatId)'), "Task immediate check must target only selected chat");
+assert.ok(background.includes("if (observedState.taskOnly && !chat.taskActive && !allowWhenStopped) continue;"));
+assert.ok(background.includes("latestState.sessionId === observedState.sessionId"));
+assert.ok(background.includes('stopTaskMode(chat, "global-stop")'), "Top Stop must terminate active task mode");
 
 // Telegram stays optional, generic, post-state and privacy-safe.
 for (const token of [
@@ -172,7 +193,7 @@ for (const forbidden of ["responseText", "conversationUrl", "stopPhrase", "comma
   assert.ok(!telegram.includes(forbidden), `Telegram module must not receive ${forbidden}`);
 }
 
-// Control Center and safe portable configuration UX.
+// Control Center, compact popup and safe portable configuration UX.
 assert.ok(popupHTML.includes('id="versionLabel"'));
 assert.ok(optionsHTML.includes('id="versionLabel"'));
 assert.ok(optionsHTML.includes("Control Center"));
@@ -204,6 +225,9 @@ for (const className of [
   assert.ok(optionsHTML.includes(className), `Control Center missing ${className}`);
 }
 assert.ok(popupJS.includes("chrome.runtime.getManifest()"));
+assert.ok(popupJS.includes("currentState.taskOnly"), "Popup must distinguish task-only engine state");
+assert.ok(popupJS.includes("Master-stop"), "Popup must explain master-stop state");
+assert.ok(popupJS.includes("Остановить всё"), "Task-only popup must expose master stop");
 assert.ok(optionsJS.includes("chrome.runtime.getManifest()"));
 assert.ok(optionsJS.includes("commandDirty"));
 assert.ok(optionsJS.includes("stopPhraseDirty"));
@@ -235,4 +259,4 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
 assert.ok(packageScript.includes('ChatPulse-Chrome-v0.6.0-beta.zip'));
 assert.ok(packageScript.includes('ChatPulse-Chrome-v0.6.0-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v4 profiles/tasks, Control Center, portable config and Telegram privacy boundaries ChatPulse 0.6.0 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v4 profiles/tasks, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy boundaries ChatPulse 0.6.0 прошли статический аудит.");
