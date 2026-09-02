@@ -10,6 +10,7 @@ function makeSnapshot(overrides = {}) {
     url: 'https://chatgpt.com/c/mock',
     latestRole: 'assistant',
     latestFingerprint: 'answer-1',
+    stopPhraseMatched: false,
     isGenerating: false,
     generationAgeMs: 0,
     errorDetected: false,
@@ -19,7 +20,7 @@ function makeSnapshot(overrides = {}) {
     hasComposer: true,
     hasDraft: false,
     observedAt: new Date().toISOString(),
-    contentScriptVersion: '0.5.2',
+    contentScriptVersion: '0.5.4',
     ...overrides
   };
 }
@@ -300,6 +301,57 @@ assert.equal(harness.metrics.creates, 0);
 assert.equal(harness.tabs.get(1).active, true);
 assert.equal(harness.metrics.windowFocuses, 1);
 
+// 8. Stop phrase disables only the matching chat and never dispatches to it.
+const now = new Date().toISOString();
+const stoppedChat = {
+  ...model.createChat({ title: 'Stop chat', url: 'https://chatgpt.com/c/stop', tabId: 1, now }),
+  lastObservedSessionId: 'session-stop',
+  lastObservedFingerprint: 'answer-stop',
+  lastHardRefreshAt: now
+};
+const continuingChat = {
+  ...model.createChat({ title: 'Continue chat', url: 'https://chatgpt.com/c/continue', tabId: 2, now }),
+  lastObservedSessionId: 'session-stop',
+  lastObservedFingerprint: 'answer-continue',
+  lastHardRefreshAt: now
+};
+harness.data.chatpulseState = {
+  ...model.defaultState(),
+  enabled: false,
+  sessionId: 'session-stop',
+  stopPhrase: 'ГОТОВО',
+  chats: [stoppedChat, continuingChat]
+};
+harness.tabs.clear();
+harness.tabs.set(1, { id: 1, windowId: 1, lastAccessed: Date.now(), url: 'https://chatgpt.com/c/stop', status: 'complete', active: false, discarded: false, frozen: false, autoDiscardable: true });
+harness.tabs.set(2, { id: 2, windowId: 1, lastAccessed: Date.now(), url: 'https://chatgpt.com/c/continue', status: 'complete', active: false, discarded: false, frozen: false, autoDiscardable: true });
+harness.metrics.sends = 0;
+harness.setSendHandler(async (id, message) => {
+  if (message.type === 'CHATPULSE_INSPECT') {
+    return {
+      ok: true,
+      snapshot: makeSnapshot({
+        url: harness.tabs.get(id).url,
+        latestFingerprint: id === 1 ? 'answer-stop' : 'answer-continue',
+        stopPhraseMatched: id === 1
+      })
+    };
+  }
+  if (message.type === 'CHATPULSE_SEND') {
+    harness.metrics.sends += 1;
+    assert.equal(id, 2, 'matching chat must never receive continuation');
+    return { ok: true, outcome: 'confirmed' };
+  }
+  return { ok: true };
+});
+result = await harness.invoke({ type: 'CHECK_NOW' });
+assert.equal(result.ok, true, result.error);
+assert.equal(result.state.chats[0].enabled, false);
+assert.equal(result.state.chats[0].lastStopReason, 'stop-phrase');
+assert.ok(result.state.chats[0].lastStoppedAt);
+assert.equal(result.state.chats[1].enabled, true);
+assert.equal(harness.metrics.sends, 1, 'only non-matching chat may continue');
+
 console.log(JSON.stringify({
   periodic_recovery: 'PASS',
   discarded_recovery: 'PASS',
@@ -308,6 +360,7 @@ console.log(JSON.stringify({
   unconfirmed_at_most_once: 'PASS',
   add_from_options: 'PASS',
   open_without_duplicate: 'PASS',
+  stop_phrase_single_chat: 'PASS',
   reload_count_last_scenario: harness.metrics.reloads,
   tests: 'PASS'
 }, null, 2));

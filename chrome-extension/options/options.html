@@ -61,6 +61,12 @@
           <small>Команда вводится только в выбранные чаты после стабильного завершённого ответа.</small>
         </label>
 
+        <label class="field">
+          <span>Стоп-фраза ответа</span>
+          <textarea id="stopPhraseField" rows="2" maxlength="500" placeholder="Оставьте пустым, чтобы не останавливать чаты автоматически"></textarea>
+          <small>Если завершённый последний ответ ассистента содержит эту фразу, ChatPulse отключит только этот чат и не отправит команду продолжения.</small>
+        </label>
+
         <div class="field-row">
           <label class="field">
             <span>Интервал проверки</span>

@@ -10,8 +10,8 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 assert.equal(manifest.manifest_version, 3, "Требуется Manifest V3");
 assert.equal(manifest.name, "ChatPulse");
-assert.equal(manifest.version, "0.5.2");
-assert.equal(manifest.version_name, "0.5.2 beta");
+assert.equal(manifest.version, "0.5.4");
+assert.equal(manifest.version_name, "0.5.4 beta");
 assert.equal(manifest.background?.type, "module");
 assert.equal(manifest.background?.service_worker, "background/service-worker-v2.js");
 assert.equal(manifest.action?.default_popup, "popup/popup.html");
@@ -53,6 +53,7 @@ for (const relativePath of requiredFiles) {
   assert.ok(metadata.isFile() && metadata.size > 0, `Файл отсутствует или пуст: ${relativePath}`);
 }
 await stat(path.join(root, "tests/chrome-extension/service-worker.test.mjs"));
+await stat(path.join(root, "scripts/package_extension.py"));
 
 const model = await readFile(path.join(extensionRoot, "lib/model-v2.js"), "utf8");
 const background = await readFile(path.join(extensionRoot, "background/service-worker-v2.js"), "utf8");
@@ -65,9 +66,15 @@ const optionsJS = await readFile(path.join(extensionRoot, "options/options.js"),
 const optionsCSS = await readFile(path.join(extensionRoot, "options/options.css"), "utf8");
 
 assert.ok(model.includes("продолжай и не останавливайся до технического лимита"));
+assert.ok(model.includes("MAX_STOP_PHRASE_LENGTH = 500"));
+assert.ok(model.includes('lastStopReason: "stop-phrase"'));
+assert.ok(model.includes("controlRevision"));
 assert.ok(model.includes("lastCommandedFingerprint"));
 assert.ok(model.includes("planTabRecovery"));
 assert.ok(background.includes("submitted-unconfirmed"));
+assert.ok(background.includes("normalizeStopPhrase"));
+assert.ok(background.includes("stop-phrase-matched"));
+assert.ok(background.includes("stopPhrase: latestState.stopPhrase"));
 assert.ok(background.includes("resolveChatTab"));
 assert.ok(background.includes("lastAccessed"));
 assert.ok(background.includes("chrome.windows.update"));
@@ -75,17 +82,24 @@ assert.ok(background.includes("ensureChatTab(chat)"));
 assert.ok(background.includes("chrome.tabs.reload"));
 assert.ok(background.includes("autoDiscardable: false"));
 assert.ok(background.includes("waitForHydratedSnapshot"));
-assert.ok(content.includes('CONTENT_SCRIPT_VERSION = "0.5.2"'));
+assert.ok(content.includes('CONTENT_SCRIPT_VERSION = "0.5.4"'));
+assert.ok(content.includes("stopPhraseMatched"));
+assert.ok(content.includes("normalize(\"NFKC\")") || content.includes('.normalize("NFKC")'));
+assert.ok(content.includes("phraseMatches"));
 assert.ok(content.includes("MutationObserver"));
 assert.ok(content.includes("hasDraft"));
 assert.ok(content.includes("document.wasDiscarded"));
 assert.ok(popupHTML.includes('id="versionLabel"'));
 assert.ok(optionsHTML.includes('id="versionLabel"'));
+assert.ok(optionsHTML.includes('id="stopPhraseField"'));
+assert.ok(optionsHTML.includes('maxlength="500"'));
 assert.ok(popupJS.includes("chrome.runtime.getManifest()"));
 assert.ok(optionsJS.includes("chrome.runtime.getManifest()"));
 assert.ok(optionsJS.includes("commandDirty"));
+assert.ok(optionsJS.includes("stopPhraseDirty"));
 assert.ok(optionsJS.includes("intervalDirty"));
-for (const staleVersion of ["0.5.0 beta", "0.5.1 beta"]) {
+assert.ok(optionsJS.includes('lastStopReason === "stop-phrase"'));
+for (const staleVersion of ["0.5.0 beta", "0.5.1 beta", "0.5.2 beta"]) {
   assert.ok(!popupHTML.includes(staleVersion), `Popup содержит устаревшую версию ${staleVersion}`);
   assert.ok(!optionsHTML.includes(staleVersion), `Options содержит устаревшую версию ${staleVersion}`);
 }
@@ -97,4 +111,4 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
   );
 }
 
-console.log("Manifest V3, интерфейс, вкладочная логика и структура ChatPulse 0.5.2 прошли статический аудит.");
+console.log("Manifest V3, стоп-фраза, интерфейс, вкладочная логика и структура ChatPulse 0.5.4 прошли статический аудит.");

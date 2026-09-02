@@ -1,115 +1,138 @@
-name: Apply locally verified ChatPulse 0.5.4
+name: ChatPulse 0.5.4 beta release gate
 
 on:
-  pull_request:
+  push:
+    branches:
+      - release/0.5.4-rebuild
+      - main
     paths:
-      - ".release/apply-0.5.4"
+      - ".github/workflows/extension-ci.yml"
+      - "chrome-extension/**"
+      - "tests/chrome-extension/**"
+      - "scripts/**"
+      - "package.json"
+      - "README.md"
+      - "CHANGELOG.md"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/extension-ci.yml"
+      - "chrome-extension/**"
+      - "tests/chrome-extension/**"
+      - "scripts/**"
+      - "package.json"
+      - "README.md"
+      - "CHANGELOG.md"
 
 permissions:
-  contents: write
-  issues: read
+  contents: read
 
 concurrency:
-  group: chatpulse-0.5.4-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: chatpulse-0.5.4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  apply-local-release:
-    if: github.head_ref == 'feature/stop-phrase-0.5.4'
-    name: Единичная удалённая интеграция
-    runs-on: ubuntu-latest
+  audit:
+    name: Full extension audit — cycle ${{ matrix.round }}
+    runs-on: [self-hosted, fast]
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        round: [1, 2, 3, 4, 5]
 
     steps:
-      - name: Получение подготовленной ветки
+      - name: Checkout exact event head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
           fetch-depth: 0
+
+      - name: Assert exact event head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "candidate_sha=$GITHUB_SHA"
 
       - name: Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Восстановление проверенного локального пакета
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/issues/14" --jq '.body' > /tmp/chatpulse-0.5.4.b64
-          gh api "repos/${GITHUB_REPOSITORY}/issues/14/comments" --paginate --slurp \
-            --jq 'add | sort_by(.id)[] | .body' >> /tmp/chatpulse-0.5.4.b64
-          base64 --decode /tmp/chatpulse-0.5.4.b64 > /tmp/chatpulse-0.5.4.tar.gz
-          echo "f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5  /tmp/chatpulse-0.5.4.tar.gz" | sha256sum -c -
-          python - <<'PY'
-          from pathlib import PurePosixPath
-          import tarfile
+      - name: Syntax, unit, service-worker and static security audit
+        run: npm run audit:extension
 
-          archive = "/tmp/chatpulse-0.5.4.tar.gz"
-          allowed_roots = {
-              ".github", "CHANGELOG.md", "README.md", "chrome-extension",
-              "package.json", "scripts", "tests",
-          }
-          with tarfile.open(archive, "r:gz") as bundle:
-              members = bundle.getmembers()
-              if len(members) != 26:
-                  raise SystemExit(f"Unexpected payload member count: {len(members)}")
-              for member in members:
-                  path = PurePosixPath(member.name)
-                  if path.is_absolute() or ".." in path.parts or not path.parts:
-                      raise SystemExit(f"Unsafe payload path: {member.name}")
-                  if path.parts[0] not in allowed_roots:
-                      raise SystemExit(f"Unexpected payload root: {member.name}")
-                  if not member.isfile():
-                      raise SystemExit(f"Only regular files are allowed: {member.name}")
-              bundle.extractall(".", filter="data")
-          PY
+  package:
+    name: Reproducible beta package and provenance
+    needs: audit
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 10
 
-      - name: Минимальный удалённый gate
-        run: npm run audit:ci
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Проверка идентичности локальной сборке
+      - name: Assert exact event head
         shell: bash
         run: |
           set -euo pipefail
-          cd dist
-          sha256sum -c ChatPulse-Chrome-v0.5.4-beta.zip.sha256
-          test "$(sha256sum ChatPulse-Chrome-v0.5.4-beta.zip | awk '{print $1}')" = "64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "candidate_sha=$GITHUB_SHA"
 
-      - name: Проверка разрешений и отсутствия секретов
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build reproducible package twice
         shell: bash
         run: |
           set -euo pipefail
+          npm run package:beta
+          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256)"
+          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt.sha256)"
+          npm run package:beta
+          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256)"
+          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt.sha256)"
+          test "$first_zip" = "$second_zip"
+          test "$first_manifest" = "$second_manifest"
+          echo "artifact_sha256=$second_zip"
+          echo "source_manifest_sha256=$second_manifest"
+
+      - name: Verify permissions, version and absence of secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run validate:extension
           ! grep -RIE "API[_-]?KEY|CLIENT[_-]?SECRET|BEGIN (RSA|OPENSSH) PRIVATE KEY" chrome-extension tests scripts
           test ! -d chrome-extension/node_modules
           test ! -f chrome-extension/package-lock.json
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          for name in [
+              'ChatPulse-Chrome-v0.5.4-beta.zip',
+              'ChatPulse-Chrome-v0.5.4-source-manifest.txt',
+          ]:
+              path = Path('dist') / name
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              declared = (Path('dist') / f'{name}.sha256').read_text().split()[0]
+              if actual != declared:
+                  raise SystemExit(f'SHA mismatch for {name}: {actual} != {declared}')
+              print(f'{name} sha256={actual}')
+          PY
 
-      - name: Сохранение артефакта
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/chatpulse-artifact
-          cp dist/ChatPulse-Chrome-v0.5.4-beta.zip /tmp/chatpulse-artifact/
-          cp dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256 /tmp/chatpulse-artifact/
-
-      - name: Публикация одного продуктового commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf dist .release
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "Добавить стоп-фразу ChatPulse 0.5.4"
-          git push origin "HEAD:${{ github.head_ref }}"
-
-      - name: Публикация beta-артефакта
+      - name: Upload rebuilt 0.5.4 beta provenance
         uses: actions/upload-artifact@v4
         with:
           name: ChatPulse-Chrome-v0.5.4-beta
-          path: /tmp/chatpulse-artifact/*
+          path: |
+            dist/ChatPulse-Chrome-v0.5.4-beta.zip
+            dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256
+            dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt
+            dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt.sha256
           if-no-files-found: error
           retention-days: 30

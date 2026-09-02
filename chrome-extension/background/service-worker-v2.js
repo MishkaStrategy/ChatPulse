@@ -8,6 +8,7 @@ import {
   mergeRuntimeState,
   normalizeChatURL,
   normalizeState,
+  normalizeStopPhrase,
   planTabRecovery,
   recordDispatch,
   recordRecovery
@@ -101,7 +102,15 @@ async function handleMessage(message) {
 
     case "TOGGLE_CHAT":
       return { state: await mutateChat(message.chatId, (state, index) => {
-        state.chats[index].enabled = !state.chats[index].enabled;
+        const current = state.chats[index];
+        state.chats[index] = {
+          ...current,
+          enabled: !current.enabled,
+          controlRevision: Number(current.controlRevision || 0) + 1,
+          lastObservedSessionId: null,
+          lastStoppedAt: null,
+          lastStopReason: null
+        };
         const chat = state.chats[index];
         return appendLog(
           state,
@@ -167,8 +176,11 @@ async function addCurrentChat(preferredTabId = null) {
       title,
       tabId: tab.id,
       enabled: true,
+      controlRevision: Number(state.chats[index].controlRevision || 0) + 1,
       lastObservedSessionId: null,
-      lastHardRefreshAt: new Date().toISOString()
+      lastHardRefreshAt: new Date().toISOString(),
+      lastStoppedAt: null,
+      lastStopReason: null
     };
     state = appendLog(state, "info", `Чат «${title}» обновлён и включён`);
   } else {
@@ -216,6 +228,9 @@ async function updateSettings(patch) {
   }
   if (typeof patch.commandText === "string" && patch.commandText.trim()) {
     state.commandText = patch.commandText.trim();
+  }
+  if (Object.hasOwn(patch, "stopPhrase")) {
+    state.stopPhrase = normalizeStopPhrase(patch.stopPhrase);
   }
   if (patch.theme === "macos" || patch.theme === "preview") {
     state.theme = patch.theme;
@@ -265,7 +280,8 @@ async function performCheck(source, allowWhenStopped) {
       const freshness = await obtainFreshSnapshot({
         tab,
         chat,
-        intervalMinutes: observedState.intervalMinutes
+        intervalMinutes: observedState.intervalMinutes,
+        stopPhrase: observedState.stopPhrase
       });
       tab = freshness.tab;
       let runtimeChat = { ...chat, tabId: tab.id ?? null };
@@ -303,6 +319,7 @@ async function performCheck(source, allowWhenStopped) {
         tab: await chrome.tabs.get(tab.id),
         chat: observedState.chats[index],
         intervalMinutes: latestState.intervalMinutes,
+        stopPhrase: latestState.stopPhrase,
         allowPeriodicRefresh: false
       });
       if (preflight.recoveryReason) {
@@ -410,6 +427,7 @@ async function obtainFreshSnapshot({
   tab,
   chat,
   intervalMinutes,
+  stopPhrase = "",
   allowPeriodicRefresh = true
 }) {
   if (!Number.isInteger(tab?.id)) throw new Error("У вкладки ChatGPT отсутствует идентификатор.");
@@ -418,7 +436,7 @@ async function obtainFreshSnapshot({
   let currentTab = await chrome.tabs.get(tab.id);
   if (currentTab.discarded === true || currentTab.frozen === true) {
     const reason = currentTab.discarded === true ? "discarded-tab" : "frozen-tab";
-    return recoverAndInspect(currentTab.id, reason);
+    return recoverAndInspect(currentTab.id, reason, stopPhrase);
   }
 
   await waitForTabComplete(currentTab.id, TAB_LOAD_TIMEOUT_MS);
@@ -427,7 +445,7 @@ async function obtainFreshSnapshot({
   try {
     const response = await sendToContent(
       currentTab.id,
-      { type: "CHATPULSE_INSPECT" },
+      { type: "CHATPULSE_INSPECT", stopPhrase },
       { attempts: 2, timeoutMs: CONTENT_MESSAGE_TIMEOUT_MS }
     );
     snapshot = response?.ok ? response.snapshot : null;
@@ -444,7 +462,7 @@ async function obtainFreshSnapshot({
     intervalMinutes
   });
 
-  if (plan.refresh) return recoverAndInspect(currentTab.id, plan.reason);
+  if (plan.refresh) return recoverAndInspect(currentTab.id, plan.reason, stopPhrase);
   if (!snapshot) {
     if (currentTab.active === true) {
       throw new Error("Активная вкладка не ответила; автоматическое обновление отменено для защиты действий пользователя.");
@@ -454,10 +472,10 @@ async function obtainFreshSnapshot({
   return { tab: currentTab, snapshot, recoveryReason: null };
 }
 
-async function recoverAndInspect(tabId, reason) {
+async function recoverAndInspect(tabId, reason, stopPhrase = "") {
   await reloadTabAndWait(tabId, TAB_LOAD_TIMEOUT_MS);
   await delay(POST_RELOAD_SETTLE_MS);
-  const snapshot = await waitForHydratedSnapshot(tabId, HYDRATION_TIMEOUT_MS);
+  const snapshot = await waitForHydratedSnapshot(tabId, HYDRATION_TIMEOUT_MS, stopPhrase);
   return {
     tab: await chrome.tabs.get(tabId),
     snapshot,
@@ -465,7 +483,7 @@ async function recoverAndInspect(tabId, reason) {
   };
 }
 
-async function waitForHydratedSnapshot(tabId, timeoutMs) {
+async function waitForHydratedSnapshot(tabId, timeoutMs, stopPhrase = "") {
   const startedAt = Date.now();
   let lastSnapshot = null;
   let lastError = null;
@@ -474,7 +492,7 @@ async function waitForHydratedSnapshot(tabId, timeoutMs) {
     try {
       const response = await sendToContent(
         tabId,
-        { type: "CHATPULSE_INSPECT" },
+        { type: "CHATPULSE_INSPECT", stopPhrase },
         { attempts: 1, timeoutMs: CONTENT_MESSAGE_TIMEOUT_MS }
       );
       if (response?.ok && response.snapshot) {
@@ -636,6 +654,7 @@ async function updateBadge(state) {
 }
 
 function decisionLevel(decision) {
+  if (decision === "stop-phrase-matched") return "info";
   return ["page-error", "not-authenticated"].includes(decision) ? "warning" : "debug";
 }
 
@@ -651,6 +670,7 @@ function decisionDescription(decision) {
     "response-changed": "обнаружен новый ответ; ожидается следующая проверка",
     "waiting-for-assistant": "последнее сообщение принадлежит пользователю",
     "already-continued": "этот ответ уже получил команду",
+    "stop-phrase-matched": "обнаружена стоп-фраза; наблюдение за чатом отключено",
     "send-continuation": "ответ стабилен и готов к продолжению"
   }[decision] || decision;
 }
