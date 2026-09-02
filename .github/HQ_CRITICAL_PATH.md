@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 4
-updated_at: 2026-09-02T01:15:25Z
+critical_path_revision: 5
+updated_at: 2026-09-02T01:17:53Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: INFERRED
@@ -16,218 +16,147 @@ basis_sha: 2e6d79971ccd58619acac28551ddcf6d457c71a1
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.5.4 beta with a per-chat stop phrase that stops monitoring only for the matching chat while preserving the existing Chrome MV3 safety boundaries.
+Release target: ChatPulse 0.5.4 beta with a per-chat stop phrase that stops monitoring only the matching chat while preserving the existing Chrome MV3 safety boundaries.
 
 Release surface:
-- Product source integrated into `main`.
-- GitHub Actions artifact `ChatPulse-Chrome-v0.5.4-beta.zip`.
-- Expected artifact SHA-256 `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
+- 0.5.4 product source integrated into `main`.
+- GitHub Actions beta artifact `ChatPulse-Chrome-v0.5.4-beta.zip`.
+- Artifact SHA-256 must equal `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
 
 Definition of RELEASED:
-- Verified Issue #14 payload applied to the release candidate.
-- Exact-head validation and packaging pass.
-- Expected beta artifact is published.
-- Canonical release PR is merged into live `main`.
-- Post-merge live inspection confirms the 0.5.4 product state.
+- Verified Issue #14 payload applied from its pinned archive.
+- Exact candidate validation/package/security gates pass.
+- Expected Actions artifact is published.
+- Canonical 0.5.4 PR is merge-ready and merged into live `main`.
+- Post-merge live `main` and retained artifact satisfy the contract.
 
-Mandatory release gates:
-- [x] Canonical 0.5.4 candidate and payload source are unambiguous.
-- [ ] Exact-head integration, validation, packaging and artifact publication succeed.
-- [ ] Final product diff is reviewed against current `main` and remains inside product/security/release scope.
-- [ ] Release PR is merged and post-merge `main` confirms 0.5.4.
-
-Explicit exclusions:
-- PR #17 runner-selector refactor unless proven prerequisite.
-- Legacy macOS cleanup.
-- Chrome Web Store, GitHub Release/tag, Safari/native packaging.
+Explicit exclusions: PR #17 runner-policy refactor, legacy macOS cleanup, Chrome Web Store, GitHub Release/tag and native/Safari packaging unless separately proven required.
 
 ## 2. Repository Basis
 
 Working repository: `MishkaStrategy/ChatPulse`.
-
 Default branch: `main`.
-
 Canonical release branch: `feature/stop-phrase-0.5.4`.
-
 Canonical PR: #15 `Добавить стоп-фразу для остановки отдельного чата`.
+Exact release-candidate head before product integration: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+Issue payload: #14.
+Pinned source SHA-256: `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
 
-Current release-candidate head: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+Portable bootstrap commits on PR #15:
+- `666138923d5d8925412ad600e541067175ae9e74` — Node.js 22 portable API/base64/SHA bootstrap.
+- `2e6d79971ccd58619acac28551ddcf6d457c71a1` — path-filter marker retrigger.
 
-Current head contains two bounded bootstrap commits after the previous basis:
-- `666138923d5d8925412ad600e541067175ae9e74` — portable Node.js 22 release bootstrap.
-- `2e6d79971ccd58619acac28551ddcf6d457c71a1` — marker retrigger revision.
+Historical release runs:
+- #33 / `29983313396` on hosted Ubuntu: checkout current release branch by name, but deterministic failure because historical workflow uses unsupported `gh api --paginate --slurp --jq` combination.
+- #34 / `30871174014` on hosted Ubuntu: same deterministic `gh --slurp --jq` failure.
+- #35 / `30871703893`: moved to self-hosted fast; cancelled while queued.
+- #36 / `30872589019`, attempt 2, job `100082482958`: self-hosted runner assigned; checkout and Node 22 PASS; deterministic failure `gh: command not found`.
 
-Relevant issue: #14 `Temporary verified payload for ChatPulse 0.5.4`.
+Trigger evidence:
+- Connector-created commits and PR close/reopen produced no new `pull_request` Actions run for exact head `2e6d7997…`.
+- Available GitHub connector controls can rerun existing jobs but expose no manual workflow-dispatch action.
+- Existing `Dependency runner policy` workflow has historical PR #15 run `30872588990`, job `91877450201`, and can be rerun.
+- GitHub documentation confirms `workflow_run: types: [completed]` fires when the named upstream workflow completes, including reruns; only the `requested` activity type is omitted on rerun. The listening workflow must exist on the default branch.
 
-Pinned payload SHA-256: `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
+## 3. Release Gates
 
-Historical failed execution:
-- Run `30872589019`, attempt 2.
-- Job `100082482958`.
-- Actual runner `mac-MacBook-Pro-MishkaStrategy-04`.
-- Checkout PASS; Node.js 22 PASS; bootstrap FAIL at missing `gh`; downstream steps skipped.
-
-Current Actions state:
-- No new `pull_request` workflow run exists for head `2e6d79971ccd58619acac28551ddcf6d457c71a1` after connector-created commits.
-- Closing and reopening PR #15 preserved the exact head and PR state but also created no new run.
-- The available GitHub control surface exposes rerun of historical jobs/runs but no `workflow_dispatch` action.
-- Rerunning run `30872589019` is rejected because a rerun uses the historical workflow revision that still calls missing `gh` and therefore cannot validate the portable patch.
-
-## 3. Material Findings
-
-- The self-hosted `[self-hosted, fast]` runner is available; runner scarcity is no longer a blocker.
-- The original bootstrap defect has been repaired on PR #15 using the already-guaranteed Node.js 22 runtime for GitHub REST retrieval, base64 decoding and SHA-256 checks, while preserving source/artifact pins, archive-member count, path/root/type checks, validation, secret checks, single product commit and artifact publication.
-- The current blocker is execution triggering: GitHub App/connector-created repository mutations have not produced a new Actions run for the patched head.
-- Issue #14 and its seven payload comments are live and readable through GitHub control; the comments are ordered by ID and carry the same ChatGPT GitHub App provenance used for prior repository writes.
-- No human-only action has yet been proven necessary because independent payload validation and alternative repository-native execution routes remain available to HQ.
-- `main` remains pre-0.5.4 product state; the final product commit has not yet been created.
-
-## 4. Release Gates
-
-### GATE-1 — Canonical candidate and payload
+### GATE-1 — Canonical candidate/payload
 Status: SATISFIED.
+Evidence: PR #15 + Issue #14 + pinned source/artifact hashes.
 
-Evidence: PR #15 + Issue #14 + pinned source/artifact checksums.
-
-### GATE-2 — Exact-head integration, tests and artifact
+### GATE-2 — Exact integration, validation and artifact
 Status: UNSATISFIED.
-
-Evidence: portable bootstrap is present on exact head `2e6d7997…`, but no new Actions execution has been created for that head. Historical attempt 2 is not valid evidence for the patched workflow.
-
-Blocking item: establish a safe execution route for the patched exact head without weakening the release contract; in parallel validate the pinned Issue #14 payload independently where possible.
+Blocking item: execute the pinned candidate through a GitHub Actions route that uses the portable bootstrap and all mandatory gates.
 
 ### GATE-3 — Final merge readiness
 Status: UNSATISFIED.
+Blocks on GATE-2 and final exact-head diff/base reconciliation.
 
-Evidence: no final 0.5.4 product commit or exact-head artifact evidence yet; current PR mergeability must be re-evaluated after integration/current-base reconciliation.
-
-Blocks on: GATE-2.
-
-### GATE-4 — Merge and post-merge verification
+### GATE-4 — Merge/post-merge release verification
 Status: UNSATISFIED.
+Blocks on GATE-3.
 
-Blocks on: GATE-3.
+## 4. Current Critical Path
 
-## 5. Current Critical Path
-
-### CP-1 — Establish executable exact-head 0.5.4 integration
+### CP-1 — Execute a pinned one-shot `workflow_run` release bridge
 Status: ACTIVE.
 
-Why critical: portable workflow code exists, but the release gate cannot execute until a repository-native trigger/execution route is available.
+Why critical: direct connector mutations do not emit a new PR run, while historical release runs are known-bad. A default-branch `workflow_run` listener can be triggered by a native Actions completion event from a rerun of the existing `Dependency runner policy` run.
 
-Execution plane: HQ_DIRECT for control/routing; PROJECT_RUNNER when an exact-head run exists.
+Execution plane: HQ_DIRECT creates/removes the temporary bridge; PROJECT_RUNNER executes it.
 
-Exact scope:
-1. Inspect historical PR #15 workflows/runs for a safe reusable execution bridge whose historical definition checks out the current head and executes repository-owned code, without weakening checks or mutating runner state.
-2. Independently reconstruct/validate the pinned Issue #14 payload if the connector data can be materialized safely; use this to verify candidate contents/tests while preserving the mandatory Actions artifact gate.
-3. If a deterministic GitHub-native trigger becomes available, execute the patched workflow on exact head `2e6d7997…`.
-4. Reject unchanged rerun of the historical failed workflow and any bypass that silently drops checksum, safety, test or artifact requirements.
+Exact route:
+1. Create temporary `.github/workflows/hq-0.5.4-release-bridge.yml` on `main` listening only for `workflow_run` completion of `Dependency runner policy`.
+2. Job-level guard requires upstream run ID `30872588990`, upstream head branch `feature/stop-phrase-0.5.4`, same repository, and current pinned release head `2e6d79971ccd58619acac28551ddcf6d457c71a1` after checkout.
+3. The bridge runs on `[self-hosted, fast]`, sets up Node.js 22, retrieves Issue #14 through authenticated REST, validates/decodes the pinned archive, checks 26 regular-file members/roots/paths, extracts, runs `npm run audit:ci`, verifies the pinned beta ZIP SHA, performs the secret/permission checks, preserves the artifact, removes `.release`, creates the single product commit and pushes it to the canonical branch, then uploads the beta artifact.
+4. Rerun historical policy job `91877450201` solely to create the native `workflow_run completed` event; its own result is not release evidence.
+5. Observe the bridge exact run/steps. After terminal bridge result, remove the temporary bridge from `main` and recalculate.
 
-Acceptance condition: an exact-head integration execution reaches payload reconstruction and either completes all validation/artifact/product-commit steps or yields a new exact terminal failure that materially narrows the path.
+Acceptance condition: bridge starts from pinned head `2e6d7997…` and either succeeds through product commit/artifact publication or produces a new exact terminal failure.
 
 ### CP-2 — Verify final 0.5.4 product diff and release evidence
 Status: PENDING.
-
-Depends on: CP-1 successful integration.
-
-Exact scope: inspect final changed files/diff, manifest/permissions, package/version, tests, docs, workflow evidence, artifact/checksum, reviews/threads, mergeability and current base relation.
-
-Acceptance condition: all release evidence is present and no product/security/release blocker remains.
+Depends on CP-1 success.
+Scope: final changed files, product behavior, manifest/permissions, package/version, tests, docs, artifact/checksum, reviews/threads, mergeability and current-base relation.
 
 ### CP-3 — Merge canonical 0.5.4 PR
 Status: PENDING.
+Depends on CP-2.
+Execution: deterministic GitHub control with exact expected head SHA only.
 
-Depends on: CP-2.
-
-Execution plane: deterministic GitHub control only, with exact expected head SHA.
-
-Acceptance condition: GitHub reports merged state and merge SHA.
-
-### CP-4 — Verify released `main` and close release state
+### CP-4 — Verify released `main` and close state
 Status: PENDING.
+Depends on CP-3.
+Acceptance: live main + artifact satisfy full contract; then project state DONE.
 
-Depends on: CP-3.
-
-Acceptance condition: live default branch and retained artifact evidence satisfy the complete release contract; then project state becomes DONE.
-
-## 6. Active Execution Registry
+## 5. Active Execution Registry
 
 HQ:
 - Owner: HQ.
-- Scope: resolve exact-head execution route and independently validate pinned payload where useful.
-- Ref: PR #15 / `feature/stop-phrase-0.5.4` / `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
-- Write surface: no product writes until execution route is proven; HQ state writes on `main` only.
+- Scope: create one-shot bridge, rerun policy job, observe bridge, clean bridge.
+- Release ref: `feature/stop-phrase-0.5.4` at `2e6d79971ccd58619acac28551ddcf6d457c71a1` before execution.
+- Temporary main write surface: `.github/workflows/hq-0.5.4-release-bridge.yml` plus this state file.
 
-Workers: NONE.
-
+Workers: NONE — the execution route is deterministic control work and product writes must stay serialized.
 Codex: NONE.
+Active external execution: NONE at checkpoint.
 
-CI/runtime: NONE active. Historical run `30872589019` attempt 2 is terminal failure and must not be rerun unchanged as release evidence.
+## 6. Safety / Adversarial Controls
 
-## 7. Safe Parallel Work
+- Bridge is one-shot in practice: exact upstream run ID + head branch + repository + exact release-head assertion.
+- Upstream policy result is not trusted as release evidence; it is only a native completion-event source.
+- Historical release reruns are rejected because their immutable historical definitions are deterministically defective.
+- No runner-global installation or mutation is required.
+- No checksum/path/member/test/security/artifact gate is removed.
+- No unrelated PR #17 work is pulled into the release.
+- Temporary bridge must be removed from `main` after its terminal result.
+- Premature merge remains prohibited until CP-2.
 
-Independent useful slice: payload reconstruction/validation can proceed in parallel with execution-route investigation because it is read/verify-only and cannot conflict with the release branch. No temporary worker is required; HQ has the necessary evidence and keeping it local avoids handoff overhead.
+## 7. Critical Path Audits
 
-## 8. Current Blocker
+Repository Coverage Audit: PASS — current candidate, historical release runs, default-branch workflows, runner behavior and release surface covered.
+Evidence Audit: PASS — bridge route is supported by live run history plus current official GitHub event semantics; completion still requires live run evidence.
+Release Alignment Audit: PASS — bridge only restores execution of the existing 0.5.4 release gate and does not change the release target/surface.
+Dependency & Ordering Audit: PASS — bridge execution precedes final diff approval, merge and post-merge verification.
+Execution & Parallelism Audit: PASS — no parallel product writes; only deterministic trigger and runner execution.
+Adversarial Audit: PASS — exact run/head/repository pins prevent a generic privileged `workflow_run` path; stale historical release definitions and weakened bypasses rejected.
 
-Exact blocker: no new Actions run is being emitted for connector-created PR branch mutations or PR reopen, and no manual workflow-dispatch action is exposed by the current GitHub control surface.
+## 8. Current Blocker / Unblock Condition
 
-Affected gate: GATE-2.
+Current blocker: GATE-2 lacks an executable exact-head run because connector PR mutations do not emit the required PR event.
 
-Evidence:
-- PR #15 head moved to `2e6d7997…` after the portable workflow and marker commits.
-- `fetch_commit_workflow_runs` reports no runs for that exact head.
-- Branch-scoped Actions history contains only historical runs.
-- Close/reopen preserved exact head but produced no new run.
-- No connected/installable workflow-dispatch capability was found.
+Unblock route: one-shot default-branch `workflow_run` bridge triggered by rerun completion of policy run `30872588990`.
 
-Safe alternatives checked:
-- Rerun historical job/run: rejected because it executes the historical workflow revision containing the deterministic `gh` defect.
-- Install/configure runner tooling: rejected as unnecessary and less reproducible than the already-landed portable patch.
-- User/manual action: not yet requested because repository-native execution bridges and independent payload validation remain to be exhausted.
+Human action: NOT REQUIRED at this stage; an automated repository-native route exists.
 
-Unblock condition: exact-head patched integration can be executed without weakening mandatory release gates, or a genuinely human-only GitHub Actions trigger is proven after all safe automation routes are exhausted.
+## 9. Next Action
 
-Project state remains EXECUTING, not BLOCKED.
+Create the exact-pinned one-shot bridge on `main`, rerun policy job `91877450201`, and capture the resulting bridge run/job identity and step-level evidence.
 
-## 9. Critical Path Audits
-
-Repository Coverage Audit: PASS — release candidate, issue payload, workflows, runner behavior, PR state, trigger behavior and release surface are covered.
-
-Evidence Audit: PASS — every current blocker/decision has live GitHub evidence; no completion claim depends on chat memory.
-
-Release Alignment Audit: PASS — work remains limited to producing/verifying the 0.5.4 candidate and mandatory artifact.
-
-Dependency & Ordering Audit: PASS — execution/validation must precede final diff approval, merge and post-merge verification.
-
-Execution & Parallelism Audit: PASS — payload verification is the only safe independent slice; branch/product writes remain serialized.
-
-Adversarial Audit: PASS — rejected stale-workflow rerun, weakened release gates, runner mutation, unrelated PR #17 scope creep and premature merge.
-
-## 10. Next Action
-
-Inspect historical PR #15 workflow definitions/jobs for a reusable exact-head execution bridge while continuing read-only reconstruction/validation of the pinned Issue #14 payload. If neither yields an executable route, escalate only the proven minimal human GitHub Actions trigger requirement.
-
-Executor: HQ_DIRECT.
-
-Expected evidence: either a safe reusable run/job identity or independently verified payload/test evidence plus proof that all automated trigger routes are exhausted.
-
-## 11. Last Material Revision
-
-What changed: portable Node.js 22 bootstrap landed on PR #15 and marker was changed, but GitHub emitted no new Actions run; closing/reopening the PR also emitted no run.
-
-Why the path changed: the code defect is fixed, so CP-1 is now an execution-trigger/control problem rather than a workflow-portability problem.
-
-Evidence causing change: exact PR head `2e6d7997…`, empty exact-head workflow-run result, unchanged branch Actions history, and zero-run result after reopen.
-
-## 12. Chat Rotation Checkpoint
+## 10. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-
-Last completed atomic action: persisted critical-path revision 4 after portable bootstrap landing and trigger-gap discovery.
-
+Last atomic action: persisted revision 5 selecting the audited `workflow_run` bridge route.
 Active external executions: NONE.
-
-Unpersisted material reasoning: NONE at this checkpoint.
-
-Recovery entrypoint: live-fetch PR #15 head, `.github/workflows/extension-ci.yml`, `.github/HQ_CRITICAL_PATH.md`, and Actions runs for exact head. If head remains `2e6d7997…`, continue CP-1 execution-route investigation; if head moved, inspect intervening diff before any write.
+Unpersisted material reasoning: NONE.
+Recovery entrypoint: verify PR #15 remains at `2e6d7997…`; verify this state revision; create bridge if absent, otherwise inspect it before rerunning policy job.
