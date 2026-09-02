@@ -168,8 +168,7 @@ async function handleMessage(message) {
       state.chats[index] = startChatRun(state.chats[index], { task: true });
       state = appendLog({
         ...state,
-        enabled: true,
-        sessionId: createSessionId()
+        enabled: true
       }, "info", `Задача «${state.chats[index].title}» запущена до условия завершения`);
       state = await notifyChatEvent(state, state.chats[index], "task-started");
       state = await configureAlarm(state);
