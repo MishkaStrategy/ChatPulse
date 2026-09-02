@@ -91,7 +91,10 @@ jobs:
                   except KeyError:
                       continue
                   stream = bundle.extractfile(member)
-                  archived[target] = (stream.read() if stream else b'').decode('utf-8')
+                  raw = stream.read() if stream else b''
+                  decoded = raw.decode('utf-8', errors='replace')
+                  archived[target] = decoded
+                  print(f'UTF8_REPLACEMENTS {target}={decoded.count(chr(0xfffd))}')
 
           for target, old_text in archived.items():
               try:
