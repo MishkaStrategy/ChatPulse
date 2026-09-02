@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ChatPulse — настройки</title>
+  <title>ChatPulse — Control Center</title>
   <link rel="stylesheet" href="options.css">
+  <link rel="stylesheet" href="control-center.css">
 </head>
 <body data-theme="macos">
   <div class="background-glow glow-one"></div>
@@ -16,7 +17,7 @@
         <img src="../assets/logo.svg" alt="">
         <div>
           <h1>ChatPulse</h1>
-          <p>Локальное расширение Chrome · использует текущий вход ChatGPT</p>
+          <p>Control Center · локальный task runner для выбранных чатов ChatGPT</p>
         </div>
       </div>
       <div class="top-actions">
@@ -28,16 +29,21 @@
       </div>
     </header>
 
-    <section class="status-grid">
+    <section class="status-grid control-metrics">
       <article class="metric-card">
         <span>Статус</span>
         <strong id="statusValue">Загрузка…</strong>
         <small id="statusDetail">Получение состояния расширения</small>
       </article>
       <article class="metric-card">
-        <span>Чаты</span>
+        <span>Активные чаты</span>
         <strong id="chatMetric">0</strong>
         <small>включено для наблюдения</small>
+      </article>
+      <article class="metric-card">
+        <span>Задачи</span>
+        <strong id="taskMetric">0</strong>
+        <small id="taskMetricDetail">режим «до завершения»</small>
       </article>
       <article class="metric-card">
         <span>Последняя проверка</span>
@@ -50,21 +56,21 @@
       <article class="panel settings-panel">
         <div class="panel-heading">
           <div>
-            <span class="eyebrow">Основные параметры</span>
-            <h2>Настройки наблюдения</h2>
+            <span class="eyebrow">Общие значения по умолчанию</span>
+            <h2>Базовый профиль</h2>
           </div>
         </div>
 
         <label class="field">
           <span>Команда продолжения</span>
           <textarea id="commandField" rows="3"></textarea>
-          <small>Команда вводится только в выбранные чаты после стабильного завершённого ответа.</small>
+          <small>Используется чатами, у которых не задана собственная команда.</small>
         </label>
 
         <label class="field">
           <span>Стоп-фраза ответа</span>
           <textarea id="stopPhraseField" rows="2" maxlength="500" placeholder="Оставьте пустым, чтобы не останавливать чаты автоматически"></textarea>
-          <small>Если завершённый последний ответ ассистента содержит эту фразу, ChatPulse отключит только этот чат и не отправит команду продолжения.</small>
+          <small>Чат может наследовать эту фразу, заменить её своей или явно отключить стоп-фразу.</small>
         </label>
 
         <div class="field-row">
@@ -108,7 +114,7 @@
             <label class="field">
               <span>Bot token</span>
               <input id="telegramBotToken" type="password" autocomplete="new-password" placeholder="Токен от @BotFather">
-              <small>После сохранения токен не показывается в интерфейсе.</small>
+              <small>После сохранения токен не показывается и никогда не попадает в экспорт.</small>
             </label>
           </div>
 
@@ -116,11 +122,26 @@
             <button id="telegramTestButton" class="secondary-button" type="button">Отправить тест</button>
             <small id="telegramStatus">Telegram выключен.</small>
           </div>
-          <p class="integration-note">При первом включении Chrome отдельно запросит доступ только к <code>api.telegram.org</code>. В Telegram отправляется название чата и факт автопродолжения — без текста переписки и без URL.</p>
+          <p class="integration-note">Кроме факта продолжения ChatPulse может сообщать об остановке по стоп-фразе/лимиту и об ошибке автоматики. Текст переписки, URL, команда и стоп-фраза не отправляются.</p>
+        </section>
+
+        <section class="integration-box" aria-labelledby="portableHeading">
+          <div class="integration-heading">
+            <div>
+              <span class="eyebrow">Перенос</span>
+              <h3 id="portableHeading">Экспорт / импорт конфигурации</h3>
+            </div>
+          </div>
+          <div class="button-row">
+            <button id="exportButton" class="secondary-button" type="button">Экспортировать JSON</button>
+            <button id="importButton" class="secondary-button" type="button">Импортировать JSON</button>
+            <input id="importFile" class="visually-hidden" type="file" accept="application/json,.json">
+          </div>
+          <p class="integration-note">Экспорт содержит только общие настройки, список чатов и их профили. Bot token, вкладки, fingerprints, журнал, task runtime и история отправок исключены. Импорт останавливает глобальный мониторинг и создаёт новые безопасные baseline.</p>
         </section>
 
         <div class="button-row">
-          <button id="saveButton" class="primary-button" type="button">Сохранить настройки</button>
+          <button id="saveButton" class="primary-button" type="button">Сохранить общие настройки</button>
           <button id="addCurrentButton" class="secondary-button" type="button">Добавить последний чат ChatGPT</button>
         </div>
 
@@ -130,31 +151,32 @@
       <article class="panel info-panel">
         <div class="panel-heading">
           <div>
-            <span class="eyebrow">Как работает</span>
-            <h2>Без отдельного входа</h2>
+            <span class="eyebrow">Режим задачи</span>
+            <h2>Работать до завершения</h2>
           </div>
         </div>
         <ol class="steps">
-          <li><span>1</span><p>Войдите в ChatGPT обычным способом в Google Chrome.</p></li>
-          <li><span>2</span><p>Откройте нужный разговор и нажмите «Добавить последний чат ChatGPT».</p></li>
-          <li><span>3</span><p>ChatPulse проверяет сохранённые вкладки последовательно и не читает cookies.</p></li>
-          <li><span>4</span><p>Новый ответ сначала фиксируется. Команда отправляется только на следующей неизменной проверке.</p></li>
+          <li><span>1</span><p>Откройте профиль нужного чата в Control Center.</p></li>
+          <li><span>2</span><p>Задайте хотя бы один guard: стоп-фразу, максимум продолжений или максимум времени.</p></li>
+          <li><span>3</span><p>Нажмите «Запустить до завершения». Счётчик и безопасный baseline начнутся заново только для этого чата.</p></li>
+          <li><span>4</span><p>При выполнении guard ChatPulse отключит только этот чат и запишет точную причину.</p></li>
         </ol>
         <div class="privacy-note">
-          Основной доступ ограничен доменами <code>chatgpt.com</code> и <code>chat.openai.com</code>. Опциональный Telegram-доступ запрашивается отдельно только при включении уведомлений. Настройки остаются в <code>chrome.storage.local</code>.
+          Per-chat профили не создают отдельный scheduler: они используют тот же локальный state, `controlRevision`, freshness-preflight и `at-most-once`. Telegram остаётся только опциональным доступом к <code>api.telegram.org</code>.
         </div>
       </article>
     </section>
 
-    <section class="panel chats-panel">
+    <section class="panel chats-panel control-center-panel">
       <div class="panel-heading split-heading">
         <div>
           <span class="eyebrow">Управление</span>
-          <h2>Отслеживаемые чаты</h2>
+          <h2>Control Center</h2>
+          <p class="heading-note">Статус, прогресс, следующая проверка и индивидуальный профиль каждого чата.</p>
         </div>
         <button id="addCurrentTopButton" class="secondary-button" type="button">Добавить последний чат</button>
       </div>
-      <div id="chatTable" class="chat-table"></div>
+      <div id="chatTable" class="chat-table control-chat-table"></div>
     </section>
 
     <section class="panel logs-panel">
@@ -170,27 +192,96 @@
 
     <footer>
       <span id="versionLabel"></span>
-      <span>Chrome Manifest V3 · без Apple-подписи</span>
+      <span>Chrome Manifest V3 · локальный state · без backend</span>
     </footer>
   </main>
 
   <template id="chatRowTemplate">
-    <article class="chat-row">
-      <div class="chat-identity">
-        <span class="status-dot"></span>
-        <div>
-          <strong class="chat-title"></strong>
-          <small class="chat-url"></small>
+    <article class="chat-row control-chat-row">
+      <div class="chat-summary">
+        <div class="chat-identity">
+          <span class="status-dot"></span>
+          <div>
+            <strong class="chat-title"></strong>
+            <small class="chat-url"></small>
+          </div>
+        </div>
+        <div class="chat-runtime">
+          <strong class="chat-status-label"></strong>
+          <span class="chat-runtime-text"></span>
+        </div>
+        <div class="chat-progress">
+          <span class="chat-progress-text"></span>
+          <progress class="chat-progress-bar" max="1" value="0"></progress>
+        </div>
+        <div class="chat-actions">
+          <button class="open-chat secondary-button" type="button">Открыть</button>
+          <button class="toggle-chat secondary-button" type="button"></button>
+          <button class="task-chat primary-button" type="button"></button>
+          <button class="remove-chat icon-danger" type="button" aria-label="Удалить чат">×</button>
         </div>
       </div>
-      <div class="chat-runtime">
-        <span class="chat-runtime-text"></span>
-      </div>
-      <div class="chat-actions">
-        <button class="open-chat secondary-button" type="button">Открыть</button>
-        <button class="toggle-chat secondary-button" type="button"></button>
-        <button class="remove-chat icon-danger" type="button" aria-label="Удалить чат">×</button>
-      </div>
+
+      <details class="profile-details">
+        <summary>Профиль и лимиты</summary>
+        <div class="profile-grid">
+          <label class="field profile-wide">
+            <span>Команда этого чата</span>
+            <textarea class="profile-command" rows="2" placeholder="Пусто = использовать общую команду"></textarea>
+          </label>
+
+          <label class="field">
+            <span>Интервал</span>
+            <select class="profile-interval">
+              <option value="">Общий интервал</option>
+              <option value="0.5">30 секунд</option>
+              <option value="1">1 минута</option>
+              <option value="2">2 минуты</option>
+              <option value="5">5 минут</option>
+              <option value="10">10 минут</option>
+              <option value="15">15 минут</option>
+              <option value="30">30 минут</option>
+              <option value="60">1 час</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Стоп-фраза</span>
+            <select class="profile-stop-mode">
+              <option value="inherit">Использовать общую</option>
+              <option value="custom">Своя стоп-фраза</option>
+              <option value="off">Отключить для этого чата</option>
+            </select>
+          </label>
+
+          <label class="field profile-wide profile-stop-field">
+            <span>Своя стоп-фраза</span>
+            <textarea class="profile-stop" rows="2" maxlength="500" placeholder="Фраза завершения для этого чата"></textarea>
+          </label>
+
+          <label class="field">
+            <span>Максимум продолжений</span>
+            <input class="profile-max-continuations" type="number" min="0" max="10000" step="1" inputmode="numeric">
+            <small>0 = без лимита.</small>
+          </label>
+
+          <label class="field">
+            <span>Максимум времени, минут</span>
+            <input class="profile-max-runtime" type="number" min="0" max="10080" step="1" inputmode="numeric">
+            <small>0 = без лимита.</small>
+          </label>
+
+          <label class="toggle-line profile-telegram">
+            <input class="profile-telegram-notify" type="checkbox">
+            <span>Telegram-события для этого чата</span>
+          </label>
+
+          <div class="profile-actions profile-wide">
+            <button class="save-profile primary-button" type="button">Сохранить профиль</button>
+            <small class="profile-effective"></small>
+          </div>
+        </div>
+      </details>
     </article>
   </template>
 
