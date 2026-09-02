@@ -1,0 +1,48 @@
+name: HQ one-shot Telegram feature validation
+
+on:
+  workflow_run:
+    workflows: ["Dependency runner policy"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-chatpulse-telegram-validation
+  cancel-in-progress: false
+
+jobs:
+  validate-telegram-feature:
+    if: >-
+      github.event.workflow_run.id == 33578876592 &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.repository.full_name == github.repository
+    name: Telegram feature exact-head audit
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 10
+    env:
+      FEATURE_BRANCH: feature/telegram-notifications
+      EXPECTED_HEAD: 308f8e362f3c93a607f6a2bbc21ea11a74523959
+
+    steps:
+      - name: Checkout Telegram feature
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FEATURE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Assert exact feature head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          echo "Pinned Telegram feature head: $EXPECTED_HEAD"
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Full extension audit
+        run: npm run audit:extension
