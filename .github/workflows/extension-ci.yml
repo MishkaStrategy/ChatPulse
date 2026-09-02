@@ -38,34 +38,101 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/issues/14" --jq '.body' > /tmp/chatpulse-0.5.4.b64
-          gh api "repos/${GITHUB_REPOSITORY}/issues/14/comments" --paginate --slurp \
-            --jq 'add | sort_by(.id)[] | .body' >> /tmp/chatpulse-0.5.4.b64
-          base64 --decode /tmp/chatpulse-0.5.4.b64 > /tmp/chatpulse-0.5.4.tar.gz
-          echo "f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5  /tmp/chatpulse-0.5.4.tar.gz" | sha256sum -c -
-          python - <<'PY'
-          from pathlib import PurePosixPath
-          import tarfile
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const path = require('node:path');
+          const { execFileSync } = require('node:child_process');
 
-          archive = "/tmp/chatpulse-0.5.4.tar.gz"
-          allowed_roots = {
-              ".github", "CHANGELOG.md", "README.md", "chrome-extension",
-              "package.json", "scripts", "tests",
+          const token = process.env.GH_TOKEN;
+          const repository = process.env.GITHUB_REPOSITORY;
+          const archivePath = '/tmp/chatpulse-0.5.4.tar.gz';
+          const expectedSha = 'f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5';
+          const allowedRoots = new Set([
+            '.github', 'CHANGELOG.md', 'README.md', 'chrome-extension',
+            'package.json', 'scripts', 'tests',
+          ]);
+
+          if (!token || !repository) {
+            throw new Error('Missing GitHub workflow environment');
           }
-          with tarfile.open(archive, "r:gz") as bundle:
-              members = bundle.getmembers()
-              if len(members) != 26:
-                  raise SystemExit(f"Unexpected payload member count: {len(members)}")
-              for member in members:
-                  path = PurePosixPath(member.name)
-                  if path.is_absolute() or ".." in path.parts or not path.parts:
-                      raise SystemExit(f"Unsafe payload path: {member.name}")
-                  if path.parts[0] not in allowed_roots:
-                      raise SystemExit(f"Unexpected payload root: {member.name}")
-                  if not member.isfile():
-                      raise SystemExit(f"Only regular files are allowed: {member.name}")
-              bundle.extractall(".", filter="data")
-          PY
+
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${token}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'chatpulse-release-workflow',
+          };
+
+          async function githubApi(apiPath) {
+            const response = await fetch(`https://api.github.com/repos/${repository}${apiPath}`, { headers });
+            if (!response.ok) {
+              throw new Error(`GitHub API ${response.status} for ${apiPath}`);
+            }
+            return response.json();
+          }
+
+          async function main() {
+            const issue = await githubApi('/issues/14');
+            const comments = [];
+            for (let pageNumber = 1; ; pageNumber += 1) {
+              const page = await githubApi(`/issues/14/comments?per_page=100&page=${pageNumber}`);
+              comments.push(...page);
+              if (page.length < 100) break;
+            }
+            comments.sort((left, right) => left.id - right.id);
+
+            const encoded = [issue.body || '', ...comments.map((comment) => comment.body || '')]
+              .join('\n')
+              .replace(/\s+/g, '');
+            if (!encoded || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 !== 0) {
+              throw new Error('Issue #14 does not contain valid base64 payload data');
+            }
+
+            const archive = Buffer.from(encoded, 'base64');
+            const actualSha = crypto.createHash('sha256').update(archive).digest('hex');
+            if (actualSha !== expectedSha) {
+              throw new Error(`Unexpected payload SHA-256: ${actualSha}`);
+            }
+            fs.writeFileSync(archivePath, archive);
+
+            const names = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8' })
+              .split('\n')
+              .filter(Boolean);
+            const verbose = execFileSync('tar', ['-tvzf', archivePath], { encoding: 'utf8' })
+              .split('\n')
+              .filter(Boolean);
+            if (names.length !== 26 || verbose.length !== names.length) {
+              throw new Error(`Unexpected payload member count: ${names.length}`);
+            }
+
+            names.forEach((name, index) => {
+              const rawParts = name.split('/').filter((part) => part !== '' && part !== '.');
+              const normalized = path.posix.normalize(name);
+              if (
+                path.posix.isAbsolute(name) ||
+                rawParts.length === 0 ||
+                rawParts.includes('..') ||
+                normalized === '..' ||
+                normalized.startsWith('../') ||
+                !allowedRoots.has(rawParts[0])
+              ) {
+                throw new Error(`Unsafe or unexpected payload path: ${name}`);
+              }
+              if (!verbose[index].startsWith('-')) {
+                throw new Error(`Only regular files are allowed: ${name}`);
+              }
+            });
+
+            execFileSync('tar', ['-xzf', archivePath, '-C', '.'], { stdio: 'inherit' });
+            console.log(`Verified payload SHA-256: ${actualSha}`);
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
 
       - name: Минимальный удалённый gate
         run: npm run audit:ci
@@ -74,9 +141,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd dist
-          sha256sum -c ChatPulse-Chrome-v0.5.4-beta.zip.sha256
-          test "$(sha256sum ChatPulse-Chrome-v0.5.4-beta.zip | awk '{print $1}')" = "64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+
+          const zipPath = 'dist/ChatPulse-Chrome-v0.5.4-beta.zip';
+          const checksumPath = `${zipPath}.sha256`;
+          const expected = '64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3';
+          const actual = crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex');
+          const checksumText = fs.readFileSync(checksumPath, 'utf8').trim();
+          const match = checksumText.match(/^([0-9a-fA-F]{64})\s+\*?ChatPulse-Chrome-v0\.5\.4-beta\.zip$/);
+          if (!match) throw new Error('Malformed beta ZIP checksum file');
+          const declared = match[1].toLowerCase();
+          if (declared !== expected || actual !== expected) {
+            throw new Error(`Unexpected beta ZIP SHA-256: declared=${declared} actual=${actual}`);
+          }
+          console.log(`Verified beta ZIP SHA-256: ${actual}`);
+          NODE
 
       - name: Проверка разрешений и отсутствия секретов
         shell: bash
