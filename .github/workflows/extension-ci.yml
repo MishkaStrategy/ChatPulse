@@ -1,4 +1,5 @@
 name: ChatPulse 0.6.0 beta release gate
+# workflow_dispatch is retained so a frozen RC can be revalidated without modifying product code.
 
 on:
   workflow_dispatch:
