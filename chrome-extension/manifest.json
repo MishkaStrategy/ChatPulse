@@ -16,7 +16,8 @@
     "https://chat.openai.com/*"
   ],
   "optional_host_permissions": [
-    "https://api.telegram.org/*"
+    "https://api.telegram.org/*",
+    "https://api.github.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker-v2.js",

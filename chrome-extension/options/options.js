@@ -1,4 +1,5 @@
 const TELEGRAM_ORIGIN = "https://api.telegram.org/*";
+const GITHUB_ORIGIN = "https://api.github.com/*";
 
 const ui = {
   body: document.body,
@@ -138,6 +139,21 @@ async function ensureTelegramPermission() {
     const granted = await chrome.permissions.request({ origins: [TELEGRAM_ORIGIN] });
     if (!granted) {
       showMessage("Telegram-уведомления не включены: Chrome не выдал доступ к api.telegram.org.", "error");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    showMessage(errorMessage(error), "error");
+    return false;
+  }
+}
+
+async function ensureGithubPermission() {
+  try {
+    if (await chrome.permissions.contains({ origins: [GITHUB_ORIGIN] })) return true;
+    const granted = await chrome.permissions.request({ origins: [GITHUB_ORIGIN] });
+    if (!granted) {
+      showMessage("GitHub Actions watchdog не включён: Chrome не выдал optional access к api.github.com.", "error");
       return false;
     }
     return true;
@@ -324,6 +340,10 @@ function renderChats() {
     const stop = row.querySelector(".profile-stop");
     const maxContinuations = row.querySelector(".profile-max-continuations");
     const maxRuntime = row.querySelector(".profile-max-runtime");
+    const githubWatchEnabled = row.querySelector(".profile-github-watch-enabled");
+    const githubRepository = row.querySelector(".profile-github-repository");
+    const githubIdle = row.querySelector(".profile-github-idle");
+    const githubStatus = row.querySelector(".profile-github-status");
     const telegramNotify = row.querySelector(".profile-telegram-notify");
     const effectiveText = row.querySelector(".profile-effective");
 
@@ -336,6 +356,10 @@ function renderChats() {
     stop.disabled = draft.stopMode !== "custom";
     maxContinuations.value = String(draft.maxContinuations);
     maxRuntime.value = String(draft.maxRuntimeMinutes);
+    githubWatchEnabled.checked = draft.githubWatchEnabled;
+    githubRepository.value = draft.githubRepository || "";
+    githubIdle.value = String(draft.githubIdleMinutes);
+    githubStatus.textContent = githubWatchStatus(chat, effective);
     telegramNotify.checked = draft.telegramNotify;
     effectiveText.textContent = profileSummary(effective);
 
@@ -343,8 +367,12 @@ function renderChats() {
       const nextDraft = readProfileDraft(row);
       profileDrafts.set(chat.id, nextDraft);
       stop.disabled = nextDraft.stopMode !== "custom";
+      githubRepository.disabled = !nextDraft.githubWatchEnabled;
+      githubIdle.disabled = !nextDraft.githubWatchEnabled;
     };
-    for (const control of [command, interval, stopMode, stop, maxContinuations, maxRuntime, telegramNotify]) {
+    githubRepository.disabled = !draft.githubWatchEnabled;
+    githubIdle.disabled = !draft.githubWatchEnabled;
+    for (const control of [command, interval, stopMode, stop, maxContinuations, maxRuntime, githubWatchEnabled, githubRepository, githubIdle, telegramNotify]) {
       control.addEventListener("input", capture);
       control.addEventListener("change", capture);
     }
@@ -366,6 +394,13 @@ function renderChats() {
 
 async function saveChatProfile(chatId, row, showSuccess = true) {
   const draft = readProfileDraft(row);
+  if (draft.githubWatchEnabled) {
+    if (!draft.githubRepository) {
+      showMessage("Для GitHub Actions watchdog укажите repository в формате owner/repo.", "error");
+      return false;
+    }
+    if (!(await ensureGithubPermission())) return false;
+  }
   const profile = draftToProfile(draft);
   const saved = await action("UPDATE_CHAT_PROFILE", { chatId, profile }, showSuccess);
   if (saved) profileDrafts.delete(chatId);
@@ -393,6 +428,9 @@ function readProfileDraft(root) {
     stopPhrase: root.querySelector(".profile-stop").value,
     maxContinuations: nonNegativeInteger(root.querySelector(".profile-max-continuations").value),
     maxRuntimeMinutes: nonNegativeInteger(root.querySelector(".profile-max-runtime").value),
+    githubWatchEnabled: root.querySelector(".profile-github-watch-enabled").checked,
+    githubRepository: root.querySelector(".profile-github-repository").value.trim(),
+    githubIdleMinutes: boundedInteger(root.querySelector(".profile-github-idle").value, 10, 10080, 30),
     telegramNotify: root.querySelector(".profile-telegram-notify").checked
   };
 }
@@ -411,6 +449,9 @@ function profileToDraft(profile = {}) {
     stopPhrase: stopMode === "custom" ? stopValue : "",
     maxContinuations: nonNegativeInteger(profile.maxContinuations),
     maxRuntimeMinutes: nonNegativeInteger(profile.maxRuntimeMinutes),
+    githubWatchEnabled: profile.githubWatchEnabled === true,
+    githubRepository: profile.githubRepository || "",
+    githubIdleMinutes: boundedInteger(profile.githubIdleMinutes, 10, 10080, 30),
     telegramNotify: profile.telegramNotify !== false
   };
 }
@@ -426,6 +467,9 @@ function draftToProfile(draft) {
         : draft.stopPhrase,
     maxContinuations: draft.maxContinuations,
     maxRuntimeMinutes: draft.maxRuntimeMinutes,
+    githubWatchEnabled: draft.githubWatchEnabled,
+    githubRepository: draft.githubRepository || null,
+    githubIdleMinutes: draft.githubIdleMinutes,
     telegramNotify: draft.telegramNotify
   };
 }
@@ -441,6 +485,9 @@ function effectiveProfile(chat) {
     stopPhrase,
     maxContinuations: nonNegativeInteger(profile.maxContinuations),
     maxRuntimeMinutes: nonNegativeInteger(profile.maxRuntimeMinutes),
+    githubWatchEnabled: profile.githubWatchEnabled === true,
+    githubRepository: profile.githubRepository || null,
+    githubIdleMinutes: boundedInteger(profile.githubIdleMinutes, 10, 10080, 30),
     telegramNotify: profile.telegramNotify !== false
   };
 }
@@ -450,7 +497,21 @@ function profileSummary(profile) {
   if (profile.maxContinuations > 0) pieces.push(`≤ ${profile.maxContinuations} продолжений`);
   if (profile.maxRuntimeMinutes > 0) pieces.push(`≤ ${formatDuration(profile.maxRuntimeMinutes)}`);
   if (profile.stopPhrase) pieces.push("stop guard");
+  if (profile.githubWatchEnabled && profile.githubRepository) pieces.push(`Actions ${profile.githubRepository} · ${profile.githubIdleMinutes} мин`);
   if (!profile.telegramNotify) pieces.push("Telegram off");
+  return pieces.join(" · ");
+}
+
+function githubWatchStatus(chat, profile) {
+  if (!profile.githubWatchEnabled) return "Watchdog выключен.";
+  if (!profile.githubRepository) return "Укажите repository в формате owner/repo.";
+  if (chat.githubLastError) return `GitHub: ${chat.githubLastError}`;
+  if (!chat.githubWatchStartedAt) return `GitHub Actions · ${profile.githubRepository} · baseline ещё не создан`;
+  const pieces = [`GitHub Actions · ${profile.githubRepository}`];
+  if (chat.githubLastActivityAt) pieces.push(`activity ${formatDateTime(chat.githubLastActivityAt)}`);
+  if (chat.githubLastCheckedAt) pieces.push(`проверено ${formatDateTime(chat.githubLastCheckedAt)}`);
+  if (chat.githubLastRestartAt) pieces.push(`restart ${formatDateTime(chat.githubLastRestartAt)}`);
+  if (chat.githubRestartCount > 0) pieces.push(`restart count ${chat.githubRestartCount}`);
   return pieces.join(" · ");
 }
 
@@ -633,6 +694,12 @@ function nonNegativeInteger(value) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
 }
 
+function boundedInteger(value, minimum, maximum, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), minimum), maximum);
+}
+
 function truncate(value, length) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text.length > length ? `${text.slice(0, length - 1)}…` : text;
@@ -651,6 +718,13 @@ function syncProfileStopDisabled() {
     const mode = row.querySelector(".profile-stop-mode");
     const stop = row.querySelector(".profile-stop");
     if (mode && stop) stop.disabled = mode.value !== "custom";
+    const githubEnabled = row.querySelector(".profile-github-watch-enabled");
+    const githubRepository = row.querySelector(".profile-github-repository");
+    const githubIdle = row.querySelector(".profile-github-idle");
+    if (githubEnabled && githubRepository && githubIdle) {
+      githubRepository.disabled = !githubEnabled.checked;
+      githubIdle.disabled = !githubEnabled.checked;
+    }
   }
 }
 
