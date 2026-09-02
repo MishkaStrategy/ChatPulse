@@ -97,6 +97,63 @@ export function hasCompletionGuard(profile) {
     || boundedInteger(profile?.maxRuntimeMinutes, MAX_RUNTIME_MINUTES) > 0;
 }
 
+export function applyGlobalSettingsPatch(state, patch = {}) {
+  const next = { ...state };
+  const previousCommand = state.commandText || DEFAULT_COMMAND;
+  const previousInterval = clampInterval(state.intervalMinutes);
+  const previousStopPhrase = normalizeStopPhrase(state.stopPhrase);
+
+  if (Object.hasOwn(patch, "intervalMinutes")) {
+    next.intervalMinutes = clampInterval(patch.intervalMinutes);
+  }
+  if (typeof patch.commandText === "string" && patch.commandText.trim()) {
+    next.commandText = patch.commandText.trim().slice(0, 4_000);
+  }
+  if (Object.hasOwn(patch, "stopPhrase")) {
+    next.stopPhrase = normalizeStopPhrase(patch.stopPhrase);
+  }
+  if (patch.theme === "macos" || patch.theme === "preview") {
+    next.theme = patch.theme;
+  }
+
+  const commandChanged = (next.commandText || DEFAULT_COMMAND) !== previousCommand;
+  const intervalChanged = clampInterval(next.intervalMinutes) !== previousInterval;
+  const stopChanged = normalizeStopPhrase(next.stopPhrase) !== previousStopPhrase;
+
+  next.chats = state.chats.map((chat) => {
+    const profile = normalizeChatProfile(chat.profile);
+    const inheritsChangedSetting = (commandChanged && profile.commandText === null)
+      || (intervalChanged && profile.intervalMinutes === null)
+      || (stopChanged && profile.stopPhrase === null);
+    return inheritsChangedSetting
+      ? {
+          ...chat,
+          controlRevision: nonNegativeInteger(chat.controlRevision) + 1,
+          nextEligibleAt: null
+        }
+      : chat;
+  });
+
+  for (const chat of next.chats) {
+    if (chat.taskActive && !hasCompletionGuard(effectiveChatProfile(next, chat))) {
+      throw new Error(`Активная задача «${chat.title}» потеряет последний guard. Сначала задайте стоп-фразу, лимит продолжений или лимит времени.`);
+    }
+  }
+  return next;
+}
+
+export function stopTaskMode(chat, reason = "manual-task-stop", at = new Date().toISOString()) {
+  if (!chat.taskActive) return chat;
+  return {
+    ...chat,
+    taskActive: false,
+    taskCompletedAt: at,
+    taskCompletionReason: String(reason),
+    nextEligibleAt: null,
+    lastDecision: `task-stopped-${String(reason)}`
+  };
+}
+
 export function createChat({ title, url, tabId = null, now = new Date().toISOString() }) {
   const normalizedURL = normalizeChatURL(url);
   if (!normalizedURL) throw new Error("Открыта не страница конкретного чата ChatGPT.");
@@ -175,6 +232,7 @@ export function defaultState() {
   return {
     schemaVersion: 4,
     enabled: false,
+    taskOnly: false,
     checkInProgress: false,
     intervalMinutes: 5,
     commandText: DEFAULT_COMMAND,
@@ -193,6 +251,7 @@ export function normalizeState(raw) {
   return {
     schemaVersion: 4,
     enabled: raw?.enabled === true,
+    taskOnly: raw?.taskOnly === true,
     checkInProgress: raw?.checkInProgress === true,
     intervalMinutes: clampInterval(raw?.intervalMinutes ?? fallback.intervalMinutes),
     commandText: typeof raw?.commandText === "string" && raw.commandText.trim()
@@ -540,6 +599,7 @@ export function applyPortableConfig(raw, at = new Date().toISOString()) {
   next.theme = raw.defaults?.theme === "preview" ? "preview" : "macos";
   next.sessionId = createSessionId();
   next.logs = [];
+  const seenURLs = new Set();
   next.chats = raw.chats.map((rawChat) => {
     const chat = createChat({
       title: rawChat?.title,
@@ -547,6 +607,10 @@ export function applyPortableConfig(raw, at = new Date().toISOString()) {
       tabId: null,
       now: at
     });
+    if (seenURLs.has(chat.url)) {
+      throw new Error("Конфигурация содержит один и тот же чат несколько раз.");
+    }
+    seenURLs.add(chat.url);
     return {
       ...chat,
       enabled: rawChat?.enabled !== false,

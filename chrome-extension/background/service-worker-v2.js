@@ -1,6 +1,7 @@
 import {
   appendLog,
   applyCompletion,
+  applyGlobalSettingsPatch,
   applyPortableConfig,
   clampInterval,
   completionGuardReason,
@@ -24,7 +25,8 @@ import {
   recordRecovery,
   scheduleNextChatCheck,
   startChatRun,
-  stopChatRun
+  stopChatRun,
+  stopTaskMode
 } from "../lib/model-v2.js";
 import {
   attachTelegramState,
@@ -87,9 +89,16 @@ async function handleMessage(message) {
 
     case "START_MONITORING": {
       let state = await loadState();
+      state = {
+        ...state,
+        chats: state.chats.map((chat) => chat.enabled
+          ? startChatRun(chat, { task: false })
+          : chat)
+      };
       state = appendLog({
         ...state,
         enabled: true,
+        taskOnly: false,
         sessionId: createSessionId()
       }, "info", "Наблюдение запущено");
       state = await configureAlarm(state);
@@ -100,14 +109,14 @@ async function handleMessage(message) {
 
     case "STOP_MONITORING": {
       let state = await loadState();
-      const activeTasks = state.chats.filter((chat) => chat.taskActive).length;
-      state = appendLog({
+      state = {
         ...state,
         enabled: false,
-        checkInProgress: false
-      }, "info", activeTasks > 0
-        ? "Обычное наблюдение остановлено; активные задачи продолжаются"
-        : "Наблюдение остановлено");
+        taskOnly: false,
+        checkInProgress: false,
+        chats: state.chats.map((chat) => stopTaskMode(chat, "global-stop"))
+      };
+      state = appendLog(state, "info", "ChatPulse полностью остановлен; активные задачи завершены общим Stop");
       state = await configureAlarm(state);
       await persistAndPublish(state);
       return { state };
@@ -121,6 +130,7 @@ async function handleMessage(message) {
       return { state: await addCurrentChat(message.tabId) };
 
     case "REMOVE_CHAT":
+      assertIdentityMutationSafe();
       return { state: await mutateChat(message.chatId, (state, index) => {
         const [removed] = state.chats.splice(index, 1);
         return appendLog(state, "info", `Чат «${removed.title}» удалён из ChatPulse`);
@@ -169,19 +179,24 @@ async function handleMessage(message) {
         throw new Error("Для запуска задачи задайте стоп-фразу, лимит продолжений или лимит времени.");
       }
       state.chats[index] = startChatRun(state.chats[index], { task: true });
-      state = appendLog(state, "info", `Задача «${state.chats[index].title}» запущена до условия завершения`);
+      const selectedChatId = state.chats[index].id;
+      state = appendLog({
+        ...state,
+        enabled: true,
+        taskOnly: state.enabled ? state.taskOnly === true : true
+      }, "info", `Задача «${state.chats[index].title}» запущена до условия завершения`);
       state = await configureAlarm(state);
       await persistAndPublish(state);
       state = await notifyChatEvent(state, state.chats[index], "task-started");
       await persistAndPublish(state);
-      void runCheck("task-start");
+      void runCheck("task-start", false, selectedChatId);
       return { state };
     }
 
     case "STOP_TASK":
       return { state: await mutateChat(message.chatId, (state, index) => {
         const chat = state.chats[index];
-        state.chats[index] = stopChatRun(chat, "manual-task-stop");
+        state.chats[index] = stopTaskMode(chat, "manual-task-stop");
         return appendLog(state, "info", `Задача «${chat.title}» остановлена вручную`);
       }) };
 
@@ -206,7 +221,6 @@ async function handleMessage(message) {
 
     case "UPDATE_SETTINGS": {
       const patch = message.patch || {};
-      await updateTelegramConfig(patch);
       return { state: await updateSettings(patch) };
     }
 
@@ -220,6 +234,7 @@ async function handleMessage(message) {
     }
 
     case "IMPORT_CONFIG": {
+      assertIdentityMutationSafe();
       let state = applyPortableConfig(message.config);
       state = appendLog(state, "info", "Портативная конфигурация импортирована; мониторинг оставлен остановленным для безопасного baseline");
       await chrome.alarms.clear(ALARM_NAME);
@@ -306,18 +321,8 @@ async function resolveChatTab(preferredTabId = null) {
 
 async function updateSettings(patch) {
   let state = await loadState();
-  if (Object.hasOwn(patch, "intervalMinutes")) {
-    state.intervalMinutes = clampInterval(patch.intervalMinutes);
-  }
-  if (typeof patch.commandText === "string" && patch.commandText.trim()) {
-    state.commandText = patch.commandText.trim();
-  }
-  if (Object.hasOwn(patch, "stopPhrase")) {
-    state.stopPhrase = normalizeStopPhrase(patch.stopPhrase);
-  }
-  if (patch.theme === "macos" || patch.theme === "preview") {
-    state.theme = patch.theme;
-  }
+  state = applyGlobalSettingsPatch(state, patch);
+  await updateTelegramConfig(patch);
   state = appendLog(state, "info", "Общие настройки ChatPulse обновлены");
   state = await configureAlarm(state);
   await persistAndPublish(state);
@@ -334,18 +339,17 @@ async function mutateChat(chatId, mutator) {
   return state;
 }
 
-async function runCheck(source, allowWhenStopped = false) {
+async function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
   if (activeCheck) return activeCheck;
-  activeCheck = performCheck(source, allowWhenStopped).finally(() => {
+  activeCheck = performCheck(source, allowWhenStopped, onlyChatId).finally(() => {
     activeCheck = null;
   });
   return activeCheck;
 }
 
-async function performCheck(source, allowWhenStopped) {
+async function performCheck(source, allowWhenStopped, onlyChatId = null) {
   let observedState = await loadState();
-  const hasActiveTasks = observedState.chats.some((chat) => chat.enabled && chat.taskActive);
-  if (!observedState.enabled && !hasActiveTasks && !allowWhenStopped) return;
+  if (!observedState.enabled && !allowWhenStopped) return;
 
   observedState = appendLog(
     { ...observedState, checkInProgress: true },
@@ -357,8 +361,9 @@ async function performCheck(source, allowWhenStopped) {
   const bypassSchedule = source !== "alarm";
   for (let index = 0; index < observedState.chats.length; index += 1) {
     let chat = observedState.chats[index];
+    if (onlyChatId && chat.id !== onlyChatId) continue;
     if (!chat.enabled) continue;
-    if (!observedState.enabled && !chat.taskActive && !allowWhenStopped) continue;
+    if (observedState.taskOnly && !chat.taskActive && !allowWhenStopped) continue;
     if (!bypassSchedule && !isChatDue(chat)) continue;
 
     let profile = effectiveChatProfile(observedState, chat);
@@ -425,7 +430,10 @@ async function performCheck(source, allowWhenStopped) {
       const liveChat = latestState.chats.find((candidate) => candidate.id === chat.id);
       const sameControlRevision = Number(liveChat?.controlRevision || 0)
         === Number(observedState.chats[index].controlRevision || 0);
-      if (!liveChat?.enabled || !sameControlRevision || (!latestState.enabled && !liveChat.taskActive && !allowWhenStopped)) {
+      const sameSession = latestState.sessionId === observedState.sessionId;
+      const engineAllowsChat = latestState.enabled
+        && (!latestState.taskOnly || liveChat?.taskActive === true);
+      if (!liveChat?.enabled || !sameControlRevision || !sameSession || (!engineAllowsChat && !allowWhenStopped)) {
         observedState = appendLog(
           observedState,
           "info",
@@ -842,10 +850,14 @@ async function sendToContent(
 async function configureAlarm(state) {
   await chrome.alarms.clear(ALARM_NAME);
   const globalInterval = clampInterval(state.intervalMinutes);
-  const eligibleChats = state.chats.filter((chat) => chat.enabled && (state.enabled || chat.taskActive));
-  const engineActive = state.enabled || eligibleChats.length > 0;
-  if (!engineActive) return { ...state, intervalMinutes: globalInterval, nextCheckAt: null };
+  if (!state.enabled) {
+    return { ...state, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
+  }
 
+  const eligibleChats = state.chats.filter((chat) => chat.enabled && (!state.taskOnly || chat.taskActive));
+  if (state.taskOnly && eligibleChats.length === 0) {
+    return { ...state, enabled: false, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
+  }
   const enabledIntervals = eligibleChats
     .map((chat) => effectiveChatProfile(state, chat).intervalMinutes);
   const alarmInterval = enabledIntervals.length
@@ -886,16 +898,30 @@ async function persistAndPublish(state) {
 
 async function updateBadge(state) {
   const activeTasks = state.chats.filter((chat) => chat.taskActive).length;
-  const text = state.checkInProgress ? "…" : activeTasks > 0 ? String(Math.min(activeTasks, 99)) : state.enabled ? "ON" : "";
+  const text = state.checkInProgress
+    ? "…"
+    : state.enabled && state.taskOnly
+      ? String(Math.min(activeTasks, 99))
+      : state.enabled
+        ? "ON"
+        : "";
   await chrome.action.setBadgeText({ text });
   await chrome.action.setBadgeBackgroundColor({
-    color: state.checkInProgress ? "#9B5CFF" : activeTasks > 0 ? "#31C48D" : "#2C8CFF"
+    color: state.checkInProgress ? "#9B5CFF" : state.taskOnly ? "#31C48D" : "#2C8CFF"
   });
   await chrome.action.setTitle({
-    title: state.enabled
-      ? `ChatPulse работает · ${state.chats.filter((chat) => chat.enabled).length} чатов · ${activeTasks} задач`
-      : "ChatPulse остановлен"
+    title: !state.enabled
+      ? "ChatPulse остановлен"
+      : state.taskOnly
+        ? `ChatPulse: работают только задачи · ${activeTasks}`
+        : `ChatPulse работает · ${state.chats.filter((chat) => chat.enabled).length} чатов · ${activeTasks} задач`
   });
+}
+
+function assertIdentityMutationSafe() {
+  if (activeCheck) {
+    throw new Error("Дождитесь завершения текущей проверки перед удалением чата или импортом конфигурации.");
+  }
 }
 
 function decisionLevel(decision) {
