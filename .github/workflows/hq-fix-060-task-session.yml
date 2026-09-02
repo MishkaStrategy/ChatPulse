@@ -1,0 +1,37 @@
+name: HQ one-shot 0.6.0 task session isolation repair
+
+on:
+  push:
+    branches:
+      - release/0.6.0-control-center
+    paths:
+      - .github/workflows/hq-fix-060-task-session.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.6.0-control-center
+          fetch-depth: 0
+
+      - name: Apply exact per-chat session repair
+        run: python3 .github/hq_fix_060_task_session.py
+
+      - name: Verify, clean helper and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          rm .github/hq_fix_060_task_session.py .github/workflows/hq-fix-060-task-session.yml
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: isolate task baseline to selected chat"
+          git push origin HEAD:release/0.6.0-control-center
