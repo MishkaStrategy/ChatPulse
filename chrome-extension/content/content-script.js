@@ -2,7 +2,7 @@
   if (globalThis.__chatPulseContentScriptInstalled) return;
   globalThis.__chatPulseContentScriptInstalled = true;
 
-  const CONTENT_SCRIPT_VERSION = "0.5.2";
+  const CONTENT_SCRIPT_VERSION = "0.5.4";
   const MESSAGE_SELECTOR = "[data-message-author-role], article[data-testid^='conversation-turn-']";
   const INPUT_SELECTORS = [
     "#prompt-textarea",
@@ -38,7 +38,7 @@
     }
 
     if (message.type === "CHATPULSE_INSPECT") {
-      sendResponse({ ok: true, snapshot: inspectPage() });
+      sendResponse({ ok: true, snapshot: inspectPage(message.stopPhrase) });
       return false;
     }
 
@@ -93,7 +93,7 @@
     return generating;
   }
 
-  function inspectPage() {
+  function inspectPage(stopPhrase = "") {
     const messages = getMessages();
     const latest = messages.at(-1) || null;
     const latestRole = roleFor(latest);
@@ -117,6 +117,9 @@
       latestFingerprint: latest
         ? fnv1a(`${latestRole}|${latestId}|${latestText}`)
         : null,
+      stopPhraseMatched: latestRole === "assistant"
+        && !generating
+        && phraseMatches(latestText, stopPhrase),
       isGenerating: generating,
       generationAgeMs: generating && generationStartedAt !== null ? now - generationStartedAt : 0,
       errorDetected: hasPageError(),
@@ -193,6 +196,20 @@
 
   function normalize(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function phraseMatches(text, phrase) {
+    const normalizedPhrase = normalizePhrase(phrase);
+    if (!normalizedPhrase) return false;
+    return normalizePhrase(text).includes(normalizedPhrase);
+  }
+
+  function normalizePhrase(value) {
+    return String(value || "")
+      .normalize("NFKC")
+      .toLocaleLowerCase("ru-RU")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function fnv1a(value) {
