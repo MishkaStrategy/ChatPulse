@@ -1,0 +1,27 @@
+name: HQ cleanup accidental release refs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/hq-cleanup-accidental-refs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete non-canonical ref aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --delete \
+            noop-do-not-use \
+            release/0.5.4-canonical \
+            release/0.5.4-pr \
+            release/0.5.4-final \
+            release/0.5.4-rebuilt
