@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ChatPulse",
-  "version": "0.5.4",
-  "version_name": "0.5.4 beta",
+  "version": "0.5.5",
+  "version_name": "0.5.5 beta",
   "description": "Локально продолжает выбранные чаты ChatGPT в уже авторизованном профиле Chrome.",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -14,6 +14,9 @@
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://api.telegram.org/*"
   ],
   "background": {
     "service_worker": "background/service-worker-v2.js",

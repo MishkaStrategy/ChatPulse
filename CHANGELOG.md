@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.5 beta — optional Telegram notifications
+
+- add opt-in Telegram notifications after ChatPulse records an automatic continuation dispatch;
+- request `https://api.telegram.org/*` only through `optional_host_permissions` from a direct user gesture;
+- keep bot token and chat ID in a separate `chrome.storage.local` config; never expose the token in public runtime state;
+- send only the tracked chat title and continuation outcome, never the ChatGPT response text or conversation URL;
+- make Telegram delivery failure non-critical so it cannot retry or roll back at-most-once continuation state;
+- add a test-send action plus permission/config status in the full options interface;
+- keep unrelated command, stop-phrase and interval saves independent of Telegram permission state;
+- retain all 0.5.4 stop-phrase, control-revision, recovery and duplicate-prevention regression coverage;
+- move reproducible beta packaging/provenance to version 0.5.5.
+
 ## 0.5.4 beta — per-chat stop phrase rebuild
 
 - add a configurable stop phrase for completed assistant responses;

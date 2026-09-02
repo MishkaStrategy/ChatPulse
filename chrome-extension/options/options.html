@@ -87,6 +87,38 @@
           </div>
         </div>
 
+        <section class="integration-box" aria-labelledby="telegramHeading">
+          <div class="integration-heading">
+            <div>
+              <span class="eyebrow">Интеграция</span>
+              <h3 id="telegramHeading">Telegram</h3>
+            </div>
+            <label class="toggle-line">
+              <input id="telegramEnabled" type="checkbox">
+              <span>Уведомлять</span>
+            </label>
+          </div>
+
+          <div class="field-row">
+            <label class="field">
+              <span>Chat ID</span>
+              <input id="telegramChatId" type="text" inputmode="text" autocomplete="off" placeholder="123456789 или @channel_name">
+              <small>Личный chat ID, ID группы или username канала.</small>
+            </label>
+            <label class="field">
+              <span>Bot token</span>
+              <input id="telegramBotToken" type="password" autocomplete="new-password" placeholder="Токен от @BotFather">
+              <small>После сохранения токен не показывается в интерфейсе.</small>
+            </label>
+          </div>
+
+          <div class="button-row telegram-actions">
+            <button id="telegramTestButton" class="secondary-button" type="button">Отправить тест</button>
+            <small id="telegramStatus">Telegram выключен.</small>
+          </div>
+          <p class="integration-note">При первом включении Chrome отдельно запросит доступ только к <code>api.telegram.org</code>. В Telegram отправляется название чата и факт автопродолжения — без текста переписки и без URL.</p>
+        </section>
+
         <div class="button-row">
           <button id="saveButton" class="primary-button" type="button">Сохранить настройки</button>
           <button id="addCurrentButton" class="secondary-button" type="button">Добавить последний чат ChatGPT</button>
@@ -109,7 +141,7 @@
           <li><span>4</span><p>Новый ответ сначала фиксируется. Команда отправляется только на следующей неизменной проверке.</p></li>
         </ol>
         <div class="privacy-note">
-          Доступ ограничен доменами <code>chatgpt.com</code> и <code>chat.openai.com</code>. Данные остаются в <code>chrome.storage.local</code>.
+          Основной доступ ограничен доменами <code>chatgpt.com</code> и <code>chat.openai.com</code>. Опциональный Telegram-доступ запрашивается отдельно только при включении уведомлений. Настройки остаются в <code>chrome.storage.local</code>.
         </div>
       </article>
     </section>

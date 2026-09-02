@@ -1,4 +1,4 @@
-# ChatPulse 0.5.4 beta — расширение Google Chrome
+# ChatPulse 0.5.5 beta — расширение Google Chrome
 
 Эта версия работает внутри обычного Google Chrome и использует уже авторизованный профиль браузера. Отдельный вход, WebKit, Safari Extension, сертификат Apple Developer и подпись приложения не требуются.
 
@@ -35,13 +35,27 @@
 
 Чтобы снова включить остановленный чат, нажмите **Включить**. Будет создан новый безопасный baseline; более свежий ручной re-enable имеет приоритет над уже запущенной фоновой проверкой.
 
+## Telegram
+
+Telegram-уведомления выключены по умолчанию. В полном интерфейсе:
+
+1. укажите Telegram `Chat ID` или `@channel_username`;
+2. вставьте bot token от BotFather;
+3. включите **Уведомлять**;
+4. подтвердите отдельный Chrome permission для `api.telegram.org`;
+5. при желании нажмите **Отправить тест**.
+
+Bot token хранится только локально и после сохранения не отображается обратно. В Telegram отправляется название чата и результат автоматического продолжения. Текст ответа ChatGPT, URL разговора и стоп-фраза не отправляются.
+
+Telegram-сбой не меняет continuation state: к моменту уведомления fingerprint уже зафиксирован для `at-most-once`, поэтому ошибка Telegram не может вызвать повтор команды. Обычные настройки сохраняются даже при отозванном Telegram permission.
+
 ## Восстановление зависших чатов
 
 ChatPulse обнаруживает выгруженные или замороженные вкладки, восстанавливает content script, синхронизирует безопасные неактивные вкладки и не перезагружает активную вкладку, обычную генерацию или вкладку с пользовательским черновиком.
 
 ## Разрешения
 
-Расширение использует только `storage`, `tabs`, `alarms`, `scripting` и доступ к `chatgpt.com`/`chat.openai.com`. Оно не запрашивает cookies, историю, пароли, почту, `debugger`, `webRequest`, `nativeMessaging` или доступ ко всем сайтам.
+Постоянно расширение использует только `storage`, `tabs`, `alarms`, `scripting` и доступ к `chatgpt.com`/`chat.openai.com`. `https://api.telegram.org/*` объявлен отдельно как `optional_host_permissions` и запрашивается только при включении или тесте Telegram. Расширение не запрашивает cookies, историю, пароли, почту, `debugger`, `webRequest`, `nativeMessaging` или доступ ко всем сайтам.
 
 ## Обновление установленной копии
 
@@ -54,4 +68,4 @@ npm run audit:extension
 npm run package:beta
 ```
 
-Проверяются синтаксис, модель решений, stop-phrase semantics, service worker, восстановление вкладок, выбор чата, отсутствие дублей, `at-most-once`, Manifest V3 и минимальность разрешений. Packaging создаёт воспроизводимый ZIP, canonical source manifest и SHA-256 для обоих.
+Проверяются синтаксис, stop-phrase/control-revision semantics, Telegram privacy/permission boundary, service worker, восстановление вкладок, выбор чата, отсутствие дублей, `at-most-once`, Manifest V3 и минимальность разрешений. Packaging создаёт воспроизводимый ZIP, canonical source manifest и SHA-256 для обоих.
