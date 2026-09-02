@@ -225,7 +225,9 @@ function render(initial = false) {
 
   ui.body.dataset.theme = state.theme === "preview" ? "preview" : "macos";
   ui.themeSelect.value = state.theme;
-  ui.toggleButton.textContent = state.enabled ? "Остановить" : "Запустить";
+  ui.toggleButton.textContent = state.enabled
+    ? state.taskOnly ? "Остановить всё" : "Остановить"
+    : "Запустить";
   ui.toggleButton.dataset.running = String(state.enabled);
 
   const activeChats = state.chats.filter((chat) => chat.enabled).length;
@@ -234,14 +236,14 @@ function render(initial = false) {
   const errors = state.chats.filter((chat) => chat.lastError).length;
   ui.statusValue.textContent = state.checkInProgress
     ? "Проверка…"
-    : state.enabled
-      ? "Работает"
-      : activeTasks > 0
+    : !state.enabled
+      ? "Остановлен"
+      : state.taskOnly
         ? "Работают задачи"
-        : "Остановлен";
-  ui.statusDetail.textContent = state.enabled || activeTasks > 0
-    ? `${activeChats} активных · ${activeTasks} задач · ${errors} ошибок${state.enabled ? "" : " · обычное наблюдение выключено"}`
-    : "Фоновый таймер не активен";
+        : "Работает";
+  ui.statusDetail.textContent = state.enabled
+    ? `${activeChats} активных · ${activeTasks} задач · ${errors} ошибок${state.taskOnly ? " · обычные чаты не проверяются" : ""}`
+    : "Master-stop активен · фоновые отправки выключены";
   ui.chatMetric.textContent = String(activeChats);
   ui.taskMetric.textContent = String(activeTasks);
   ui.taskMetricDetail.textContent = `${completedTasks} завершено в текущем локальном state`;
@@ -525,6 +527,7 @@ function completionLabel(reason) {
     "continuation-limit": "Лимит продолжений достигнут",
     "runtime-limit": "Лимит времени достигнут",
     "manual-task-stop": "Задача остановлена вручную",
+    "global-stop": "Задача остановлена общим Stop",
     manual: "Наблюдение отключено"
   }[reason] || "";
 }
@@ -573,7 +576,7 @@ function ensureProfileIntervalOption(select, value) {
 function successMessage(type) {
   const messages = {
     START_MONITORING: "Наблюдение запущено. Первая проверка новой сессии будет пассивной.",
-    STOP_MONITORING: "Обычное наблюдение остановлено. Активные задачи продолжаются до своих guard-условий.",
+    STOP_MONITORING: "ChatPulse полностью остановлен. Активные задачи завершены общим Stop.",
     CHECK_NOW: "Ручная проверка завершена.",
     ADD_CURRENT_CHAT: "Последний использованный чат ChatGPT добавлен или обновлён.",
     REMOVE_CHAT: "Чат удалён.",

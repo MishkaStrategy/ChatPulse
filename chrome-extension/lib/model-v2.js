@@ -146,6 +146,7 @@ export function stopTaskMode(chat, reason = "manual-task-stop", at = new Date().
   if (!chat.taskActive) return chat;
   return {
     ...chat,
+    controlRevision: nonNegativeInteger(chat.controlRevision) + 1,
     taskActive: false,
     taskCompletedAt: at,
     taskCompletionReason: String(reason),
