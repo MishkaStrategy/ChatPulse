@@ -1,0 +1,74 @@
+name: HQ retry 0.7.0 watchdog runtime
+
+on:
+  push:
+    branches:
+      - release/0.7.0-github-actions-watchdog
+    paths:
+      - .github/workflows/hq-retry-070-watchdog-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.7.0-github-actions-watchdog
+          fetch-depth: 0
+      - name: Apply runtime and fail-closed successful-poll gate
+        run: |
+          set -euo pipefail
+          python3 scripts/hq_apply_070_watchdog_runtime.py
+          python3 - <<'PY'
+          from pathlib import Path
+          worker = Path('chrome-extension/background/service-worker-v2.js')
+          text = worker.read_text(encoding='utf-8')
+          replacements = [
+            (
+              '  const now = new Date().toISOString();\n  let touched = false;\n\n  for (const [repository, chatIds] of groups) {',
+              '  const now = new Date().toISOString();\n  let touched = false;\n  const successfulRepositories = new Set();\n\n  for (const [repository, chatIds] of groups) {'
+            ),
+            (
+              '      const activity = await fetchLatestGithubWorkflowRun(repository);\n      for (const chatId of chatIds) {',
+              '      const activity = await fetchLatestGithubWorkflowRun(repository);\n      successfulRepositories.add(repository);\n      for (const chatId of chatIds) {'
+            ),
+            (
+              '      return profile.githubWatchEnabled\n        && githubWatchdogDecision(chat, profile.githubIdleMinutes).decision === "restart";',
+              '      return profile.githubWatchEnabled\n        && successfulRepositories.has(profile.githubRepository)\n        && githubWatchdogDecision(chat, profile.githubIdleMinutes).decision === "restart";'
+            )
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'worker retry anchor mismatch: {old[:80]!r} count={text.count(old)}')
+              text = text.replace(old, new, 1)
+          worker.write_text(text, encoding='utf-8')
+
+          test_path = Path('tests/chrome-extension/github-watchdog-runtime.test.mjs')
+          test_text = test_path.read_text(encoding='utf-8')
+          old = '''  const catchIndex = block.indexOf("} catch (error)");\n  const restartIndex = block.indexOf("attemptGithubWatchdogRestart");\n  assert.ok(catchIndex >= 0);\n  assert.equal(restartIndex, -1, "fetch loop must persist observations before invoking restart attempts");'''
+          new = '''  const catchIndex = block.indexOf("} catch (error)");\n  const persistIndex = block.indexOf("await persistAndPublish(merged)");\n  const restartListIndex = block.indexOf("const restartIds");\n  assert.ok(catchIndex >= 0);\n  assert.ok(persistIndex >= 0 && restartListIndex > persistIndex, "observations must be durable before restart selection");\n  assert.ok(block.includes("successfulRepositories.has(profile.githubRepository)"), "failed API polls must never select restart candidates");'''
+          if test_text.count(old) != 1:
+              raise SystemExit('runtime test repair anchor mismatch')
+          test_path.write_text(test_text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Verify runtime plus all regression tests
+        run: |
+          set -euo pipefail
+          node --check chrome-extension/background/github-actions.js
+          node --check chrome-extension/background/service-worker-v2.js
+          npm test
+          git diff --check
+      - name: Commit runtime and clean helpers
+        run: |
+          set -euo pipefail
+          rm -f scripts/hq_apply_070_watchdog_runtime.py .github/workflows/hq-apply-070-watchdog-runtime.yml .github/workflows/hq-retry-070-watchdog-runtime.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: restart stalled project chats from GitHub Actions activity"
+          git push origin HEAD:release/0.7.0-github-actions-watchdog
