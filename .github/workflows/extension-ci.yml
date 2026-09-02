@@ -1,9 +1,9 @@
-name: ChatPulse 0.5.4 beta release gate
+name: ChatPulse 0.5.5 beta release gate
 
 on:
   push:
     branches:
-      - release/0.5.4-rebuild
+      - feature/telegram-notifications
       - main
     paths:
       - ".github/workflows/extension-ci.yml"
@@ -13,6 +13,8 @@ on:
       - "package.json"
       - "README.md"
       - "CHANGELOG.md"
+      - "PRIVACY.md"
+      - "SECURITY.md"
   pull_request:
     branches:
       - main
@@ -24,12 +26,14 @@ on:
       - "package.json"
       - "README.md"
       - "CHANGELOG.md"
+      - "PRIVACY.md"
+      - "SECURITY.md"
 
 permissions:
   contents: read
 
 concurrency:
-  group: chatpulse-0.5.4-${{ github.event.pull_request.number || github.ref }}
+  group: chatpulse-0.5.5-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -60,7 +64,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Syntax, unit, service-worker and static security audit
+      - name: Syntax, unit, Telegram and static security audit
         run: npm run audit:extension
 
   package:
@@ -92,11 +96,11 @@ jobs:
         run: |
           set -euo pipefail
           npm run package:beta
-          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256)"
-          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt.sha256)"
+          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.5-beta.zip.sha256)"
+          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.5-source-manifest.txt.sha256)"
           npm run package:beta
-          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256)"
-          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt.sha256)"
+          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.5-beta.zip.sha256)"
+          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.5.5-source-manifest.txt.sha256)"
           test "$first_zip" = "$second_zip"
           test "$first_manifest" = "$second_manifest"
           echo "artifact_sha256=$second_zip"
@@ -114,8 +118,8 @@ jobs:
           import hashlib
           from pathlib import Path
           for name in [
-              'ChatPulse-Chrome-v0.5.4-beta.zip',
-              'ChatPulse-Chrome-v0.5.4-source-manifest.txt',
+              'ChatPulse-Chrome-v0.5.5-beta.zip',
+              'ChatPulse-Chrome-v0.5.5-source-manifest.txt',
           ]:
               path = Path('dist') / name
               actual = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -125,14 +129,14 @@ jobs:
               print(f'{name} sha256={actual}')
           PY
 
-      - name: Upload rebuilt 0.5.4 beta provenance
+      - name: Upload ChatPulse 0.5.5 beta provenance
         uses: actions/upload-artifact@v4
         with:
-          name: ChatPulse-Chrome-v0.5.4-beta
+          name: ChatPulse-Chrome-v0.5.5-beta
           path: |
-            dist/ChatPulse-Chrome-v0.5.4-beta.zip
-            dist/ChatPulse-Chrome-v0.5.4-beta.zip.sha256
-            dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt
-            dist/ChatPulse-Chrome-v0.5.4-source-manifest.txt.sha256
+            dist/ChatPulse-Chrome-v0.5.5-beta.zip
+            dist/ChatPulse-Chrome-v0.5.5-beta.zip.sha256
+            dist/ChatPulse-Chrome-v0.5.5-source-manifest.txt
+            dist/ChatPulse-Chrome-v0.5.5-source-manifest.txt.sha256
           if-no-files-found: error
           retention-days: 30
