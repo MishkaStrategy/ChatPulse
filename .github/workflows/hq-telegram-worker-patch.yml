@@ -1,0 +1,75 @@
+name: HQ bounded Telegram worker integration
+
+on:
+  push:
+    branches: [feature/telegram-notifications]
+    paths:
+      - ".github/workflows/hq-telegram-worker-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/telegram-notifications
+          fetch-depth: 0
+      - name: Apply exact Telegram worker replacements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('chrome-extension/background/service-worker-v2.js')
+          text = path.read_text()
+
+          def replace(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one match, got {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          replace(
+              '''} from "../lib/model-v2.js";\n\nconst STORAGE_KEY''',
+              '''} from "../lib/model-v2.js";\nimport {\n  attachTelegramState,\n  notifyTelegramContinuation,\n  sendTelegramTest,\n  updateTelegramConfig\n} from "./telegram.js";\n\nconst STORAGE_KEY'''
+          )
+
+          replace(
+              '''chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {\n  handleMessage(message)\n    .then((result) => sendResponse({ ok: true, ...result }))\n    .catch((error) => sendResponse({''',
+              '''chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {\n  handleMessage(message)\n    .then(async (result) => {\n      const response = result?.state\n        ? { ...result, state: await attachTelegramState(result.state) }\n        : result;\n      sendResponse({ ok: true, ...response });\n    })\n    .catch((error) => sendResponse({'''
+          )
+
+          replace(
+              '''    case "UPDATE_SETTINGS":\n      return { state: await updateSettings(message.patch || {}) };\n\n    case "CLEAR_LOGS": {''',
+              '''    case "UPDATE_SETTINGS": {\n      const patch = message.patch || {};\n      await updateTelegramConfig(patch);\n      return { state: await updateSettings(patch) };\n    }\n\n    case "TEST_TELEGRAM":\n      await sendTelegramTest();\n      return { state: await loadState() };\n\n    case "CLEAR_LOGS": {'''
+          )
+
+          replace(
+              '''      observedState = appendLog(\n        observedState,\n        outcome === "confirmed" ? "info" : "warning",\n        outcome === "confirmed"\n          ? `Команда отправлена в «${chat.title}»`\n          : `Кнопка отправки нажата в «${chat.title}»; повтор для ответа заблокирован`\n      );\n    } catch (error) {''',
+              '''      observedState = appendLog(\n        observedState,\n        outcome === "confirmed" ? "info" : "warning",\n        outcome === "confirmed"\n          ? `Команда отправлена в «${chat.title}»`\n          : `Кнопка отправки нажата в «${chat.title}»; повтор для ответа заблокирован`\n      );\n      try {\n        const telegram = await notifyTelegramContinuation({ chatTitle: chat.title, outcome });\n        if (telegram.sent) {\n          observedState = appendLog(\n            observedState,\n            "info",\n            `Telegram: отправлено уведомление для «${chat.title}»`\n          );\n        }\n      } catch (notificationError) {\n        const message = notificationError instanceof Error\n          ? notificationError.message\n          : String(notificationError);\n        observedState = appendLog(\n          observedState,\n          "warning",\n          `Telegram: уведомление для «${chat.title}» не отправлено (${message})`\n        );\n      }\n    } catch (error) {'''
+          )
+
+          replace(
+              '''  try {\n    await chrome.runtime.sendMessage({ type: "STATE_UPDATED", state });\n  } catch {''',
+              '''  try {\n    await chrome.runtime.sendMessage({\n      type: "STATE_UPDATED",\n      state: await attachTelegramState(state)\n    });\n  } catch {'''
+          )
+
+          path.write_text(text)
+          PY
+          node --check chrome-extension/background/service-worker-v2.js
+          git diff --check
+      - name: Commit worker integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chrome-extension/background/service-worker-v2.js
+          git commit -m "feat: integrate Telegram without changing continuation semantics"
+          git push origin HEAD:feature/telegram-notifications
