@@ -1,3 +1,5 @@
+const TELEGRAM_ORIGIN = "https://api.telegram.org/*";
+
 const ui = {
   body: document.body,
   themeSelect: document.querySelector("#themeSelect"),
@@ -10,6 +12,11 @@ const ui = {
   commandField: document.querySelector("#commandField"),
   stopPhraseField: document.querySelector("#stopPhraseField"),
   intervalSelect: document.querySelector("#intervalSelect"),
+  telegramEnabled: document.querySelector("#telegramEnabled"),
+  telegramChatId: document.querySelector("#telegramChatId"),
+  telegramBotToken: document.querySelector("#telegramBotToken"),
+  telegramTestButton: document.querySelector("#telegramTestButton"),
+  telegramStatus: document.querySelector("#telegramStatus"),
   checkButton: document.querySelector("#checkButton"),
   saveButton: document.querySelector("#saveButton"),
   addCurrentButton: document.querySelector("#addCurrentButton"),
@@ -29,6 +36,7 @@ let messageTimer = null;
 let commandDirty = false;
 let stopPhraseDirty = false;
 let intervalDirty = false;
+let telegramDirty = false;
 
 const manifest = chrome.runtime.getManifest();
 ui.versionLabel.textContent = `ChatPulse ${manifest.version_name || manifest.version}`;
@@ -58,14 +66,12 @@ ui.stopPhraseField.addEventListener("input", () => {
 ui.intervalSelect.addEventListener("change", () => {
   intervalDirty = Number(ui.intervalSelect.value) !== Number(state?.intervalMinutes);
 });
-ui.saveButton.addEventListener("click", () => action("UPDATE_SETTINGS", {
-  patch: {
-    commandText: ui.commandField.value,
-    stopPhrase: ui.stopPhraseField.value,
-    intervalMinutes: Number(ui.intervalSelect.value),
-    theme: ui.themeSelect.value
-  }
-}));
+for (const control of [ui.telegramEnabled, ui.telegramChatId, ui.telegramBotToken]) {
+  control.addEventListener("input", () => { telegramDirty = true; });
+  control.addEventListener("change", () => { telegramDirty = true; });
+}
+ui.saveButton.addEventListener("click", () => { void saveSettings(); });
+ui.telegramTestButton.addEventListener("click", () => { void testTelegram(); });
 ui.themeSelect.addEventListener("change", () => {
   ui.body.dataset.theme = ui.themeSelect.value === "preview" ? "preview" : "macos";
   void action("UPDATE_SETTINGS", { patch: { theme: ui.themeSelect.value } }, false);
@@ -81,21 +87,75 @@ async function refresh() {
   }
 }
 
+async function saveSettings() {
+  const patch = {
+    commandText: ui.commandField.value,
+    stopPhrase: ui.stopPhraseField.value,
+    intervalMinutes: Number(ui.intervalSelect.value),
+    theme: ui.themeSelect.value
+  };
+
+  if (telegramDirty) {
+    if (ui.telegramEnabled.checked && !(await ensureTelegramPermission())) return;
+    patch.telegramEnabled = ui.telegramEnabled.checked;
+    patch.telegramChatId = ui.telegramChatId.value;
+    if (ui.telegramBotToken.value.trim()) {
+      patch.telegramBotToken = ui.telegramBotToken.value.trim();
+    }
+  }
+
+  await action("UPDATE_SETTINGS", { patch });
+}
+
+async function testTelegram() {
+  if (!(await ensureTelegramPermission())) return;
+  const patch = {
+    telegramEnabled: true,
+    telegramChatId: ui.telegramChatId.value
+  };
+  if (ui.telegramBotToken.value.trim()) {
+    patch.telegramBotToken = ui.telegramBotToken.value.trim();
+  }
+  const updated = await action("UPDATE_SETTINGS", { patch }, false);
+  if (!updated) return;
+  ui.telegramEnabled.checked = true;
+  await action("TEST_TELEGRAM");
+}
+
+async function ensureTelegramPermission() {
+  try {
+    const granted = await chrome.permissions.request({ origins: [TELEGRAM_ORIGIN] });
+    if (!granted) {
+      showMessage("Telegram-уведомления не включены: Chrome не выдал доступ к api.telegram.org.", "error");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    showMessage(errorMessage(error), "error");
+    return false;
+  }
+}
+
 async function action(type, payload = {}, showSuccess = true) {
-  if (busy) return;
+  if (busy) return false;
   setBusy(true);
   try {
     const response = await request(type, payload);
     if (response.state) state = response.state;
-    if (type === "UPDATE_SETTINGS" && Object.hasOwn(payload?.patch || {}, "commandText")) {
-      commandDirty = false;
-      stopPhraseDirty = false;
-      intervalDirty = false;
+    const patch = payload?.patch || {};
+    if (type === "UPDATE_SETTINGS" && Object.hasOwn(patch, "commandText")) commandDirty = false;
+    if (type === "UPDATE_SETTINGS" && Object.hasOwn(patch, "stopPhrase")) stopPhraseDirty = false;
+    if (type === "UPDATE_SETTINGS" && Object.hasOwn(patch, "intervalMinutes")) intervalDirty = false;
+    if (type === "UPDATE_SETTINGS" && Object.keys(patch).some((key) => key.startsWith("telegram"))) {
+      telegramDirty = false;
+      ui.telegramBotToken.value = "";
     }
     render(type === "GET_STATE");
     if (showSuccess) showMessage(successMessage(type), "info");
+    return true;
   } catch (error) {
     showMessage(errorMessage(error), "error");
+    return false;
   } finally {
     setBusy(false);
   }
@@ -137,6 +197,28 @@ function render(initial = false) {
   if (initial || !intervalDirty) {
     ui.intervalSelect.value = String(state.intervalMinutes);
   }
+
+  const telegram = state.telegram || {
+    enabled: false,
+    chatId: "",
+    tokenConfigured: false,
+    permissionGranted: false
+  };
+  if (initial || !telegramDirty) {
+    ui.telegramEnabled.checked = telegram.enabled === true;
+    ui.telegramChatId.value = telegram.chatId || "";
+    ui.telegramBotToken.value = "";
+  }
+  ui.telegramBotToken.placeholder = telegram.tokenConfigured
+    ? "Токен сохранён · оставьте пустым"
+    : "Токен от @BotFather";
+  ui.telegramStatus.textContent = telegram.enabled
+    ? telegram.permissionGranted
+      ? `Включено${telegram.tokenConfigured ? " · token сохранён" : ""}`
+      : "Включено, но доступ к Telegram отозван"
+    : telegram.tokenConfigured
+      ? "Выключено · token сохранён локально"
+      : "Telegram выключен.";
 
   renderChats();
   renderLogs();
@@ -219,6 +301,7 @@ function successMessage(type) {
     REMOVE_CHAT: "Чат удалён.",
     TOGGLE_CHAT: "Состояние чата изменено.",
     UPDATE_SETTINGS: "Настройки сохранены.",
+    TEST_TELEGRAM: "Тестовое уведомление отправлено в Telegram.",
     CLEAR_LOGS: "Журнал очищен.",
     OPEN_CHAT: "Чат открыт в Chrome."
   };
@@ -248,7 +331,7 @@ function formatDateTime(value) {
 
 function setBusy(value) {
   busy = value;
-  for (const control of document.querySelectorAll("button, select, textarea")) {
+  for (const control of document.querySelectorAll("button, select, textarea, input")) {
     control.disabled = value;
   }
 }
