@@ -8,6 +8,7 @@ const ui = {
   lastCheckMetric: document.querySelector("#lastCheckMetric"),
   nextCheckMetric: document.querySelector("#nextCheckMetric"),
   commandField: document.querySelector("#commandField"),
+  stopPhraseField: document.querySelector("#stopPhraseField"),
   intervalSelect: document.querySelector("#intervalSelect"),
   checkButton: document.querySelector("#checkButton"),
   saveButton: document.querySelector("#saveButton"),
@@ -26,6 +27,7 @@ let state = null;
 let busy = false;
 let messageTimer = null;
 let commandDirty = false;
+let stopPhraseDirty = false;
 let intervalDirty = false;
 
 const manifest = chrome.runtime.getManifest();
@@ -50,12 +52,16 @@ ui.clearLogsButton.addEventListener("click", () => action("CLEAR_LOGS"));
 ui.commandField.addEventListener("input", () => {
   commandDirty = ui.commandField.value !== (state?.commandText || "");
 });
+ui.stopPhraseField.addEventListener("input", () => {
+  stopPhraseDirty = ui.stopPhraseField.value !== (state?.stopPhrase || "");
+});
 ui.intervalSelect.addEventListener("change", () => {
   intervalDirty = Number(ui.intervalSelect.value) !== Number(state?.intervalMinutes);
 });
 ui.saveButton.addEventListener("click", () => action("UPDATE_SETTINGS", {
   patch: {
     commandText: ui.commandField.value,
+    stopPhrase: ui.stopPhraseField.value,
     intervalMinutes: Number(ui.intervalSelect.value),
     theme: ui.themeSelect.value
   }
@@ -83,6 +89,7 @@ async function action(type, payload = {}, showSuccess = true) {
     if (response.state) state = response.state;
     if (type === "UPDATE_SETTINGS" && Object.hasOwn(payload?.patch || {}, "commandText")) {
       commandDirty = false;
+      stopPhraseDirty = false;
       intervalDirty = false;
     }
     render(type === "GET_STATE");
@@ -122,6 +129,9 @@ function render(initial = false) {
 
   if (initial || !commandDirty) {
     ui.commandField.value = state.commandText;
+  }
+  if (initial || !stopPhraseDirty) {
+    ui.stopPhraseField.value = state.stopPhrase || "";
   }
   ensureIntervalOption(state.intervalMinutes);
   if (initial || !intervalDirty) {
@@ -175,6 +185,9 @@ function renderLogs() {
 }
 
 function runtimeText(chat) {
+  if (!chat.enabled && chat.lastStopReason === "stop-phrase") {
+    return `Остановлен стоп-фразой${chat.lastStoppedAt ? ` · ${formatDateTime(chat.lastStoppedAt)}` : ""}`;
+  }
   if (!chat.enabled) return "Наблюдение отключено";
   if (chat.lastError) return `Ошибка: ${chat.lastError}`;
   if (chat.lastRecoveryAt && (!chat.lastCommandAt || chat.lastRecoveryAt > chat.lastCommandAt)) {
