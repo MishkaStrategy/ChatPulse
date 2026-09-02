@@ -7,6 +7,8 @@ const ui = {
   statusValue: document.querySelector("#statusValue"),
   statusDetail: document.querySelector("#statusDetail"),
   chatMetric: document.querySelector("#chatMetric"),
+  taskMetric: document.querySelector("#taskMetric"),
+  taskMetricDetail: document.querySelector("#taskMetricDetail"),
   lastCheckMetric: document.querySelector("#lastCheckMetric"),
   nextCheckMetric: document.querySelector("#nextCheckMetric"),
   commandField: document.querySelector("#commandField"),
@@ -17,6 +19,9 @@ const ui = {
   telegramBotToken: document.querySelector("#telegramBotToken"),
   telegramTestButton: document.querySelector("#telegramTestButton"),
   telegramStatus: document.querySelector("#telegramStatus"),
+  exportButton: document.querySelector("#exportButton"),
+  importButton: document.querySelector("#importButton"),
+  importFile: document.querySelector("#importFile"),
   checkButton: document.querySelector("#checkButton"),
   saveButton: document.querySelector("#saveButton"),
   addCurrentButton: document.querySelector("#addCurrentButton"),
@@ -37,6 +42,8 @@ let commandDirty = false;
 let stopPhraseDirty = false;
 let intervalDirty = false;
 let telegramDirty = false;
+const profileDrafts = new Map();
+const openProfiles = new Set();
 
 const manifest = chrome.runtime.getManifest();
 ui.versionLabel.textContent = `ChatPulse ${manifest.version_name || manifest.version}`;
@@ -45,6 +52,7 @@ void refresh();
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "STATE_UPDATED" && message.state) {
+    rememberOpenProfiles();
     state = message.state;
     render();
   }
@@ -72,6 +80,9 @@ for (const control of [ui.telegramEnabled, ui.telegramChatId, ui.telegramBotToke
 }
 ui.saveButton.addEventListener("click", () => { void saveSettings(); });
 ui.telegramTestButton.addEventListener("click", () => { void testTelegram(); });
+ui.exportButton.addEventListener("click", () => { void exportConfig(); });
+ui.importButton.addEventListener("click", () => ui.importFile.click());
+ui.importFile.addEventListener("change", () => { void importConfigFile(); });
 ui.themeSelect.addEventListener("change", () => {
   ui.body.dataset.theme = ui.themeSelect.value === "preview" ? "preview" : "macos";
   void action("UPDATE_SETTINGS", { patch: { theme: ui.themeSelect.value } }, false);
@@ -136,6 +147,48 @@ async function ensureTelegramPermission() {
   }
 }
 
+async function exportConfig() {
+  if (busy) return;
+  setBusy(true);
+  try {
+    const response = await request("EXPORT_CONFIG");
+    const payload = JSON.stringify(response.config, null, 2);
+    const blob = new Blob([`${payload}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `ChatPulse-config-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    showMessage("Конфигурация экспортирована без Telegram token и runtime-данных.", "info");
+  } catch (error) {
+    showMessage(errorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function importConfigFile() {
+  const [file] = ui.importFile.files || [];
+  ui.importFile.value = "";
+  if (!file) return;
+  if (file.size > 1_000_000) {
+    showMessage("Файл конфигурации слишком большой.", "error");
+    return;
+  }
+  try {
+    const config = JSON.parse(await file.text());
+    if (!confirm("Импорт заменит список отслеживаемых чатов и общие настройки. Telegram credentials останутся локальными и не изменятся. Продолжить?")) {
+      return;
+    }
+    profileDrafts.clear();
+    openProfiles.clear();
+    await action("IMPORT_CONFIG", { config });
+  } catch (error) {
+    showMessage(`Не удалось импортировать конфигурацию: ${errorMessage(error)}`, "error");
+  }
+}
+
 async function action(type, payload = {}, showSuccess = true) {
   if (busy) return false;
   setBusy(true);
@@ -150,7 +203,7 @@ async function action(type, payload = {}, showSuccess = true) {
       telegramDirty = false;
       ui.telegramBotToken.value = "";
     }
-    render(type === "GET_STATE");
+    render(type === "GET_STATE" || type === "IMPORT_CONFIG");
     if (showSuccess) showMessage(successMessage(type), "info");
     return true;
   } catch (error) {
@@ -175,28 +228,28 @@ function render(initial = false) {
   ui.toggleButton.textContent = state.enabled ? "Остановить" : "Запустить";
   ui.toggleButton.dataset.running = String(state.enabled);
 
+  const activeChats = state.chats.filter((chat) => chat.enabled).length;
+  const activeTasks = state.chats.filter((chat) => chat.taskActive).length;
+  const completedTasks = state.chats.filter((chat) => chat.taskCompletedAt).length;
+  const errors = state.chats.filter((chat) => chat.lastError).length;
   ui.statusValue.textContent = state.checkInProgress
     ? "Проверка…"
     : state.enabled
       ? "Работает"
       : "Остановлен";
   ui.statusDetail.textContent = state.enabled
-    ? `${state.chats.filter((chat) => chat.enabled).length} активных чатов · профиль Chrome`
+    ? `${activeChats} активных · ${activeTasks} задач · ${errors} ошибок`
     : "Фоновый таймер не активен";
-  ui.chatMetric.textContent = String(state.chats.filter((chat) => chat.enabled).length);
+  ui.chatMetric.textContent = String(activeChats);
+  ui.taskMetric.textContent = String(activeTasks);
+  ui.taskMetricDetail.textContent = `${completedTasks} завершено в текущем локальном state`;
   ui.lastCheckMetric.textContent = state.lastCheckAt ? formatDateTime(state.lastCheckAt) : "—";
   ui.nextCheckMetric.textContent = `Следующая: ${state.nextCheckAt ? formatDateTime(state.nextCheckAt) : "—"}`;
 
-  if (initial || !commandDirty) {
-    ui.commandField.value = state.commandText;
-  }
-  if (initial || !stopPhraseDirty) {
-    ui.stopPhraseField.value = state.stopPhrase || "";
-  }
+  if (initial || !commandDirty) ui.commandField.value = state.commandText;
+  if (initial || !stopPhraseDirty) ui.stopPhraseField.value = state.stopPhrase || "";
   ensureIntervalOption(state.intervalMinutes);
-  if (initial || !intervalDirty) {
-    ui.intervalSelect.value = String(state.intervalMinutes);
-  }
+  if (initial || !intervalDirty) ui.intervalSelect.value = String(state.intervalMinutes);
 
   const telegram = state.telegram || {
     enabled: false,
@@ -225,30 +278,252 @@ function render(initial = false) {
 }
 
 function renderChats() {
+  rememberOpenProfiles();
   ui.chatTable.replaceChildren();
 
   for (const chat of state.chats) {
     const fragment = ui.chatRowTemplate.content.cloneNode(true);
     const row = fragment.querySelector(".chat-row");
+    const details = fragment.querySelector(".profile-details");
     const openButton = fragment.querySelector(".open-chat");
     const toggleButton = fragment.querySelector(".toggle-chat");
+    const taskButton = fragment.querySelector(".task-chat");
     const removeButton = fragment.querySelector(".remove-chat");
+    const saveProfileButton = fragment.querySelector(".save-profile");
+    const effective = effectiveProfile(chat);
+    const draft = profileDrafts.get(chat.id) || profileToDraft(chat.profile);
 
     row.dataset.enabled = String(chat.enabled);
+    row.dataset.task = String(chat.taskActive === true);
+    row.dataset.error = String(Boolean(chat.lastError));
+    row.dataset.chatId = chat.id;
+    details.dataset.chatId = chat.id;
+    details.open = openProfiles.has(chat.id);
+    details.addEventListener("toggle", () => {
+      if (details.open) openProfiles.add(chat.id);
+      else openProfiles.delete(chat.id);
+    });
+
     fragment.querySelector(".chat-title").textContent = chat.title;
     fragment.querySelector(".chat-url").textContent = chat.url;
+    fragment.querySelector(".chat-status-label").textContent = chatStatusLabel(chat);
     fragment.querySelector(".chat-runtime-text").textContent = runtimeText(chat);
+    renderProgress(fragment, chat, effective);
+
     toggleButton.textContent = chat.enabled ? "Отключить" : "Включить";
+    taskButton.textContent = chat.taskActive ? "Остановить задачу" : "Запустить до завершения";
+    taskButton.dataset.running = String(chat.taskActive === true);
+
+    const command = fragment.querySelector(".profile-command");
+    const interval = fragment.querySelector(".profile-interval");
+    const stopMode = fragment.querySelector(".profile-stop-mode");
+    const stop = fragment.querySelector(".profile-stop");
+    const maxContinuations = fragment.querySelector(".profile-max-continuations");
+    const maxRuntime = fragment.querySelector(".profile-max-runtime");
+    const telegramNotify = fragment.querySelector(".profile-telegram-notify");
+    const effectiveText = fragment.querySelector(".profile-effective");
+
+    command.value = draft.commandText || "";
+    command.placeholder = `Общая: ${truncate(state.commandText, 80)}`;
+    ensureProfileIntervalOption(interval, draft.intervalMinutes);
+    interval.value = draft.intervalMinutes === null ? "" : String(draft.intervalMinutes);
+    stopMode.value = draft.stopMode;
+    stop.value = draft.stopPhrase;
+    stop.disabled = draft.stopMode !== "custom";
+    maxContinuations.value = String(draft.maxContinuations);
+    maxRuntime.value = String(draft.maxRuntimeMinutes);
+    telegramNotify.checked = draft.telegramNotify;
+    effectiveText.textContent = profileSummary(effective);
+
+    const capture = () => {
+      const nextDraft = readProfileDraft(fragment);
+      profileDrafts.set(chat.id, nextDraft);
+      stop.disabled = nextDraft.stopMode !== "custom";
+    };
+    for (const control of [command, interval, stopMode, stop, maxContinuations, maxRuntime, telegramNotify]) {
+      control.addEventListener("input", capture);
+      control.addEventListener("change", capture);
+    }
 
     openButton.addEventListener("click", () => action("OPEN_CHAT", { chatId: chat.id }));
     toggleButton.addEventListener("click", () => action("TOGGLE_CHAT", { chatId: chat.id }));
+    saveProfileButton.addEventListener("click", () => { void saveChatProfile(chat.id, fragment); });
+    taskButton.addEventListener("click", () => { void toggleTask(chat, fragment); });
     removeButton.addEventListener("click", async () => {
       if (!confirm(`Удалить чат «${chat.title}» из ChatPulse?`)) return;
+      profileDrafts.delete(chat.id);
+      openProfiles.delete(chat.id);
       await action("REMOVE_CHAT", { chatId: chat.id });
     });
 
     ui.chatTable.append(fragment);
   }
+}
+
+async function saveChatProfile(chatId, fragment, showSuccess = true) {
+  const draft = readProfileDraft(fragment);
+  const profile = draftToProfile(draft);
+  const saved = await action("UPDATE_CHAT_PROFILE", { chatId, profile }, showSuccess);
+  if (saved) profileDrafts.delete(chatId);
+  return saved;
+}
+
+async function toggleTask(chat, fragment) {
+  if (chat.taskActive) {
+    await action("STOP_TASK", { chatId: chat.id });
+    return;
+  }
+  if (profileDrafts.has(chat.id)) {
+    const saved = await saveChatProfile(chat.id, fragment, false);
+    if (!saved) return;
+  }
+  await action("START_TASK", { chatId: chat.id });
+}
+
+function readProfileDraft(fragment) {
+  const intervalRaw = fragment.querySelector(".profile-interval").value;
+  return {
+    commandText: fragment.querySelector(".profile-command").value.trim(),
+    intervalMinutes: intervalRaw === "" ? null : Number(intervalRaw),
+    stopMode: fragment.querySelector(".profile-stop-mode").value,
+    stopPhrase: fragment.querySelector(".profile-stop").value,
+    maxContinuations: nonNegativeInteger(fragment.querySelector(".profile-max-continuations").value),
+    maxRuntimeMinutes: nonNegativeInteger(fragment.querySelector(".profile-max-runtime").value),
+    telegramNotify: fragment.querySelector(".profile-telegram-notify").checked
+  };
+}
+
+function profileToDraft(profile = {}) {
+  const stopValue = Object.hasOwn(profile, "stopPhrase") ? profile.stopPhrase : null;
+  const stopMode = stopValue === null || stopValue === undefined
+    ? "inherit"
+    : stopValue === ""
+      ? "off"
+      : "custom";
+  return {
+    commandText: profile.commandText || "",
+    intervalMinutes: profile.intervalMinutes ?? null,
+    stopMode,
+    stopPhrase: stopMode === "custom" ? stopValue : "",
+    maxContinuations: nonNegativeInteger(profile.maxContinuations),
+    maxRuntimeMinutes: nonNegativeInteger(profile.maxRuntimeMinutes),
+    telegramNotify: profile.telegramNotify !== false
+  };
+}
+
+function draftToProfile(draft) {
+  return {
+    commandText: draft.commandText || null,
+    intervalMinutes: draft.intervalMinutes,
+    stopPhrase: draft.stopMode === "inherit"
+      ? null
+      : draft.stopMode === "off"
+        ? ""
+        : draft.stopPhrase,
+    maxContinuations: draft.maxContinuations,
+    maxRuntimeMinutes: draft.maxRuntimeMinutes,
+    telegramNotify: draft.telegramNotify
+  };
+}
+
+function effectiveProfile(chat) {
+  const profile = chat.profile || {};
+  const stopPhrase = profile.stopPhrase === null || profile.stopPhrase === undefined
+    ? state.stopPhrase || ""
+    : profile.stopPhrase;
+  return {
+    commandText: profile.commandText || state.commandText,
+    intervalMinutes: profile.intervalMinutes ?? state.intervalMinutes,
+    stopPhrase,
+    maxContinuations: nonNegativeInteger(profile.maxContinuations),
+    maxRuntimeMinutes: nonNegativeInteger(profile.maxRuntimeMinutes),
+    telegramNotify: profile.telegramNotify !== false
+  };
+}
+
+function profileSummary(profile) {
+  const pieces = [`${formatInterval(profile.intervalMinutes)} интервал`];
+  if (profile.maxContinuations > 0) pieces.push(`≤ ${profile.maxContinuations} продолжений`);
+  if (profile.maxRuntimeMinutes > 0) pieces.push(`≤ ${formatDuration(profile.maxRuntimeMinutes)}`);
+  if (profile.stopPhrase) pieces.push("stop guard");
+  if (!profile.telegramNotify) pieces.push("Telegram off");
+  return pieces.join(" · ");
+}
+
+function renderProgress(fragment, chat, profile) {
+  const text = fragment.querySelector(".chat-progress-text");
+  const bar = fragment.querySelector(".chat-progress-bar");
+  const pieces = [];
+  pieces.push(`${chat.continuationCount || 0}${profile.maxContinuations > 0 ? `/${profile.maxContinuations}` : ""} продолжений`);
+
+  const elapsedMinutes = chat.runStartedAt
+    ? Math.max(0, Math.floor((Date.now() - Date.parse(chat.runStartedAt)) / 60_000))
+    : 0;
+  if (profile.maxRuntimeMinutes > 0) {
+    pieces.push(`${formatDuration(elapsedMinutes)} / ${formatDuration(profile.maxRuntimeMinutes)}`);
+  }
+  if (chat.taskCompletedAt) pieces.push(`завершено: ${completionLabel(chat.taskCompletionReason)}`);
+  text.textContent = pieces.join(" · ");
+
+  if (profile.maxContinuations > 0) {
+    bar.hidden = false;
+    bar.max = profile.maxContinuations;
+    bar.value = Math.min(chat.continuationCount || 0, profile.maxContinuations);
+  } else if (profile.maxRuntimeMinutes > 0) {
+    bar.hidden = false;
+    bar.max = profile.maxRuntimeMinutes;
+    bar.value = Math.min(elapsedMinutes, profile.maxRuntimeMinutes);
+  } else {
+    bar.hidden = true;
+  }
+}
+
+function chatStatusLabel(chat) {
+  if (chat.taskActive) return "Задача выполняется";
+  if (!chat.enabled) return completionLabel(chat.lastStopReason) || "Отключён";
+  if (chat.lastError) return "Ошибка";
+  return {
+    generating: "ChatGPT генерирует",
+    "baseline-recorded": "Baseline записан",
+    "response-changed": "Новый ответ",
+    "waiting-for-assistant": "Ждёт ответа",
+    "already-continued": "Ответ уже продолжен",
+    "send-continuation": "Готов к продолжению",
+    "page-not-ready": "Страница загружается",
+    "not-authenticated": "Нет входа",
+    "page-error": "Ошибка страницы",
+    "no-messages": "Нет сообщений",
+    enabled: "Включён",
+    "task-started": "Задача запущена"
+  }[chat.lastDecision] || "Наблюдение включено";
+}
+
+function runtimeText(chat) {
+  if (!chat.enabled && chat.lastStopReason) {
+    return `${completionLabel(chat.lastStopReason)}${chat.lastStoppedAt ? ` · ${formatDateTime(chat.lastStoppedAt)}` : ""}`;
+  }
+  if (!chat.enabled) return "Наблюдение отключено";
+  if (chat.lastError) return `Ошибка: ${chat.lastError}`;
+  if (chat.nextEligibleAt) return `Следующая проверка ${formatDateTime(chat.nextEligibleAt)}`;
+  if (chat.lastRecoveryAt && (!chat.lastCommandAt || chat.lastRecoveryAt > chat.lastCommandAt)) {
+    return `Вкладка восстановлена ${formatDateTime(chat.lastRecoveryAt)}`;
+  }
+  if (chat.lastCommandAt) {
+    const outcome = chat.lastDispatchOutcome === "confirmed" ? "подтверждено" : "клик выполнен";
+    return `Отправлено ${formatDateTime(chat.lastCommandAt)} · ${outcome}`;
+  }
+  if (chat.lastObservedAt) return `Проверен ${formatDateTime(chat.lastObservedAt)}`;
+  return "Ожидает первой безопасной проверки";
+}
+
+function completionLabel(reason) {
+  return {
+    "stop-phrase": "Остановлен стоп-фразой",
+    "continuation-limit": "Лимит продолжений достигнут",
+    "runtime-limit": "Лимит времени достигнут",
+    "manual-task-stop": "Задача остановлена вручную",
+    manual: "Наблюдение отключено"
+  }[reason] || "";
 }
 
 function renderLogs() {
@@ -266,21 +541,11 @@ function renderLogs() {
   }
 }
 
-function runtimeText(chat) {
-  if (!chat.enabled && chat.lastStopReason === "stop-phrase") {
-    return `Остановлен стоп-фразой${chat.lastStoppedAt ? ` · ${formatDateTime(chat.lastStoppedAt)}` : ""}`;
+function rememberOpenProfiles() {
+  for (const details of ui.chatTable.querySelectorAll(".profile-details[data-chat-id]")) {
+    if (details.open) openProfiles.add(details.dataset.chatId);
+    else openProfiles.delete(details.dataset.chatId);
   }
-  if (!chat.enabled) return "Наблюдение отключено";
-  if (chat.lastError) return `Ошибка: ${chat.lastError}`;
-  if (chat.lastRecoveryAt && (!chat.lastCommandAt || chat.lastRecoveryAt > chat.lastCommandAt)) {
-    return `Вкладка восстановлена ${formatDateTime(chat.lastRecoveryAt)}`;
-  }
-  if (chat.lastCommandAt) {
-    const outcome = chat.lastDispatchOutcome === "confirmed" ? "подтверждено" : "клик выполнен";
-    return `Отправлено ${formatDateTime(chat.lastCommandAt)} · ${outcome}`;
-  }
-  if (chat.lastObservedAt) return `Проверен ${formatDateTime(chat.lastObservedAt)}`;
-  return "Ожидает первой безопасной проверки";
 }
 
 function ensureIntervalOption(value) {
@@ -292,6 +557,16 @@ function ensureIntervalOption(value) {
   ui.intervalSelect.append(option);
 }
 
+function ensureProfileIntervalOption(select, value) {
+  if (value === null || value === undefined) return;
+  const raw = String(value);
+  if ([...select.options].some((option) => option.value === raw)) return;
+  const option = document.createElement("option");
+  option.value = raw;
+  option.textContent = `${value} мин`;
+  select.append(option);
+}
+
 function successMessage(type) {
   const messages = {
     START_MONITORING: "Наблюдение запущено. Первая проверка новой сессии будет пассивной.",
@@ -300,8 +575,12 @@ function successMessage(type) {
     ADD_CURRENT_CHAT: "Последний использованный чат ChatGPT добавлен или обновлён.",
     REMOVE_CHAT: "Чат удалён.",
     TOGGLE_CHAT: "Состояние чата изменено.",
-    UPDATE_SETTINGS: "Настройки сохранены.",
+    UPDATE_CHAT_PROFILE: "Профиль чата сохранён.",
+    START_TASK: "Задача запущена до условия завершения.",
+    STOP_TASK: "Задача остановлена.",
+    UPDATE_SETTINGS: "Общие настройки сохранены.",
     TEST_TELEGRAM: "Тестовое уведомление отправлено в Telegram.",
+    IMPORT_CONFIG: "Конфигурация импортирована. Мониторинг оставлен остановленным для безопасного baseline.",
     CLEAR_LOGS: "Журнал очищен.",
     OPEN_CHAT: "Чат открыт в Chrome."
   };
@@ -327,6 +606,30 @@ function formatDateTime(value) {
     minute: "2-digit",
     second: "2-digit"
   }).format(date);
+}
+
+function formatDuration(minutes) {
+  const total = Math.max(0, Number(minutes) || 0);
+  if (total < 60) return `${Math.round(total)} мин`;
+  const hours = Math.floor(total / 60);
+  const rest = Math.round(total % 60);
+  return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+}
+
+function formatInterval(minutes) {
+  const value = Number(minutes);
+  if (value === 0.5) return "30 сек";
+  return formatDuration(value);
+}
+
+function nonNegativeInteger(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function truncate(value, length) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > length ? `${text.slice(0, length - 1)}…` : text;
 }
 
 function setBusy(value) {
