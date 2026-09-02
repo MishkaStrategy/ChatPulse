@@ -112,14 +112,16 @@ test("portable import rejects duplicate canonical ChatGPT conversations", () => 
   );
 });
 
-test("stopping task mode keeps chat eligibility but closes task runtime", () => {
+test("stopping task mode keeps chat eligibility but closes task runtime and invalidates stale work", () => {
   const started = startChatRun(createChat({ title: "Task", url: "https://chatgpt.com/c/task" }), {
     task: true,
     at: "2026-09-02T06:00:00.000Z"
   });
+  const revisionBeforeStop = started.controlRevision;
   const stopped = stopTaskMode(started, "global-stop", "2026-09-02T06:10:00.000Z");
   assert.equal(stopped.enabled, true);
   assert.equal(stopped.taskActive, false);
+  assert.equal(stopped.controlRevision, revisionBeforeStop + 1);
   assert.equal(stopped.taskCompletedAt, "2026-09-02T06:10:00.000Z");
   assert.equal(stopped.taskCompletionReason, "global-stop");
 });
