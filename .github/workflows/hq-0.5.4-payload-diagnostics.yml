@@ -1,6 +1,10 @@
 name: HQ one-shot ChatPulse 0.5.4 payload diagnostics
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/hq-0.5.4-payload-diagnostics.yml"
   workflow_run:
     workflows: ["Dependency runner policy"]
     types: [completed]
@@ -10,14 +14,15 @@ permissions:
   issues: read
 
 concurrency:
-  group: hq-chatpulse-0.5.4-payload-diagnostics
+  group: hq-chatpulse-0.5.4-payload-diagnostics-v2
   cancel-in-progress: false
 
 jobs:
   diagnose-payload:
     if: >-
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.repository.full_name == github.repository
+      github.event_name == 'push' ||
+      (github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.repository.full_name == github.repository)
     name: Pinned payload provenance diagnostics
     runs-on: [self-hosted, fast]
     timeout-minutes: 10
@@ -25,182 +30,183 @@ jobs:
       EXPECTED_PAYLOAD_SHA: f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5
 
     steps:
-      - name: Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Diagnose Issue 14 reconstruction without executing payload
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const crypto = require('node:crypto');
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const { execFileSync } = require('node:child_process');
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import io
+          import itertools
+          import json
+          import os
+          from pathlib import PurePosixPath
+          import tarfile
+          import urllib.request
 
-          const repository = process.env.GITHUB_REPOSITORY;
-          const token = process.env.GH_TOKEN;
-          const expected = process.env.EXPECTED_PAYLOAD_SHA;
-          const archivePath = '/tmp/chatpulse-0.5.4-observed.tar.gz';
-          const allowedRoots = new Set([
-            '.github', 'CHANGELOG.md', 'README.md', 'chrome-extension',
-            'package.json', 'scripts', 'tests',
-          ]);
-          const headers = {
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${token}`,
-            'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'chatpulse-hq-payload-diagnostics',
-          };
-
-          function sha256(buffer) {
-            return crypto.createHash('sha256').update(buffer).digest('hex');
+          repository = os.environ['GITHUB_REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          expected = os.environ['EXPECTED_PAYLOAD_SHA']
+          allowed_roots = {
+              '.github', 'CHANGELOG.md', 'README.md', 'chrome-extension',
+              'package.json', 'scripts', 'tests',
           }
 
-          function normalizedBase64(chunks) {
-            return chunks.map((chunk) => chunk.body || '').join('\n').replace(/\s+/g, '');
-          }
+          def sha256(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
 
-          function decodedHash(chunks) {
-            const encoded = normalizedBase64(chunks);
-            if (!encoded || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 !== 0) {
-              return null;
-            }
-            return sha256(Buffer.from(encoded, 'base64'));
-          }
+          def api(api_path):
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repository}{api_path}',
+                  headers={
+                      'Accept': 'application/vnd.github+json',
+                      'Authorization': f'Bearer {token}',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                      'User-Agent': 'chatpulse-hq-payload-diagnostics',
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
 
-          async function api(apiPath) {
-            const response = await fetch(`https://api.github.com/repos/${repository}${apiPath}`, { headers });
-            if (!response.ok) throw new Error(`GitHub API ${response.status}: ${apiPath}`);
-            return response.json();
-          }
+          def normalized_base64(chunks):
+              return ''.join(''.join((chunk.get('body') or '').split()) for chunk in chunks)
 
-          function* permutations(items, prefix = []) {
-            if (items.length === 0) {
-              yield prefix;
-              return;
-            }
-            for (let i = 0; i < items.length; i += 1) {
-              const rest = items.slice(0, i).concat(items.slice(i + 1));
-              yield* permutations(rest, prefix.concat(items[i]));
-            }
-          }
+          def decoded_bytes(chunks):
+              encoded = normalized_base64(chunks)
+              if not encoded:
+                  return None
+              try:
+                  return base64.b64decode(encoded, validate=True)
+              except Exception:
+                  return None
 
-          async function main() {
-            const issue = await api('/issues/14');
-            const comments = [];
-            for (let page = 1; ; page += 1) {
-              const batch = await api(`/issues/14/comments?per_page=100&page=${page}`);
-              comments.push(...batch);
-              if (batch.length < 100) break;
-            }
-            comments.sort((a, b) => a.id - b.id);
+          def decoded_hash(chunks):
+              decoded = decoded_bytes(chunks)
+              return sha256(decoded) if decoded is not None else None
 
-            const chunks = [
-              {
-                key: 'issue-body',
-                id: issue.id,
-                created_at: issue.created_at,
-                updated_at: issue.updated_at,
-                body: issue.body || '',
+          issue = api('/issues/14')
+          comments = []
+          page = 1
+          while True:
+              batch = api(f'/issues/14/comments?per_page=100&page={page}')
+              comments.extend(batch)
+              if len(batch) < 100:
+                  break
+              page += 1
+          comments.sort(key=lambda item: item['id'])
+
+          chunks = [{
+              'key': 'issue-body',
+              'id': issue['id'],
+              'created_at': issue['created_at'],
+              'updated_at': issue['updated_at'],
+              'body': issue.get('body') or '',
+          }]
+          chunks.extend({
+              'key': f"comment-{comment['id']}",
+              'id': comment['id'],
+              'created_at': comment['created_at'],
+              'updated_at': comment['updated_at'],
+              'body': comment.get('body') or '',
+          } for comment in comments)
+
+          print(json.dumps({
+              'issue': {
+                  'number': issue['number'],
+                  'created_at': issue['created_at'],
+                  'updated_at': issue['updated_at'],
+                  'comments': len(comments),
               },
-              ...comments.map((comment) => ({
-                key: `comment-${comment.id}`,
-                id: comment.id,
-                created_at: comment.created_at,
-                updated_at: comment.updated_at,
-                body: comment.body || '',
-              })),
-            ];
+              'chunks': [{
+                  'key': chunk['key'],
+                  'created_at': chunk['created_at'],
+                  'updated_at': chunk['updated_at'],
+                  'body_length': len(chunk['body']),
+                  'body_sha256': sha256(chunk['body'].encode()),
+              } for chunk in chunks],
+          }, indent=2))
 
-            console.log(JSON.stringify({
-              issue: {
-                number: issue.number,
-                created_at: issue.created_at,
-                updated_at: issue.updated_at,
-                comments: comments.length,
-              },
-              chunks: chunks.map((chunk) => ({
-                key: chunk.key,
-                created_at: chunk.created_at,
-                updated_at: chunk.updated_at,
-                body_length: chunk.body.length,
-                body_sha256: sha256(Buffer.from(chunk.body, 'utf8')),
-              })),
-            }, null, 2));
+          observed = decoded_bytes(chunks)
+          if observed is None:
+              raise SystemExit('Current Issue #14 chunk stream is not valid base64')
+          observed_hash = sha256(observed)
+          print(f'observed_archive_sha256={observed_hash}')
+          print(f'expected_archive_sha256={expected}')
+          print(f'observed_size_bytes={len(observed)}')
+          print(f'gzip_magic={observed[:3].hex()}')
 
-            const observedHash = decodedHash(chunks);
-            console.log(`observed_archive_sha256=${observedHash}`);
-            console.log(`expected_archive_sha256=${expected}`);
+          issue_chunk = chunks[0]
+          comment_chunks = chunks[1:]
 
-            const subsetMatches = [];
-            const issueChunk = chunks[0];
-            const commentChunks = chunks.slice(1);
-            for (let mask = 0; mask < (1 << commentChunks.length); mask += 1) {
-              const candidate = [issueChunk];
-              for (let i = 0; i < commentChunks.length; i += 1) {
-                if ((mask & (1 << i)) !== 0) candidate.push(commentChunks[i]);
-              }
-              if (decodedHash(candidate) === expected) {
-                subsetMatches.push(candidate.map((chunk) => chunk.key));
-              }
-            }
-            console.log(`ordered_subset_matches=${JSON.stringify(subsetMatches)}`);
+          ordered_subset_matches = []
+          for mask in range(1 << len(comment_chunks)):
+              candidate = [issue_chunk] + [
+                  chunk for index, chunk in enumerate(comment_chunks)
+                  if mask & (1 << index)
+              ]
+              if decoded_hash(candidate) == expected:
+                  ordered_subset_matches.append([chunk['key'] for chunk in candidate])
+          print('ordered_subset_matches=' + json.dumps(ordered_subset_matches))
 
-            const permutationMatches = [];
-            for (const permutation of permutations(commentChunks)) {
-              if (decodedHash([issueChunk, ...permutation]) === expected) {
-                permutationMatches.push(permutation.map((chunk) => chunk.key));
-              }
-            }
-            console.log(`full_comment_permutation_matches=${JSON.stringify(permutationMatches)}`);
+          permutation_matches = []
+          for permutation in itertools.permutations(comment_chunks):
+              candidate = [issue_chunk, *permutation]
+              if decoded_hash(candidate) == expected:
+                  permutation_matches.append([chunk['key'] for chunk in permutation])
+          print('full_comment_permutation_matches=' + json.dumps(permutation_matches))
 
-            const encoded = normalizedBase64(chunks);
-            const archive = Buffer.from(encoded, 'base64');
-            fs.writeFileSync(archivePath, archive);
-            const magic = archive.subarray(0, 3).toString('hex');
-            console.log(`observed_size_bytes=${archive.length}`);
-            console.log(`gzip_magic=${magic}`);
+          unsafe_paths = []
+          roots = set()
+          regular_count = 0
+          manifest = []
+          with tarfile.open(fileobj=io.BytesIO(observed), mode='r:gz') as bundle:
+              members = bundle.getmembers()
+              for member in members:
+                  path = PurePosixPath(member.name)
+                  parts = [part for part in path.parts if part not in ('', '.')]
+                  if parts:
+                      roots.add(parts[0])
+                  if path.is_absolute() or not parts or '..' in parts:
+                      unsafe_paths.append(member.name)
+                  if not parts or parts[0] not in allowed_roots:
+                      unsafe_paths.append(member.name)
+                  if member.isfile():
+                      regular_count += 1
+                      source = bundle.extractfile(member)
+                      data = source.read() if source else b''
+                      manifest.append({
+                          'name': member.name,
+                          'size': member.size,
+                          'sha256': sha256(data),
+                      })
+                  else:
+                      manifest.append({
+                          'name': member.name,
+                          'size': member.size,
+                          'sha256': None,
+                      })
 
-            const names = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8' })
-              .split('\n').filter(Boolean);
-            const verbose = execFileSync('tar', ['-tvzf', archivePath], { encoding: 'utf8' })
-              .split('\n').filter(Boolean);
-            const diagnostics = {
-              member_count: names.length,
-              regular_file_count: verbose.filter((line) => line.startsWith('-')).length,
-              allowed_roots_only: true,
-              unsafe_paths: [],
-              roots: [...new Set(names.map((name) => name.split('/').filter(Boolean)[0]).filter(Boolean))].sort(),
-            };
-            names.forEach((name) => {
-              const rawParts = name.split('/').filter((part) => part !== '' && part !== '.');
-              const normalized = path.posix.normalize(name);
-              const unsafe = path.posix.isAbsolute(name)
-                || rawParts.length === 0
-                || rawParts.includes('..')
-                || normalized === '..'
-                || normalized.startsWith('../');
-              if (unsafe) diagnostics.unsafe_paths.push(name);
-              if (!rawParts.length || !allowedRoots.has(rawParts[0])) diagnostics.allowed_roots_only = false;
-            });
-            console.log(`archive_structure=${JSON.stringify(diagnostics)}`);
+          manifest_canonical = '\n'.join(
+              f"{item['name']}\t{item['size']}\t{item['sha256'] or '-'}"
+              for item in manifest
+          ).encode()
+          print('archive_structure=' + json.dumps({
+              'member_count': len(manifest),
+              'regular_file_count': regular_count,
+              'allowed_roots_only': not unsafe_paths,
+              'unsafe_paths': sorted(set(unsafe_paths)),
+              'roots': sorted(roots),
+              'content_manifest_sha256': sha256(manifest_canonical),
+          }))
+          print('member_manifest=' + json.dumps(manifest))
 
-            if (observedHash === expected) {
-              console.log('RESULT=EXPECTED_HASH_MATCH');
-            } else if (subsetMatches.length || permutationMatches.length) {
-              console.log('RESULT=RECONSTRUCTION_MATCH_FOUND');
-            } else {
-              console.log('RESULT=NO_SIMPLE_RECONSTRUCTION_MATCH');
-            }
-          }
-
-          main().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
-          NODE
+          if observed_hash == expected:
+              print('RESULT=EXPECTED_HASH_MATCH')
+          elif ordered_subset_matches or permutation_matches:
+              print('RESULT=RECONSTRUCTION_MATCH_FOUND')
+          else:
+              print('RESULT=NO_SIMPLE_RECONSTRUCTION_MATCH')
+          PY
