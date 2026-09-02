@@ -6,6 +6,10 @@ export const MAX_LOG_ENTRIES = 300;
 export const MAX_CHAT_COUNT = 100;
 export const MAX_CONTINUATIONS = 10_000;
 export const MAX_RUNTIME_MINUTES = 10_080;
+export const MIN_GITHUB_IDLE_MINUTES = 10;
+export const MAX_GITHUB_IDLE_MINUTES = 10_080;
+export const GITHUB_POLL_INTERVAL_MINUTES = 10;
+export const MAX_GITHUB_WATCHED_REPOSITORIES = 8;
 export const MIN_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const MAX_REFRESH_INTERVAL_MS = 15 * 60_000;
 export const STUCK_GENERATION_MS = 20 * 60_000;
@@ -26,6 +30,24 @@ export function clampInterval(value) {
 export function refreshIntervalMs(intervalMinutes) {
   const requested = clampInterval(intervalMinutes) * 3 * 60_000;
   return Math.min(MAX_REFRESH_INTERVAL_MS, Math.max(MIN_REFRESH_INTERVAL_MS, requested));
+}
+
+export function clampGithubIdleMinutes(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 30;
+  return Math.min(
+    Math.max(Math.trunc(parsed), MIN_GITHUB_IDLE_MINUTES),
+    MAX_GITHUB_IDLE_MINUTES
+  );
+}
+
+export function normalizeGithubRepository(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const match = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/.exec(trimmed);
+  if (!match) return null;
+  if (match[2] === "." || match[2] === ".." || match[2].endsWith(".git")) return null;
+  return `${match[1]}/${match[2]}`;
 }
 
 export function normalizeChatURL(rawValue) {
@@ -49,7 +71,10 @@ export function defaultChatProfile() {
     stopPhrase: null,
     maxContinuations: 0,
     maxRuntimeMinutes: 0,
-    telegramNotify: true
+    telegramNotify: true,
+    githubWatchEnabled: false,
+    githubRepository: null,
+    githubIdleMinutes: 30
   };
 }
 
@@ -71,7 +96,10 @@ export function normalizeChatProfile(raw) {
     stopPhrase,
     maxContinuations: boundedInteger(raw?.maxContinuations, MAX_CONTINUATIONS),
     maxRuntimeMinutes: boundedInteger(raw?.maxRuntimeMinutes, MAX_RUNTIME_MINUTES),
-    telegramNotify: raw?.telegramNotify !== false && fallback.telegramNotify
+    telegramNotify: raw?.telegramNotify !== false && fallback.telegramNotify,
+    githubWatchEnabled: raw?.githubWatchEnabled === true && Boolean(normalizeGithubRepository(raw?.githubRepository)),
+    githubRepository: normalizeGithubRepository(raw?.githubRepository),
+    githubIdleMinutes: clampGithubIdleMinutes(raw?.githubIdleMinutes)
   };
 }
 
@@ -87,7 +115,10 @@ export function effectiveChatProfile(state, chat) {
       : normalizeStopPhrase(profile.stopPhrase),
     maxContinuations: profile.maxContinuations,
     maxRuntimeMinutes: profile.maxRuntimeMinutes,
-    telegramNotify: profile.telegramNotify
+    telegramNotify: profile.telegramNotify,
+    githubWatchEnabled: profile.githubWatchEnabled,
+    githubRepository: profile.githubRepository,
+    githubIdleMinutes: profile.githubIdleMinutes
   };
 }
 
@@ -174,6 +205,16 @@ export function createChat({ title, url, tabId = null, now = new Date().toISOStr
     lastDecision: null,
     nextEligibleAt: null,
     lastTelegramErrorKey: null,
+    githubWatchStartedAt: null,
+    githubLastRunId: null,
+    githubLastRunCreatedAt: null,
+    githubLastActivityAt: null,
+    githubLastAttemptAt: null,
+    githubLastCheckedAt: null,
+    githubLastRestartAt: null,
+    githubLastRestartKey: null,
+    githubRestartCount: 0,
+    githubLastError: null,
     tabId: Number.isInteger(tabId) ? tabId : null,
     lastObservedFingerprint: null,
     lastCommandedFingerprint: null,
@@ -211,6 +252,16 @@ export function normalizeChat(raw) {
     lastDecision: stringOrNull(raw.lastDecision),
     nextEligibleAt: stringOrNull(raw.nextEligibleAt),
     lastTelegramErrorKey: stringOrNull(raw.lastTelegramErrorKey),
+    githubWatchStartedAt: stringOrNull(raw.githubWatchStartedAt),
+    githubLastRunId: stringOrNull(raw.githubLastRunId),
+    githubLastRunCreatedAt: stringOrNull(raw.githubLastRunCreatedAt),
+    githubLastActivityAt: stringOrNull(raw.githubLastActivityAt),
+    githubLastAttemptAt: stringOrNull(raw.githubLastAttemptAt),
+    githubLastCheckedAt: stringOrNull(raw.githubLastCheckedAt),
+    githubLastRestartAt: stringOrNull(raw.githubLastRestartAt),
+    githubLastRestartKey: stringOrNull(raw.githubLastRestartKey),
+    githubRestartCount: nonNegativeInteger(raw.githubRestartCount),
+    githubLastError: stringOrNull(raw.githubLastError),
     tabId: Number.isInteger(raw.tabId) ? raw.tabId : null,
     lastObservedFingerprint: stringOrNull(raw.lastObservedFingerprint),
     lastCommandedFingerprint: stringOrNull(raw.lastCommandedFingerprint),
@@ -231,7 +282,7 @@ export function normalizeChat(raw) {
 
 export function defaultState() {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     enabled: false,
     taskOnly: false,
     checkInProgress: false,
@@ -250,7 +301,7 @@ export function defaultState() {
 export function normalizeState(raw) {
   const fallback = defaultState();
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     enabled: raw?.enabled === true,
     taskOnly: raw?.taskOnly === true,
     checkInProgress: raw?.checkInProgress === true,
@@ -449,6 +500,100 @@ export function planTabRecovery({ tab, snapshot, chat, intervalMinutes, now = Da
   return { refresh: false, reason: null };
 }
 
+export function resetGithubWatchRuntime(chat) {
+  return {
+    ...chat,
+    githubWatchStartedAt: null,
+    githubLastRunId: null,
+    githubLastRunCreatedAt: null,
+    githubLastActivityAt: null,
+    githubLastAttemptAt: null,
+    githubLastCheckedAt: null,
+    githubLastRestartAt: null,
+    githubLastRestartKey: null,
+    githubRestartCount: 0,
+    githubLastError: null
+  };
+}
+
+export function recordGithubWatchError(chat, message, at = new Date().toISOString()) {
+  return {
+    ...chat,
+    githubLastAttemptAt: at,
+    githubLastError: String(message || "GitHub Actions check failed")
+  };
+}
+
+export function recordGithubActionsObservation(
+  chat,
+  { runId = null, createdAt = null } = {},
+  at = new Date().toISOString()
+) {
+  const normalizedRunId = runId === null || runId === undefined ? null : String(runId);
+  const normalizedCreatedAt = validTimestampOrNull(createdAt);
+  const hadBaseline = Boolean(chat?.githubWatchStartedAt);
+  const runChanged = hadBaseline && normalizedRunId !== stringOrNull(chat?.githubLastRunId);
+  const observedAtMs = Date.parse(at);
+  const createdAtMs = Date.parse(String(normalizedCreatedAt || ""));
+  const safeCreatedAt = Number.isFinite(createdAtMs) && (!Number.isFinite(observedAtMs) || createdAtMs <= observedAtMs)
+    ? normalizedCreatedAt
+    : at;
+  const nextActivityAt = !hadBaseline
+    ? at
+    : runChanged
+      ? safeCreatedAt
+      : stringOrNull(chat?.githubLastActivityAt) || at;
+
+  return {
+    ...chat,
+    githubWatchStartedAt: stringOrNull(chat?.githubWatchStartedAt) || at,
+    githubLastRunId: normalizedRunId,
+    githubLastRunCreatedAt: normalizedCreatedAt,
+    githubLastActivityAt: nextActivityAt,
+    githubLastAttemptAt: at,
+    githubLastCheckedAt: at,
+    githubLastRestartKey: runChanged ? null : stringOrNull(chat?.githubLastRestartKey),
+    githubLastError: null
+  };
+}
+
+export function githubWatchdogDecision(chat, idleMinutes, now = Date.now()) {
+  if (!chat?.githubWatchStartedAt || !chat?.githubLastCheckedAt || !chat?.githubLastActivityAt) {
+    return { decision: "baseline-required", restartKey: null, idleMs: 0 };
+  }
+  const activityAt = Date.parse(chat.githubLastActivityAt);
+  if (!Number.isFinite(activityAt)) {
+    return { decision: "baseline-required", restartKey: null, idleMs: 0 };
+  }
+  const idleMs = Math.max(0, now - activityAt);
+  const thresholdMs = clampGithubIdleMinutes(idleMinutes) * 60_000;
+  const restartKey = chat.githubLastRunId
+    ? `run:${chat.githubLastRunId}`
+    : `empty:${chat.githubWatchStartedAt}`;
+  if (idleMs < thresholdMs) return { decision: "active", restartKey, idleMs };
+  if (chat.githubLastRestartKey === restartKey) {
+    return { decision: "already-restarted", restartKey, idleMs };
+  }
+  return { decision: "restart", restartKey, idleMs };
+}
+
+export function recordGithubRestart(chat, restartKey, at = new Date().toISOString()) {
+  if (!restartKey) throw new Error("GitHub restart key is required.");
+  return {
+    ...chat,
+    githubLastRestartAt: at,
+    githubLastRestartKey: String(restartKey),
+    githubRestartCount: nonNegativeInteger(chat?.githubRestartCount) + 1,
+    githubLastError: null
+  };
+}
+
+export function shouldPollGithubRepository(chat, now = Date.now()) {
+  const lastAttemptAt = Date.parse(String(chat?.githubLastAttemptAt || ""));
+  if (!Number.isFinite(lastAttemptAt)) return true;
+  return now - lastAttemptAt >= GITHUB_POLL_INTERVAL_MINUTES * 60_000;
+}
+
 export function recordRecovery(chat, reason, at = new Date().toISOString()) {
   return {
     ...chat,
@@ -500,6 +645,12 @@ export function mergeDispatchCheckpoint(runtimeChat, latestChat) {
     lastCommandedFingerprint: runtimeChat.lastCommandedFingerprint,
     lastCommandAt: runtimeChat.lastCommandAt,
     lastDispatchOutcome: runtimeChat.lastDispatchOutcome,
+    githubLastRestartAt: runtimeChat.githubLastRestartAt,
+    githubLastRestartKey: runtimeChat.githubLastRestartKey,
+    githubRestartCount: Math.max(
+      nonNegativeInteger(latestChat?.githubRestartCount),
+      nonNegativeInteger(runtimeChat?.githubRestartCount)
+    ),
     lastError: runtimeChat.lastError
   };
   return merged;
@@ -532,6 +683,16 @@ export function mergeRuntimeState(observedState, latestState) {
         lastDecision: observed.lastDecision,
         nextEligibleAt: runtimeAutoStop ? null : observed.nextEligibleAt,
         lastTelegramErrorKey: observed.lastTelegramErrorKey,
+        githubWatchStartedAt: observed.githubWatchStartedAt,
+        githubLastRunId: observed.githubLastRunId,
+        githubLastRunCreatedAt: observed.githubLastRunCreatedAt,
+        githubLastActivityAt: observed.githubLastActivityAt,
+        githubLastAttemptAt: observed.githubLastAttemptAt,
+        githubLastCheckedAt: observed.githubLastCheckedAt,
+        githubLastRestartAt: observed.githubLastRestartAt,
+        githubLastRestartKey: observed.githubLastRestartKey,
+        githubRestartCount: observed.githubRestartCount,
+        githubLastError: observed.githubLastError,
         tabId: observed.tabId,
         lastObservedFingerprint: observed.lastObservedFingerprint,
         lastCommandedFingerprint: observed.lastCommandedFingerprint,
@@ -648,6 +809,12 @@ function mergeLogs(latestLogs, observedLogs) {
   return [...byId.values()]
     .sort((left, right) => String(left.at || "").localeCompare(String(right.at || "")))
     .slice(-MAX_LOG_ENTRIES);
+}
+
+function validTimestampOrNull(value) {
+  const text = stringOrNull(value);
+  if (!text) return null;
+  return Number.isFinite(Date.parse(text)) ? text : null;
 }
 
 function timestampOrZero(value) {
