@@ -2,168 +2,159 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 10
-updated_at: 2026-09-02T01:54:00Z
+critical_path_revision: 11
+updated_at: 2026-09-02T02:05:30Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: main
-basis_sha: f4f4b4c9b405926fe3172accaed32d4b72146d17
+basis_ref: release/0.5.4-rebuild
+basis_sha: 071ac396890716663085fe0a334b0bb645d55310
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.5.4 beta rebuilt from the live `main` product state, with the owner-required per-chat stop-phrase behavior and without relying on the irrecoverable historical payload.
+Owner-authorized target: rebuild ChatPulse 0.5.4 beta from current `main` with new source/artifact hashes and the per-chat stop-phrase feature.
 
-Owner decision on 2026-09-02: `пересобирай 0.5.4 с новыми хэшами`.
+Owner decision: `пересобирай 0.5.4 с новыми хэшами`.
 
-This explicitly supersedes the old release pins as current requirements. Historical hashes remain evidence only:
-- old source archive SHA-256 `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5` — RETIRED;
-- old beta ZIP SHA-256 `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3` — RETIRED.
+Historical pins are retired as requirements:
+- source `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5` — RETIRED;
+- artifact `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3` — RETIRED.
 
-New source identity:
-- exact Git commit SHA of the rebuilt canonical release candidate;
-- deterministic release file manifest/hash evidence produced by the release gate.
-
-New release artifact:
-- `ChatPulse-Chrome-v0.5.4-beta.zip`;
-- new SHA-256 generated and verified only after the exact-head full release gate passes.
+New release identity is the exact rebuilt Git head plus reproducible source-manifest SHA-256 and `ChatPulse-Chrome-v0.5.4-beta.zip` SHA-256 produced by the exact-head gate.
 
 Definition of RELEASED:
-- stop-phrase behavior is implemented on a fresh candidate derived from current `main`;
-- a stop phrase detected in one tracked chat disables only that chat and prevents a continuation send for that response;
-- existing at-most-once, tab-recovery, local-only and Chrome MV3 safety properties remain intact;
-- full syntax/unit/static/package gate passes on the exact candidate head;
-- deterministic beta ZIP is published with its new SHA-256;
-- canonical rebuilt 0.5.4 PR is merge-ready and merged to live `main`;
-- post-merge `main` and retained artifact satisfy the same gate.
+- configurable stop phrase is disabled by default and capped at 500 characters;
+- only the latest completed assistant response is eligible;
+- matching uses NFKC + case folding + collapsed whitespace + substring semantics;
+- a match disables only that tracked chat and sends no continuation for that response;
+- re-enabling creates a fresh baseline and a newer manual control action wins over an in-flight check;
+- at-most-once, stale-tab recovery, local-only storage and Manifest V3 permission boundaries remain intact;
+- five exact-head audits pass;
+- reproducible beta package is built twice identically and retained with source/artifact hashes;
+- rebuilt PR is verified, merged, and post-merge `main` satisfies the release contract.
 
-Explicit exclusions:
-- old Issue #14 payload is diagnostic/reference evidence only and is not a release source;
-- old PR #15 is historical/superseded unless reused only as read-only semantic evidence;
-- Telegram PR #18 remains VERIFIED/PARKED until 0.5.4 reaches `main`, then must be reconciled and revalidated;
-- PR #17 runner-selector refactor remains non-critical unless proven prerequisite;
-- Chrome Web Store, GitHub Release/tag, native/Safari packaging are not required for this beta release.
+Telegram PR #18 remains VERIFIED/PARKED and is not part of this 0.5.4 release gate.
 
-## 2. Repository Basis
+## 2. Semantic Reconstruction Evidence
 
-Default branch: `main`.
-Default branch observed SHA: `f4f4b4c9b405926fe3172accaed32d4b72146d17`.
-Current product version on `main`: 0.5.2 beta line; release workflow still reflects the abandoned Issue-payload integration path and must be replaced for the rebuilt candidate.
+Read-only diagnostic run `33581319517`, job `100096027803` verified the live diagnostic Issue #14 archive SHA `fe85f738...` before reading text. The archive was not executed and is not a release source.
 
-Historical PR #15:
-- branch `feature/stop-phrase-0.5.4`;
-- head `2e6d79971ccd58619acac28551ddcf6d457c71a1`;
-- open/non-draft;
-- only 2 changed files, no integrated product candidate; no longer canonical for the rebuilt contract.
+Recovered stop-phrase semantics:
+- global optional phrase; empty means disabled;
+- max 500 characters;
+- latest completed assistant response only;
+- NFKC, case-insensitive, whitespace-normalized substring matching;
+- match disables only that chat, records `lastStopReason=stop-phrase`, and prevents dispatch;
+- user messages and active generation are ignored;
+- manual re-enable requires a new safe baseline.
 
-Telegram PR #18:
-- branch `feature/telegram-notifications`;
-- exact verified head `308f8e362f3c93a607f6a2bbc21ea11a74523959`;
-- open Draft and intentionally parked.
+The historical `model-v2.js` contained UTF-8 corruption, so no historical product-core file was copied wholesale. Only bounded semantics were used. Temporary semantic workflow was removed from `main` in `d3684d865abf1fd174d537933cca50d5aa0955e8`.
 
-## 3. Release Gates
+## 3. Rebuilt Candidate
 
-### GATE-1 — Rebuilt contract / fresh base
+Fresh base: live `main` SHA `d3684d865abf1fd174d537933cca50d5aa0955e8`.
+Canonical rebuilt branch: `release/0.5.4-rebuild`.
+Current exact candidate head: `071ac396890716663085fe0a334b0bb645d55310`.
+
+Implemented surfaces:
+- model state/decision: stop phrase, stop metadata and `controlRevision` race protection;
+- content script: NFKC/case/whitespace matching on completed assistant response only;
+- service worker: stop phrase passed through initial, recovery and preflight inspections; stop match never reaches send;
+- options UI: stop phrase field, save behavior and stopped-by-phrase status;
+- tests: model exclusions/race behavior plus two-chat service-worker isolation;
+- Manifest/package version 0.5.4 beta;
+- deterministic `scripts/package_extension.py` with sorted members, fixed ZIP metadata, canonical source manifest and SHA-256 outputs;
+- release workflow replaced with read-only `[self-hosted, fast]` five-cycle audit plus reproducibility/package provenance job.
+
+Temporary write-capable service-worker patch workflow completed successfully and was deleted from the release branch. It is not part of the candidate tree.
+
+## 4. Release Gates
+
+### GATE-1 — Explicit rebuilt contract / fresh base
 Status: SATISFIED.
-Evidence: explicit owner authorization plus live `main` SHA.
 
-### GATE-2 — Exact stop-phrase semantics and implementation
-Status: UNSATISFIED.
-Blocking items: derive the smallest safe semantics from product requirements plus read-only historical evidence, then implement on a fresh branch from current `main`.
+### GATE-2 — Stop-phrase semantics and fresh implementation
+Status: SATISFIED PENDING EXECUTION EVIDENCE.
+Evidence: bounded semantic recovery plus exact candidate code/tests at `071ac396...`.
 
-### GATE-3 — Exact-head validation/package/security
-Status: UNSATISFIED.
-Requires syntax, unit/service-worker/model tests, static Manifest/security validation, deterministic packaging and secret/permission checks.
-
-### GATE-4 — New release hashes/artifact
-Status: UNSATISFIED.
-Requires exact candidate commit SHA, deterministic release manifest/hash evidence, retained `ChatPulse-Chrome-v0.5.4-beta.zip` and its new SHA-256.
-
-### GATE-5 — Merge/post-merge verification
-Status: UNSATISFIED.
-Requires rebuilt PR merge readiness, merge, and post-merge verification on `main`.
-
-## 4. Current Critical Path
-
-### CP-1 — Derive stop-phrase semantics without trusting old payload as source
+### GATE-3 — Exact-head five-cycle validation/security
 Status: ACTIVE.
-Release gate: GATE-2.
-Execution plane: HQ_DIRECT + bounded PROJECT_RUNNER read-only diagnostic.
-Exact scope: compare historical 12-file archive product-core text against current `main` only to identify stop-phrase semantics; do not execute archived code or copy unrelated historical regressions.
-Acceptance: bounded semantic patch plan for current model/service-worker/UI/tests.
+Active run: `33581867810` on exact head `071ac396890716663085fe0a334b0bb645d55310`.
+Required: all five audit jobs PASS plus package/security job PASS.
 
-### CP-2 — Build fresh 0.5.4 candidate from current `main`
-Status: PENDING.
-Depends on: CP-1.
-Execution plane: HQ_DIRECT on a new release branch.
-Acceptance: product changes and release workflow/package scripts committed without unrelated cleanup.
+### GATE-4 — New source/artifact hashes and retained beta artifact
+Status: PENDING GATE-3.
+Required outputs: source-manifest SHA-256, beta ZIP SHA-256, retained Actions artifact.
 
-### CP-3 — Run full exact-head release gate and publish artifact
-Status: PENDING.
-Depends on: CP-2.
-Execution plane: PROJECT_RUNNER `[self-hosted, fast]`.
-Acceptance: all tests/security/package checks PASS; new artifact SHA and source/candidate identity captured.
+### GATE-5 — PR merge and post-merge verification
+Status: PENDING GATE-4.
 
-### CP-4 — Verify rebuilt PR and merge 0.5.4
-Status: PENDING.
-Depends on: CP-3.
-Execution plane: HQ_DIRECT GitHub control.
-Acceptance: exact head/base/diff/CI/reviews/mergeability verified, merged, then post-merge release evidence verified.
+## 5. Current Critical Path
+
+### CP-1 — Recover bounded stop-phrase semantics
+Status: DONE.
+
+### CP-2 — Build fresh 0.5.4 candidate from current main
+Status: DONE at candidate head `071ac396...` subject to exact-head validation.
+
+### CP-3 — Run exact-head release gate and capture new provenance
+Status: ACTIVE.
+Execution plane: PROJECT_RUNNER via GitHub Actions run `33581867810`.
+Acceptance: 5/5 audits PASS, reproducibility PASS, security/version PASS, artifact uploaded, new hashes captured.
+
+### CP-4 — Open/verify rebuilt PR, retire old PR #15, merge and post-merge verify
+Status: PENDING CP-3.
 
 ### CP-5 — Reconcile Telegram PR #18 with released 0.5.4
-Status: PENDING FOLLOW-UP, not part of the 0.5.4 release gate.
+Status: PENDING FOLLOW-UP; not part of 0.5.4 gate.
 
-## 5. Active Execution Registry
+## 6. Active Execution Registry
 
-HQ:
-- CP-1 semantic reconstruction / rebuilt release design.
-- write surface currently limited to HQ control state and temporary read-only diagnostics on `main`.
+PROJECT_RUNNER:
+- workflow: `ChatPulse 0.5.4 beta release gate`;
+- run `33581867810`;
+- event `push`;
+- exact head `071ac396890716663085fe0a334b0bb645d55310`;
+- expected jobs: audit rounds 1–5 and reproducible package/provenance after audits.
 
-Workers: NONE — current semantic reconstruction and candidate ownership overlap the single release slice; delegation would add coordination overhead.
+HQ: observe terminal evidence, repair only on candidate branch if a gate fails, then open canonical rebuilt PR.
+Workers: NONE — release code/CI share one exact-head gate and delegation would create overlapping ownership.
 Codex: NONE.
-Zero-model control: NONE.
-CI/runtime: NONE active at this checkpoint.
 
-## 6. Safe Parallel Work
+## 7. Safety / Adversarial Controls
 
-NONE — Telegram is already verified/parked and must wait for the 0.5.4 base; release code and release workflow must share one exact candidate head.
-
-## 7. Current Blockers
-
-NONE. The prior integrity blocker was explicitly superseded by owner authority.
+- Never restore old Issue #14 source/artifact pins as current requirements.
+- Never execute the damaged historical payload.
+- Never log response text or the configured stop phrase.
+- A stop match must not dispatch a continuation.
+- Stop handling must not disable any non-matching chat.
+- A more recent manual toggle must win over an in-flight stop decision.
+- Keep permanent host permissions restricted to ChatGPT domains.
+- Release workflow remains read-only; no CI job may publish source commits.
+- Do not merge PR #18 before 0.5.4 base reconciliation.
 
 ## 8. Critical Path Audits
 
-Repository Coverage Audit: PASS — live `main`, persistent state, PR #15, PR #18, current release workflow/package scripts and prior integrity evidence are covered.
-Evidence Audit: PASS — the new contract is grounded in explicit owner authorization and live GitHub state; old hashes are retained only as historical evidence.
-Release Alignment Audit: PASS — work is limited to rebuilt 0.5.4 stop-phrase release; Telegram remains follow-up.
-Dependency & Ordering Audit: PASS — semantics precede implementation; implementation precedes exact-head validation/package; hashes are captured only from the validated head; merge follows release evidence.
-Execution & Parallelism Audit: PASS — one canonical rebuilt release branch avoids overlapping writes; project runner handles deterministic validation; no useful independent worker slice exists.
-Adversarial Audit: PASS — rejected silently reusing the incomplete Issue payload, copying old product-core wholesale, reusing stale PASS evidence, merging Telegram early, or retaining old hashes as new release pins.
+Repository Coverage Audit: PASS — live main, semantic evidence, fresh branch, model/content/worker/UI/tests, Manifest, package builder and release workflow covered.
+Evidence Audit: PASS — semantics are traceable to bounded diagnostic evidence; final acceptance is reserved for exact-head execution and artifact hashes.
+Release Alignment Audit: PASS — candidate contains the owner-requested 0.5.4 stop phrase only plus required release infrastructure; Telegram stays separate.
+Dependency & Ordering Audit: PASS — semantics → fresh candidate → exact-head audits → hashes/artifact → PR merge/post-merge.
+Execution & Parallelism Audit: PASS — one release branch owns product writes; current runner is read-only; no independent worker slice is useful.
+Adversarial Audit: PASS — rejected damaged-payload reuse, stale old pins, whole-file historical copy, premature merge, stop-phrase logging, cross-chat stop leakage and stale background override of manual re-enable.
 
 ## 9. Next Action
 
-Exact next action: run a bounded read-only comparison of the historical archive product-core against current `main` to recover only stop-phrase behavior, then create a fresh rebuilt release branch from current `main`.
-Executor: HQ + PROJECT_RUNNER diagnostic.
-Expected evidence: semantic diff limited to stop-phrase-related behavior and UI/state fields.
-Acceptance: no archived code execution; no unrelated historical regressions imported.
+Live-observe run `33581867810`. On failure, capture exact failing step and repair the same release branch, producing a new head and new exact-head run. On PASS, capture new source/artifact hashes and retained artifact, open the canonical rebuilt PR against `main`, and verify its exact diff/base before merge.
 
-## 10. Last Material Revision
-
-What changed: owner explicitly authorized a rebuilt 0.5.4 with new hashes.
-Why critical path changed: the prior human integrity gate is resolved; release can proceed from current `main` without the lost historical source archive.
-Evidence causing the change: owner message `пересобирай 0.5.4 с новыми хэшами`.
-
-## 11. Chat Rotation Checkpoint
+## 10. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: persisted the explicit rebuilt 0.5.4 release contract and retired the historical source/artifact hashes as current pins.
-Active external executions and exact refs: NONE.
+Last completed atomic action: rebuilt candidate `071ac396...` created and exact-head release run accepted by GitHub.
+Active external execution: run `33581867810` on `release/0.5.4-rebuild@071ac396...`.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live-read revision 10 and current `main`; execute CP-1 read-only semantic reconstruction, then branch from the validated current main SHA.
-Exact next action after recovery: derive stop-phrase semantics and create the rebuilt release candidate branch.
+Recovery entrypoint: live-read revision 11, validate branch head and run `33581867810`, then continue CP-3.
 Rotation blockers: NONE.
