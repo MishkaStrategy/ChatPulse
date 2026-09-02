@@ -2,169 +2,176 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 15
-updated_at: 2026-09-02T02:39:00Z
-project_state: DONE
+critical_path_revision: 16
+updated_at: 2026-09-02T05:40:00Z
+project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
 basis_ref: main
-basis_sha: bf4ee1aaf0802ff852f12392ed46aa6c8bec4e67
+basis_sha: 94fc6839f7bd2dc2facc867d25ce676b02d4514f
 ---
 
 # HQ Critical Path
 
-## 1. Owner Requests — COMPLETE
+## 1. Current Release Contract
 
-Owner request `пересобирай 0.5.4 с новыми хэшами` — DONE.
-Owner request `Добавь уведомления в тг` — DONE as a separate ChatPulse 0.5.5 beta release on top of the rebuilt 0.5.4.
+Release target: **ChatPulse 0.6.0 beta**.
 
-No active owner-requested product work remains on the critical path.
+Owner scope, explicitly selected on 2026-09-02:
+1. per-chat continuation/time limits;
+2. per-chat profiles;
+3. Control Center with useful runtime state/progress;
+4. expanded Telegram operational events;
+5. safe configuration export/import;
+6. guarded “run task until completion” mode.
 
-## 2. ChatPulse 0.5.4 beta — RELEASED
+Release surface:
+- Chrome MV3 extension on current 0.5.5 `main` product base;
+- local state/schema and service-worker execution semantics;
+- options/Control Center UI;
+- Telegram event layer without widening permanent permissions;
+- portable configuration JSON without secrets/runtime identity;
+- deterministic beta ZIP + source manifest.
 
-Canonical release:
-- rebuilt branch head `641e60c2f95f151ded2c660a19b8e3c5df916843`;
-- PR #19 merged exact-head guarded;
-- release/main SHA `4a8ec711a3adde13580e16351997621abe2a95fd`;
-- product ZIP SHA-256 `c5751017ae42f3f37d1e6c333d31789df7d204335f2e5ff3a4f45f8cc32bf8d0`;
-- source manifest SHA-256 `ee2aa2178707011c2d87ea9f4c0aa3195f1cf324590bd58401a77dfef54410a4`;
-- post-merge run `33582724814`: 5/5 audit cycles + reproducible package/security PASS;
-- post-merge artifact ID `9828998086`.
+Definition of RELEASED:
+- implementation merged to live default branch through a canonical non-draft PR;
+- exact branch and PR merge-tree full audits pass;
+- post-merge `main` repeats the same safety/test/package gates;
+- final 0.6.0 product ZIP and source-manifest SHA-256 are reproduced on branch, merge-tree and `main`.
 
-The historical incomplete Issue #14 hashes are RETIRED and remain evidence only. PR #15 is CLOSED UNMERGED as superseded.
+Mandatory release gates:
+- [ ] state migration preserves existing 0.5.5 behavior when no per-chat override is configured;
+- [ ] each chat can override command, interval, stop phrase, continuation limit, runtime limit and Telegram policy;
+- [ ] continuation/runtime limits cannot cause an extra send and increment only after `recordDispatch()` fixes at-most-once state;
+- [ ] task mode requires at least one completion guard and resets to a fresh safe baseline;
+- [ ] Control Center derives status/progress from canonical local state, not a parallel execution system;
+- [ ] Telegram operational events remain post-state/non-critical and never contain response text, conversation URL, stop phrase, command or bot token;
+- [ ] export/import excludes Telegram bot token, runtime fingerprints, dispatch history, tab IDs, session IDs and logs; import regenerates safe runtime identity/baselines;
+- [ ] all released 0.5.4/0.5.5 stop-phrase, controlRevision, stale-tab, draft/active-tab, at-most-once and Telegram permission/privacy regressions remain green;
+- [ ] reproducible package/provenance passes on exact branch, PR merge-tree and post-merge `main`.
 
-Released 0.5.4 guarantees preserved by all later work:
-- optional stop phrase, empty by default, max 500 chars;
-- latest completed assistant response only;
-- NFKC/case-insensitive/collapsed-whitespace substring match;
-- match disables only the matching chat and never dispatches continuation;
-- newer manual `controlRevision` fully rejects stale in-flight runtime state and preserves a fresh baseline;
-- existing at-most-once and stale-tab recovery protections remain intact.
+Known explicit exclusions:
+- multiple stop phrases / regex rules are not part of this owner selection;
+- cloud sync, backend accounts and remote storage remain out of scope;
+- Telegram token export is forbidden;
+- unrelated Draft PR #17 runner-selector work remains out of scope.
 
-## 3. ChatPulse 0.5.5 beta — TELEGRAM RELEASED
+## 2. Repository Basis
 
-Canonical implementation branch head:
-`feature/telegram-notifications@63bf67191c94e823ec1d76991505f45b7e1616ff`.
+Default branch: `main`.
+Observed pre-state-write HEAD: `94fc6839f7bd2dc2facc867d25ce676b02d4514f` (state-only commit above released product SHA `bf4ee1aaf0802ff852f12392ed46aa6c8bec4e67`).
+Current released product: ChatPulse 0.5.5 beta.
+Relevant current architecture: `model-v2.js` schema v3 + MV3 service worker + content script + options UI + separate Telegram secret config in `chrome.storage.local`.
+Current release convention: five independent exact-head audits + deterministic ZIP/source manifest + branch/merge-tree/post-merge equality.
 
-Canonical merge PR:
-- PR #20 `Выпустить ChatPulse 0.5.5 beta с Telegram-уведомлениями`;
-- merged with exact-head guard;
-- release/main product SHA `bf4ee1aaf0802ff852f12392ed46aa6c8bec4e67`.
+## 3. Idea / Architecture Audit
 
-Historical Draft PR #18 was closed unmerged after the current GitHub connector could not transition Draft→Ready; it is implementation history only. PR #20 received a fresh independent merge-tree gate and is the canonical release PR.
+### Selected idea 1 — continuation/time limits
+PASS with guardrails. Counts must advance only after dispatch is recorded. Limit equality means exactly N successful/submitted dispatches maximum, never N+1. Runtime limit is per enabled/task run and must stop before a new send once expired.
 
-### Telegram product/security contract
+### Selected idea 2 — per-chat profiles
+PASS. Global 0.5.5 settings remain defaults for migration. Per-chat fields use explicit inheritance instead of copying globals, avoiding silent divergence and preserving existing users.
 
-- Telegram notifications are optional and disabled by default.
-- Permanent `host_permissions` remain only `https://chatgpt.com/*` and `https://chat.openai.com/*`.
-- `https://api.telegram.org/*` is the only `optional_host_permissions` entry.
-- Chrome requests Telegram access only from a direct settings/test user gesture.
-- Telegram chat ID and bot token are stored in a separate `chrome.storage.local` config.
-- Public runtime state exposes only `enabled`, `chatId`, `tokenConfigured` and `permissionGranted`; it never exposes the bot token.
-- After saving, the bot token is not rendered back into the UI.
-- Telegram receives only the tracked chat title and continuation outcome; ChatGPT response text, conversation URL, stop phrase and continuation command are not sent.
-- Notification execution occurs only after `recordDispatch()` has fixed the at-most-once outcome.
-- Telegram timeout/API error/permission revocation is non-critical and cannot retry a ChatGPT command or roll back continuation state.
-- Unrelated command/stop-phrase/interval/theme saves do not validate or rewrite Telegram config if Telegram controls were not changed.
+### Selected idea 3 — Control Center
+PASS. It is a projection of canonical local state: enabled/task state, last decision/error, continuation count, next eligible check and completion reason. It must not create a second scheduler/state store.
 
-### Exact-head branch evidence
+### Selected idea 4 — Telegram operational events
+PASS with privacy/non-critical constraints. Add stop/limit/task/error events, deduplicating persistent errors. Telegram remains optional host permission and notification failure never retries ChatGPT continuation.
 
-Run `33583428604` on exact head `63bf67191c94e823ec1d76991505f45b7e1616ff`:
-- 5/5 audit cycles PASS;
-- 30/30 tests PASS per cycle, 0 failures;
-- 0.5.4 stop/controlRevision/recovery/at-most-once regressions PASS;
-- `telegram_config_privacy` PASS;
-- `telegram_send` PASS;
-- `telegram_permission_gate` PASS;
-- `unrelated_settings_isolation` PASS;
-- combined Manifest/static/security validation PASS;
-- reproducible package built twice identically;
-- artifact ID `9829225115`.
+### Selected idea 7 — export/import
+PASS only as a portable **configuration** format. Include global defaults + chat URLs/titles/enabled/profile settings. Exclude credentials and runtime state. Import validates URLs/schema, regenerates chat IDs/baselines/counters and preserves existing local Telegram credentials.
 
-### Canonical PR merge-tree evidence
-
-PR #20 run `33583710223`, merge-tree SHA `5d479e795247634d942b69daface89224461b477`:
-- 5/5 audit cycles PASS;
-- package/security/provenance PASS;
-- exact same product/source hashes as branch run;
-- artifact ID `9829317327`.
-
-### Post-merge main evidence
-
-Run `33583864833` on exact merge/main SHA `bf4ee1aaf0802ff852f12392ed46aa6c8bec4e67`:
-- 5/5 audit cycles PASS;
-- reproducible package built twice identically;
-- combined stop-phrase + Telegram optional-permission static/security validation PASS;
-- secret scan PASS;
-- canonical hashes repeated bit-for-bit;
-- final retained artifact ID `9829371323`, 36481 bytes, live until `2026-09-03T02:36:49Z` under repository one-day retention cap.
-
-Canonical 0.5.5 provenance:
-- product ZIP `ChatPulse-Chrome-v0.5.5-beta.zip` SHA-256 `4d7f8a0ca3941e69841ad2a69256ccd85f6da354e6093c118ba26047a0b454c8`;
-- source manifest `ChatPulse-Chrome-v0.5.5-source-manifest.txt` SHA-256 `00df7a22a1eeb19b86e4b1f57e4189b02e521a329ebb7ff0190b08cc50b63779`;
-- packaged extension file count 13.
-
-The Actions wrapper artifact digest is transport metadata and is not the product ZIP hash.
-
-Live `main` Manifest after merge confirms:
-- version `0.5.5` / `0.5.5 beta`;
-- permanent permissions `alarms`, `scripting`, `storage`, `tabs`;
-- permanent hosts ChatGPT only;
-- Telegram only in `optional_host_permissions`.
+### Selected idea 8 — run until completion
+PASS as a profile/task preset, not a parallel automation engine. Starting a task requires at least one guard: stop phrase, max continuations or max runtime. Task completion disables that chat only and records a reason/progress.
 
 ## 4. Release Gates
 
-0.5.4 rebuilt release: 6/6 SATISFIED — RELEASED.
-0.5.5 Telegram release:
-- fresh 0.5.4 base reconciliation: SATISFIED;
-- Telegram implementation/security boundary: SATISFIED;
-- exact branch 5-cycle validation: SATISFIED;
-- canonical PR merge-tree validation: SATISFIED;
-- reproducible source/artifact provenance: SATISFIED;
-- exact-head merge + post-merge main validation: SATISFIED.
+### GATE-1 — Architecture and migration
+Status: SATISFIED for design / pending implementation evidence.
 
-0.5.5 status: RELEASED.
+### GATE-2 — Core state/profile/task engine
+Status: UNSATISFIED.
+
+### GATE-3 — Control Center, Telegram events and portable config
+Status: UNSATISFIED.
+
+### GATE-4 — Exact-head regression/security/package validation
+Status: UNSATISFIED.
+
+### GATE-5 — Canonical PR merge-tree validation
+Status: UNSATISFIED.
+
+### GATE-6 — Merge and post-merge release verification
+Status: UNSATISFIED.
 
 ## 5. Current Critical Path
 
-Status: DONE.
+### CP-1 — Implement schema-v4 per-chat profiles, limits and guarded task engine
+Status: ACTIVE.
+Release gate: GATE-2.
+Execution plane: HQ_DIRECT.
+Acceptance: migration defaults preserve 0.5.5; limit/task transitions are pure/testable and at-most-once safe.
 
-There is no remaining executable owner-requested critical-path item. Draft PR #17 runner-selector refactor and other historical branches remain explicitly outside this completed product release scope unless a future owner decision promotes them.
+### CP-2 — Integrate scheduler/service worker + expanded Telegram events
+Status: PENDING CP-1.
+Release gates: GATE-2/GATE-3.
+
+### CP-3 — Build Control Center + safe export/import UX
+Status: PENDING CP-2.
+Release gate: GATE-3.
+
+### CP-4 — Version/package/docs/tests and exact-head validation
+Status: PENDING CP-3.
+Release gate: GATE-4.
+
+### CP-5 — Canonical PR merge-tree audit and adversarial review
+Status: PENDING CP-4.
+Release gate: GATE-5.
+
+### CP-6 — Exact-head merge then post-merge `main` validation/provenance
+Status: PENDING CP-5.
+Release gate: GATE-6.
 
 ## 6. Active Execution Registry
 
-HQ: NONE active.
-PROJECT_RUNNER: NONE active.
-Workers: NONE.
+HQ: owner of architecture, implementation, integration and release decisions.
+Workers: NONE — selected features overlap the same state/service-worker/options surfaces; multiple writers would create avoidable merge/race risk.
 Codex: NONE.
-Human gate: NONE.
+Zero-model control: NONE active.
+CI/runtime: NONE active at this checkpoint.
 
-## 7. Safety / Adversarial Controls Verified
+## 7. Safe Parallel Work
 
-- damaged historical Issue #14 payload was never executed as a release source;
-- old source/artifact hashes were not silently reused;
-- 0.5.4 fresh-baseline race was found before release and permanently regression-tested;
-- Telegram never became a permanent host permission;
-- bot token is absent from public runtime state and intentional logs;
-- response text/URL/stop phrase/command are not Telegram payload fields;
-- Telegram failure cannot alter at-most-once continuation behavior;
-- ordinary settings remain isolated from Telegram permission state;
-- branch, PR merge-tree and post-merge main all independently reproduced the same final 0.5.5 hashes.
+NONE — core profile/task schema determines the service-worker and UI contracts, so execution is intentionally sequential until that boundary is fixed.
 
-## 8. Six Critical Path Audits
+## 8. Current Blockers
 
-Repository Coverage Audit: PASS — rebuilt 0.5.4, Telegram 0.5.5, canonical PRs, post-merge main, tests, permissions and provenance surfaces covered.
-Evidence Audit: PASS — each final release is supported by exact-head branch, merge-tree and post-merge evidence with reproducible product/source hashes.
-Release Alignment Audit: PASS — 0.5.4 rebuild and Telegram owner requests are both fully delivered; unrelated PR #17 is not silently included.
-Dependency & Ordering Audit: PASS — rebuild → post-merge verification → Telegram rebase → exact-head/merge-tree gates → merge → post-merge verification.
-Execution & Parallelism Audit: PASS — product writes stayed on one canonical branch per release; validation runners were read-only; temporary control workflows were removed.
-Adversarial Audit: PASS — stale payload reuse, stale validation evidence, cross-chat stop leakage, baseline race, permanent Telegram permission, token exposure, notification-triggered retries and premature merges were all rejected or regression-tested.
+NONE.
 
-## 9. Chat Rotation Checkpoint
+## 9. Critical Path Audits
+
+Repository Coverage Audit: PASS — state/model, service worker, content inspection, Telegram module, options UI, validation/tests, package/release surfaces covered.
+Evidence Audit: PASS — live `main` and released 0.5.5 guarantees were re-read before design.
+Release Alignment Audit: PASS — all six selected ideas are included exactly once; unselected multi-stop/regex/cloud-sync work excluded.
+Dependency & Ordering Audit: PASS — schema/engine → runtime integration → UI/config → validation → PR → merge/post-merge.
+Execution & Parallelism Audit: PASS — single writer on overlapping product surfaces; independent CI remains read-only.
+Adversarial Audit: PASS — secret export, N+1 sends, stale baseline resurrection, Telegram retry coupling, import of dispatch history and unguarded infinite task mode are explicitly rejected.
+
+## 10. Next Action
+
+Create canonical `release/0.6.0-control-center` from the persisted live `main` head, implement CP-1, then expand through CP-6 without user intervention.
+
+## 11. Last Material Revision
+
+Owner promoted ideas 1/2/3/4/7/8 into product scope. The previous terminal state was reopened as an explicit ChatPulse 0.6.0 beta release.
+
+## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: ChatPulse 0.5.5 beta post-merge main gate completed successfully and canonical terminal state revision 15 was persisted.
+Last completed atomic action: owner scope audited and revision 16 persisted before product writes.
 Active external executions: NONE.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live-read this revision; no recovery action is required unless a new owner request changes project scope.
+Recovery entrypoint: live-read revision 16 and current `main`; create/continue `release/0.6.0-control-center`.
+Exact next action after recovery: implement CP-1 from current persisted main head.
+Rotation blockers: NONE.
