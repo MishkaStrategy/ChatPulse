@@ -2,467 +2,232 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 3
-updated_at: 2026-09-02T01:10:00Z
+critical_path_revision: 4
+updated_at: 2026-09-02T01:15:25Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: INFERRED
 handoff_status: READY
 basis_ref: feature/stop-phrase-0.5.4
-basis_sha: 8228662758041478aaf17b4e490a4007dabb4f85
+basis_sha: 2e6d79971ccd58619acac28551ddcf6d457c71a1
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target:
-
-ChatPulse 0.5.4 beta: add a per-chat stop phrase that stops monitoring only for the matching chat while preserving the existing Chrome MV3 safety boundaries.
+Release target: ChatPulse 0.5.4 beta with a per-chat stop phrase that stops monitoring only for the matching chat while preserving the existing Chrome MV3 safety boundaries.
 
 Release surface:
-
-- Chrome Manifest V3 product source integrated into `main`.
-- GitHub Actions beta artifact `ChatPulse-Chrome-v0.5.4-beta.zip`.
-- Expected artifact SHA-256: `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
+- Product source integrated into `main`.
+- GitHub Actions artifact `ChatPulse-Chrome-v0.5.4-beta.zip`.
+- Expected artifact SHA-256 `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
 
 Definition of RELEASED:
-
-The verified 0.5.4 payload from Issue #14 has been applied to PR #15, exact-head validation and packaging have succeeded, the expected beta ZIP artifact has been published, PR #15 has been merged into the live default branch, and post-merge live inspection confirms the 0.5.4 product state on `main`.
+- Verified Issue #14 payload applied to the release candidate.
+- Exact-head validation and packaging pass.
+- Expected beta artifact is published.
+- Canonical release PR is merged into live `main`.
+- Post-merge live inspection confirms the 0.5.4 product state.
 
 Mandatory release gates:
-
-- [x] Canonical 0.5.4 candidate and payload source are live and unambiguous.
-- [ ] Exact-head integration, validation, packaging and artifact publication succeed for PR #15.
+- [x] Canonical 0.5.4 candidate and payload source are unambiguous.
+- [ ] Exact-head integration, validation, packaging and artifact publication succeed.
 - [ ] Final product diff is reviewed against current `main` and remains inside product/security/release scope.
-- [ ] PR #15 is merged and post-merge `main` confirms the released 0.5.4 state.
+- [ ] Release PR is merged and post-merge `main` confirms 0.5.4.
 
-Required release evidence:
-
-- PR #15 current head and final product commit SHA.
-- Successful exact-head integration workflow with completed validation steps.
-- GitHub Actions artifact `ChatPulse-Chrome-v0.5.4-beta` and expected ZIP checksum.
-- Final PR diff/changed-files, mergeability, reviews/threads and CI state.
-- PR #15 merged state and merge SHA.
-- Post-merge live `main` manifest/version and relevant release files.
-
-Known explicit exclusions:
-
-- PR #17 runner-selector policy refactor is not part of the 0.5.4 release unless proven required to unblock PR #15.
-- Legacy macOS cleanup is not part of this release.
-- Chrome Web Store publication, GitHub Release/tag creation, Safari packaging and native macOS packaging are not release surfaces for this local unpacked Chrome extension.
+Explicit exclusions:
+- PR #17 runner-selector refactor unless proven prerequisite.
+- Legacy macOS cleanup.
+- Chrome Web Store, GitHub Release/tag, Safari/native packaging.
 
 ## 2. Repository Basis
 
-Default branch:
+Working repository: `MishkaStrategy/ChatPulse`.
 
-`main`
+Default branch: `main`.
 
-Default branch observed SHA:
+Canonical release branch: `feature/stop-phrase-0.5.4`.
 
-`9f39c6a7a41fdb15f4103d7ae9f260177c78cd08` before this state-only revision.
+Canonical PR: #15 `Добавить стоп-фразу для остановки отдельного чата`.
 
-Critical-path basis ref:
+Current release-candidate head: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
 
-`feature/stop-phrase-0.5.4`
+Current head contains two bounded bootstrap commits after the previous basis:
+- `666138923d5d8925412ad600e541067175ae9e74` — portable Node.js 22 release bootstrap.
+- `2e6d79971ccd58619acac28551ddcf6d457c71a1` — marker retrigger revision.
 
-Critical-path basis SHA:
+Relevant issue: #14 `Temporary verified payload for ChatPulse 0.5.4`.
 
-`8228662758041478aaf17b4e490a4007dabb4f85`
+Pinned payload SHA-256: `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
 
-Canonical integration branch, if any:
+Historical failed execution:
+- Run `30872589019`, attempt 2.
+- Job `100082482958`.
+- Actual runner `mac-MacBook-Pro-MishkaStrategy-04`.
+- Checkout PASS; Node.js 22 PASS; bootstrap FAIL at missing `gh`; downstream steps skipped.
 
-`feature/stop-phrase-0.5.4`
+Current Actions state:
+- No new `pull_request` workflow run exists for head `2e6d79971ccd58619acac28551ddcf6d457c71a1` after connector-created commits.
+- Closing and reopening PR #15 preserved the exact head and PR state but also created no new run.
+- The available GitHub control surface exposes rerun of historical jobs/runs but no `workflow_dispatch` action.
+- Rerunning run `30872589019` is rejected because a rerun uses the historical workflow revision that still calls missing `gh` and therefore cannot validate the portable patch.
 
-Canonical PR / RC, if any:
+## 3. Material Findings
 
-PR #15 — `Добавить стоп-фразу для остановки отдельного чата`.
-
-Relevant open PRs:
-
-- #15 — canonical 0.5.4 release candidate; open and non-draft. GitHub currently reports `mergeable: false`; this must be re-evaluated after product integration and current-base reconciliation.
-- #17 — draft repository-wide runner-selector policy; non-critical unless proven prerequisite.
-
-Relevant Issues:
-
-- #14 — `Temporary verified payload for ChatPulse 0.5.4`; source payload consumed by the release workflow.
-
-Relevant CI / workflows:
-
-- `.github/workflows/extension-ci.yml` on PR #15 is the canonical 0.5.4 integration/validation/artifact workflow.
-- Run `30872589019`, attempt 2, job `100082482958` completed `failure` on 2026-09-02.
-- Runner assignment succeeded: `mac-MacBook-Pro-MishkaStrategy-04`; checkout and Node.js 22 setup succeeded.
-- Failure occurred at step `Восстановление проверенного локального пакета` before payload reconstruction because `gh` is not installed: `gh: command not found`, exit code 127.
-
-Relevant release/deployment state:
-
-- No GitHub Releases are currently published.
-- Project distribution is an unpacked local Chrome extension and GitHub Actions beta ZIP.
-- No production deployment surface is required for this release.
-
-## 3. Repository Scan Summary
-
-Project purpose:
-
-Local dependency-free Google Chrome Manifest V3 extension that safely continues selected ChatGPT conversations using the already authenticated Chrome profile.
-
-Architecture / major components:
-
-- MV3 manifest and permissions in `chrome-extension/manifest.json`.
-- Background service worker scheduling/recovery in `chrome-extension/background/`.
-- ChatGPT DOM interaction in `chrome-extension/content/`.
-- Decision/state model in `chrome-extension/lib/`.
-- Popup/options UI in `chrome-extension/popup/` and `chrome-extension/options/`.
-- Local-only storage; no backend or telemetry.
-
-Build / packaging:
-
-Node.js >=20 for validation. The release workflow reconstructs the pinned Issue #14 payload, runs its `npm run audit:ci`, verifies the deterministic 0.5.4 ZIP checksum and uploads the artifact.
-
-Tests / validation:
-
-Main contains model, service-worker and stale-tab Node suites plus static/Manifest validation. The 0.5.4 contract additionally requires prepared unit, service-worker, DOM, UI, Manifest and packaging gates on exact head.
-
-CI:
-
-GitHub Actions on exact self-hosted selectors. The previously uncertain `[self-hosted, fast]` runner is now proven available. Current blocker is workflow portability, not runner availability or a product-test failure.
-
-Release / deployment:
-
-Artifact-based beta distribution. Historical merged 0.5.2 used GitHub Actions ZIP packaging. No current GitHub Release or production deployment is required.
-
-Governance:
-
-- Live organizational contract: `MishkaStrategy/.github/HQ_MASTER_PROMPT.md` v1.1 RELEASE.
-- `CONTRIBUTING.md` requires local audit before PR and preserves minimal extension permissions.
-- `SECURITY.md` fixes the boundary: no backend/telemetry and no broad/sensitive Chrome permissions.
-- `main` is not branch-protected and no required status checks were observed.
-
-External release dependencies:
-
-A self-hosted runner matching `[self-hosted, fast]`; this dependency is currently available.
-
-Material findings:
-
-- `main` is still product version 0.5.2.
-- PR #15 has not yet applied the product payload; its product integration did not begin because bootstrap failed at missing `gh`.
-- The workflow also contains Linux-oriented CLI assumptions (`base64 --decode`, `sha256sum`, `python`) that should be removed or replaced in the same bounded portability fix to avoid serial failures on the actual macOS runner.
-- Node.js 22 is successfully provisioned before the failing step and is therefore the most reliable portable runtime for GitHub API retrieval and checksum logic.
-- PR #17 remains out of current release scope.
+- The self-hosted `[self-hosted, fast]` runner is available; runner scarcity is no longer a blocker.
+- The original bootstrap defect has been repaired on PR #15 using the already-guaranteed Node.js 22 runtime for GitHub REST retrieval, base64 decoding and SHA-256 checks, while preserving source/artifact pins, archive-member count, path/root/type checks, validation, secret checks, single product commit and artifact publication.
+- The current blocker is execution triggering: GitHub App/connector-created repository mutations have not produced a new Actions run for the patched head.
+- Issue #14 and its seven payload comments are live and readable through GitHub control; the comments are ordered by ID and carry the same ChatGPT GitHub App provenance used for prior repository writes.
+- No human-only action has yet been proven necessary because independent payload validation and alternative repository-native execution routes remain available to HQ.
+- `main` remains pre-0.5.4 product state; the final product commit has not yet been created.
 
 ## 4. Release Gates
 
-### GATE-1 — Canonical 0.5.4 candidate and payload source
+### GATE-1 — Canonical candidate and payload
+Status: SATISFIED.
 
-Status: SATISFIED
+Evidence: PR #15 + Issue #14 + pinned source/artifact checksums.
 
-Evidence:
+### GATE-2 — Exact-head integration, tests and artifact
+Status: UNSATISFIED.
 
-PR #15 is live on `feature/stop-phrase-0.5.4` at `8228662758041478aaf17b4e490a4007dabb4f85`. Issue #14 is the payload source. The workflow pins payload SHA-256 `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5` and target artifact SHA-256 `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
+Evidence: portable bootstrap is present on exact head `2e6d7997…`, but no new Actions execution has been created for that head. Historical attempt 2 is not valid evidence for the patched workflow.
 
-Blocking items:
+Blocking item: establish a safe execution route for the patched exact head without weakening the release contract; in parallel validate the pinned Issue #14 payload independently where possible.
 
-None.
+### GATE-3 — Final merge readiness
+Status: UNSATISFIED.
 
-### GATE-2 — Exact-head integration, tests and beta artifact
+Evidence: no final 0.5.4 product commit or exact-head artifact evidence yet; current PR mergeability must be re-evaluated after integration/current-base reconciliation.
 
-Status: UNSATISFIED
+Blocks on: GATE-2.
 
-Evidence:
+### GATE-4 — Merge and post-merge verification
+Status: UNSATISFIED.
 
-Run `30872589019`, attempt 2, job `100082482958` received a matching runner and reached the bootstrap step, then failed with `gh: command not found` before payload reconstruction. Downstream validation, checksum, commit and artifact steps were skipped.
-
-Blocking items:
-
-Portable bootstrap workflow code is required on PR #15 before rerun. This is a bounded release-infrastructure defect, not a human or runner blocker.
-
-### GATE-3 — Final merge-readiness
-
-Status: UNSATISFIED
-
-Evidence:
-
-The final 0.5.4 product commit does not yet exist. GitHub currently reports PR #15 `mergeable: false`; final cause/reconciliation is downstream of successful product integration and must be checked on the new exact head.
-
-Blocking items:
-
-GATE-2.
-
-### GATE-4 — Merge and post-merge release verification
-
-Status: UNSATISFIED
-
-Evidence:
-
-PR #15 is not merged; live product state on `main` remains 0.5.2.
-
-Blocking items:
-
-GATE-3.
+Blocks on: GATE-3.
 
 ## 5. Current Critical Path
 
-### CP-1 — Make the PR #15 release bootstrap portable and rerun exact-head integration
+### CP-1 — Establish executable exact-head 0.5.4 integration
+Status: ACTIVE.
 
-Status: ACTIVE
+Why critical: portable workflow code exists, but the release gate cannot execute until a repository-native trigger/execution route is available.
 
-Release gate:
-
-GATE-2.
-
-Why critical:
-
-The canonical integration cannot reconstruct or validate the verified 0.5.4 payload until the workflow stops depending on tools absent from the actual self-hosted macOS runner. Node.js 22 is already guaranteed by the preceding successful setup step and provides a portable bounded route.
-
-Depends on:
-
-GATE-1.
-
-Blocks:
-
-CP-2, CP-3 and CP-4.
-
-Execution plane: HQ_DIRECT for exact workflow patch, then PROJECT_RUNNER for validation/integration.
+Execution plane: HQ_DIRECT for control/routing; PROJECT_RUNNER when an exact-head run exists.
 
 Exact scope:
+1. Inspect historical PR #15 workflows/runs for a safe reusable execution bridge whose historical definition checks out the current head and executes repository-owned code, without weakening checks or mutating runner state.
+2. Independently reconstruct/validate the pinned Issue #14 payload if the connector data can be materialized safely; use this to verify candidate contents/tests while preserving the mandatory Actions artifact gate.
+3. If a deterministic GitHub-native trigger becomes available, execute the patched workflow on exact head `2e6d7997…`.
+4. Reject unchanged rerun of the historical failed workflow and any bypass that silently drops checksum, safety, test or artifact requirements.
 
-Patch only `.github/workflows/extension-ci.yml` on `feature/stop-phrase-0.5.4` to retrieve Issue #14 body/comments through authenticated GitHub REST using Node.js 22, decode and SHA-256 verify the pinned payload without `gh`, `base64 --decode`, `sha256sum` or `python`, validate archive paths/types before extraction, and verify the beta ZIP SHA-256 using Node.js. Preserve runner selector, source/artifact SHA pins, allowed roots, member count, validation, secret checks, single product commit and artifact publication. Touch only the existing `.release/apply-0.5.4` marker as necessary to trigger the path-filtered workflow. Then live-verify the resulting run on the new exact PR head.
+Acceptance condition: an exact-head integration execution reaches payload reconstruction and either completes all validation/artifact/product-commit steps or yields a new exact terminal failure that materially narrows the path.
 
-Acceptance condition:
+### CP-2 — Verify final 0.5.4 product diff and release evidence
+Status: PENDING.
 
-A new exact-head integration run starts on PR #15 and either succeeds through payload reconstruction, `npm run audit:ci`, checksum/security gates, product commit and artifact upload, or yields a new exact terminal failure that materially narrows CP-1.
+Depends on: CP-1 successful integration.
 
-Evidence:
+Exact scope: inspect final changed files/diff, manifest/permissions, package/version, tests, docs, workflow evidence, artifact/checksum, reviews/threads, mergeability and current base relation.
 
-Attempt 2 job `100082482958`: runner/checkout/Node setup PASS; bootstrap FAIL solely at `gh: command not found`; downstream steps skipped.
+Acceptance condition: all release evidence is present and no product/security/release blocker remains.
 
-### CP-2 — Verify the integrated 0.5.4 product diff and release evidence
+### CP-3 — Merge canonical 0.5.4 PR
+Status: PENDING.
 
-Status: PENDING
+Depends on: CP-2.
 
-Release gate:
+Execution plane: deterministic GitHub control only, with exact expected head SHA.
 
-GATE-3.
+Acceptance condition: GitHub reports merged state and merge SHA.
 
-Why critical:
+### CP-4 — Verify released `main` and close release state
+Status: PENDING.
 
-The final product code cannot be approved for merge until the workflow-created commit exists and its exact diff, tests, permissions, packaging and artifact checksum are live-verified against current `main`.
+Depends on: CP-3.
 
-Depends on:
-
-CP-1 successful integration.
-
-Blocks:
-
-CP-3.
-
-Execution plane: HQ_DIRECT
-
-Exact scope:
-
-Fetch the new PR #15 head; inspect changed files/diff and relevant manifest/package/README/changelog/test surfaces; verify workflow steps, artifact identity/checksum evidence, reviews/threads, mergeability and current base relationship; reject unrelated or security-boundary changes.
-
-Acceptance condition:
-
-All mandatory 0.5.4 release evidence is present, no unresolved release blocker remains, and PR #15 is merge-ready on its exact live head.
-
-Evidence:
-
-Pending CP-1.
-
-### CP-3 — Merge PR #15 into `main`
-
-Status: PENDING
-
-Release gate:
-
-GATE-4.
-
-Why critical:
-
-The release contract requires the verified 0.5.4 product state on the canonical default branch.
-
-Depends on:
-
-CP-2.
-
-Blocks:
-
-CP-4.
-
-Execution plane: HQ_DIRECT or deterministic GitHub control only.
-
-Exact scope:
-
-Live-recheck exact PR #15 head/base/draft/mergeability/checks/reviews/threads and merge with exact expected head SHA through GitHub control. Never route merge through Codex.
-
-Acceptance condition:
-
-GitHub reports PR #15 merged and exposes the merge SHA.
-
-Evidence:
-
-Pending CP-2.
-
-### CP-4 — Verify released 0.5.4 state and close release control state
-
-Status: PENDING
-
-Release gate:
-
-GATE-4.
-
-Why critical:
-
-Merge alone is not release proof; default branch and artifact evidence must match the release contract.
-
-Depends on:
-
-CP-3.
-
-Blocks:
-
-Project DONE.
-
-Execution plane: HQ_DIRECT
-
-Exact scope:
-
-Fetch live `main`, verify version/relevant product files and merge ancestry, confirm 0.5.4 artifact evidence remains available, ensure no unresolved critical execution remains, then update this file to `DONE` iff all gates are satisfied.
-
-Acceptance condition:
-
-Live evidence satisfies the complete release contract.
-
-Evidence:
-
-Pending CP-3.
+Acceptance condition: live default branch and retained artifact evidence satisfy the complete release contract; then project state becomes DONE.
 
 ## 6. Active Execution Registry
 
 HQ:
-
 - Owner: HQ.
-- Scope: portable release-bootstrap patch on PR #15, then live validation/integration control.
-- Ref: PR #15 / `feature/stop-phrase-0.5.4` at `8228662758041478aaf17b4e490a4007dabb4f85` before the patch.
-- Write surface: `.github/workflows/extension-ci.yml` and, only if required to trigger the path-filtered workflow, `.release/apply-0.5.4`; `.github/HQ_CRITICAL_PATH.md` on `main` for HQ state.
-- Expected evidence: new PR head, triggered workflow run, step-level result.
+- Scope: resolve exact-head execution route and independently validate pinned payload where useful.
+- Ref: PR #15 / `feature/stop-phrase-0.5.4` / `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+- Write surface: no product writes until execution route is proven; HQ state writes on `main` only.
 
-Workers:
+Workers: NONE.
 
-NONE.
+Codex: NONE.
 
-Codex:
-
-NONE.
-
-Zero-model control:
-
-NONE active.
-
-CI/runtime:
-
-- Run `30872589019`, attempt 2, job `100082482958` — terminal `failure`.
-- Actual runner: `mac-MacBook-Pro-MishkaStrategy-04`.
-- Failure: bootstrap step, `gh: command not found`, exit 127.
-- No active external write remains from that run.
+CI/runtime: NONE active. Historical run `30872589019` attempt 2 is terminal failure and must not be rerun unchanged as release evidence.
 
 ## 7. Safe Parallel Work
 
-Independent slices:
+Independent useful slice: payload reconstruction/validation can proceed in parallel with execution-route investigation because it is read/verify-only and cannot conflict with the release branch. No temporary worker is required; HQ has the necessary evidence and keeping it local avoids handoff overhead.
 
-NONE — the shortest release path is a two-file maximum bounded bootstrap repair followed immediately by the canonical runner. Parallel product work would overlap the release branch or become stale when the payload integration commit is produced.
+## 8. Current Blocker
 
-## 8. Current Blockers
+Exact blocker: no new Actions run is being emitted for connector-created PR branch mutations or PR reopen, and no manual workflow-dispatch action is exposed by the current GitHub control surface.
 
-Release blocker:
+Affected gate: GATE-2.
 
-- Exact blocker: PR #15 bootstrap workflow depends on unavailable `gh` CLI and contains additional Linux-oriented CLI assumptions on the actual macOS runner.
-- Affected release gate: GATE-2.
-- Evidence: job `100082482958` terminal failure at `gh api`, exit 127; checkout and Node.js 22 succeeded.
-- Attempted safe alternatives: runner availability was tested successfully; rerunning unchanged workflow would deterministically repeat the same defect. Node.js 22 is already installed by the workflow and can replace the missing/OS-specific tooling without weakening pinned hash/path checks.
-- Unblock condition: portable workflow patch lands on the same PR branch and a new exact-head integration run reaches the release gates.
+Evidence:
+- PR #15 head moved to `2e6d7997…` after the portable workflow and marker commits.
+- `fetch_commit_workflow_runs` reports no runs for that exact head.
+- Branch-scoped Actions history contains only historical runs.
+- Close/reopen preserved exact head but produced no new run.
+- No connected/installable workflow-dispatch capability was found.
 
-Project state remains `EXECUTING`, not `BLOCKED`, because HQ_DIRECT can repair the critical defect now.
+Safe alternatives checked:
+- Rerun historical job/run: rejected because it executes the historical workflow revision containing the deterministic `gh` defect.
+- Install/configure runner tooling: rejected as unnecessary and less reproducible than the already-landed portable patch.
+- User/manual action: not yet requested because repository-native execution bridges and independent payload validation remain to be exhausted.
+
+Unblock condition: exact-head patched integration can be executed without weakening mandatory release gates, or a genuinely human-only GitHub Actions trigger is proven after all safe automation routes are exhausted.
+
+Project state remains EXECUTING, not BLOCKED.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS
+Repository Coverage Audit: PASS — release candidate, issue payload, workflows, runner behavior, PR state, trigger behavior and release surface are covered.
 
-Evidence Audit: PASS
+Evidence Audit: PASS — every current blocker/decision has live GitHub evidence; no completion claim depends on chat memory.
 
-Release Alignment Audit: PASS
+Release Alignment Audit: PASS — work remains limited to producing/verifying the 0.5.4 candidate and mandatory artifact.
 
-Dependency & Ordering Audit: PASS
+Dependency & Ordering Audit: PASS — execution/validation must precede final diff approval, merge and post-merge verification.
 
-Execution & Parallelism Audit: PASS
+Execution & Parallelism Audit: PASS — payload verification is the only safe independent slice; branch/product writes remain serialized.
 
-Adversarial Audit: PASS
-
-Material findings and resolutions:
-
-- Runner-unavailability hypothesis is rejected by actual runner assignment and successful checkout/Node setup.
-- Product-failure hypothesis is rejected: no product validation step ran; failure is bootstrap-only.
-- Re-running unchanged workflow is rejected as non-progress because `gh` absence is deterministic.
-- Installing `gh` on the runner is rejected as a longer and less reproducible prerequisite than removing the unnecessary dependency from the bounded workflow.
-- Fixing only the first `gh` line is rejected because the same workflow also uses Linux-specific `base64 --decode`, `sha256sum` and `python`; a single bounded Node-based portability repair reduces serial failure risk without widening release scope.
-- PR #17 remains unrelated to the bootstrap defect and stays excluded.
-- Premature merge remains prevented by CP-2 exact-head product/security/artifact review.
+Adversarial Audit: PASS — rejected stale-workflow rerun, weakened release gates, runner mutation, unrelated PR #17 scope creep and premature merge.
 
 ## 10. Next Action
 
-Exact next action:
+Inspect historical PR #15 workflow definitions/jobs for a reusable exact-head execution bridge while continuing read-only reconstruction/validation of the pinned Issue #14 payload. If neither yields an executable route, escalate only the proven minimal human GitHub Actions trigger requirement.
 
-Patch `.github/workflows/extension-ci.yml` on PR #15 head to use Node.js 22 for authenticated Issue #14 retrieval, base64 decoding and SHA-256 checks while preserving archive-safety validation, then touch the existing release marker only if necessary to trigger the path-filtered workflow and live-verify the new run.
+Executor: HQ_DIRECT.
 
-Executor:
-
-HQ_DIRECT, then PROJECT_RUNNER.
-
-Expected evidence:
-
-New exact PR head SHA, workflow run/job identity, and step-level execution beyond the previous bootstrap failure.
-
-Acceptance condition:
-
-CP-1 reaches the new-run acceptance condition and the path is recalculated from exact live evidence.
+Expected evidence: either a safe reusable run/job identity or independently verified payload/test evidence plus proof that all automated trigger routes are exhausted.
 
 ## 11. Last Material Revision
 
-What changed:
+What changed: portable Node.js 22 bootstrap landed on PR #15 and marker was changed, but GitHub emitted no new Actions run; closing/reopening the PR also emitted no run.
 
-Attempt 2 obtained a self-hosted runner and failed at bootstrap because `gh` is absent. Runner waiting is no longer the critical issue; workflow portability is.
+Why the path changed: the code defect is fixed, so CP-1 is now an execution-trigger/control problem rather than a workflow-portability problem.
 
-Why the critical path changed:
-
-The terminal run materially resolved the previous uncertainty and exposed a deterministic, directly repairable release-infrastructure defect.
-
-Evidence causing the change:
-
-Run `30872589019`, attempt 2, job `100082482958`: runner assigned; checkout PASS; Node.js 22 PASS; payload restore FAIL at `gh: command not found`; downstream steps skipped.
+Evidence causing change: exact PR head `2e6d7997…`, empty exact-head workflow-run result, unchanged branch Actions history, and zero-run result after reopen.
 
 ## 12. Chat Rotation Checkpoint
 
-Safe to rotate chat: YES
+Safe to rotate chat: YES.
 
-Last completed atomic action:
+Last completed atomic action: persisted critical-path revision 4 after portable bootstrap landing and trigger-gap discovery.
 
-Integrated the terminal attempt-2 evidence, re-audited the affected path, and persisted revision 3 before modifying the release branch.
+Active external executions: NONE.
 
-Active external executions and exact refs:
+Unpersisted material reasoning: NONE at this checkpoint.
 
-NONE active at checkpoint. PR #15 head remains `8228662758041478aaf17b4e490a4007dabb4f85` before the planned workflow patch.
-
-Unpersisted material reasoning: NONE
-
-Recovery entrypoint:
-
-Live-fetch PR #15 head and `.github/workflows/extension-ci.yml`. If head is still `8228662758041478aaf17b4e490a4007dabb4f85`, apply the bounded portable-bootstrap patch. If it has moved, inspect the intervening diff before writing.
-
-Exact next action after recovery:
-
-Apply the portable workflow patch, trigger the path-filtered integration workflow on the resulting exact head, and integrate the new run result.
-
-Rotation blockers, if any:
-
-NONE.
+Recovery entrypoint: live-fetch PR #15 head, `.github/workflows/extension-ci.yml`, `.github/HQ_CRITICAL_PATH.md`, and Actions runs for exact head. If head remains `2e6d7997…`, continue CP-1 execution-route investigation; if head moved, inspect intervening diff before any write.
