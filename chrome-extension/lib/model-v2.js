@@ -1,4 +1,5 @@
 export const DEFAULT_COMMAND = "продолжай и не останавливайся до технического лимита";
+export const MAX_STOP_PHRASE_LENGTH = 500;
 export const MIN_INTERVAL_MINUTES = 0.5;
 export const MAX_INTERVAL_MINUTES = 1_440;
 export const MAX_LOG_ENTRIES = 300;
@@ -44,6 +45,7 @@ export function createChat({ title, url, tabId = null, now = new Date().toISOStr
     title: String(title || "Чат ChatGPT").trim() || "Чат ChatGPT",
     url: normalizedURL,
     enabled: true,
+    controlRevision: 0,
     tabId: Number.isInteger(tabId) ? tabId : null,
     lastObservedFingerprint: null,
     lastCommandedFingerprint: null,
@@ -56,6 +58,8 @@ export function createChat({ title, url, tabId = null, now = new Date().toISOStr
     lastRecoveryAt: null,
     lastRecoveryReason: null,
     staleRecoveries: 0,
+    lastStoppedAt: null,
+    lastStopReason: null,
     lastError: null
   };
 }
@@ -68,6 +72,7 @@ export function normalizeChat(raw) {
     title: typeof raw.title === "string" && raw.title.trim() ? raw.title.trim() : "Чат ChatGPT",
     url: normalizedURL,
     enabled: raw.enabled !== false,
+    controlRevision: nonNegativeInteger(raw.controlRevision),
     tabId: Number.isInteger(raw.tabId) ? raw.tabId : null,
     lastObservedFingerprint: stringOrNull(raw.lastObservedFingerprint),
     lastCommandedFingerprint: stringOrNull(raw.lastCommandedFingerprint),
@@ -80,17 +85,20 @@ export function normalizeChat(raw) {
     lastRecoveryAt: stringOrNull(raw.lastRecoveryAt),
     lastRecoveryReason: stringOrNull(raw.lastRecoveryReason),
     staleRecoveries: nonNegativeInteger(raw.staleRecoveries),
+    lastStoppedAt: stringOrNull(raw.lastStoppedAt),
+    lastStopReason: stringOrNull(raw.lastStopReason),
     lastError: stringOrNull(raw.lastError)
   };
 }
 
 export function defaultState() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     enabled: false,
     checkInProgress: false,
     intervalMinutes: 5,
     commandText: DEFAULT_COMMAND,
+    stopPhrase: "",
     theme: "macos",
     sessionId: createSessionId(),
     lastCheckAt: null,
@@ -103,13 +111,14 @@ export function defaultState() {
 export function normalizeState(raw) {
   const fallback = defaultState();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     enabled: raw?.enabled === true,
     checkInProgress: raw?.checkInProgress === true,
     intervalMinutes: clampInterval(raw?.intervalMinutes ?? fallback.intervalMinutes),
     commandText: typeof raw?.commandText === "string" && raw.commandText.trim()
       ? raw.commandText.trim()
       : DEFAULT_COMMAND,
+    stopPhrase: normalizeStopPhrase(raw?.stopPhrase),
     theme: raw?.theme === "preview" ? "preview" : "macos",
     sessionId: typeof raw?.sessionId === "string" && raw.sessionId ? raw.sessionId : fallback.sessionId,
     lastCheckAt: stringOrNull(raw?.lastCheckAt),
@@ -135,10 +144,11 @@ export function appendLog(state, level, message, details = null) {
 }
 
 export function decide(chat, snapshot, sessionId) {
-  const observedAt = stringOrNull(snapshot?.observedAt) || new Date().toISOString();
+  const now = new Date().toISOString();
+  const observedAt = stringOrNull(snapshot?.observedAt) || now;
   const updated = {
     ...chat,
-    lastObservedAt: new Date().toISOString(),
+    lastObservedAt: now,
     lastSnapshotAt: observedAt,
     lastError: null
   };
@@ -149,6 +159,18 @@ export function decide(chat, snapshot, sessionId) {
   if (snapshot.isGenerating) return { chat: updated, decision: "generating" };
 
   const fingerprint = stringOrNull(snapshot.latestFingerprint);
+  if (snapshot.stopPhraseMatched === true && snapshot.latestRole === "assistant") {
+    return {
+      chat: {
+        ...updated,
+        enabled: false,
+        lastObservedFingerprint: fingerprint || chat.lastObservedFingerprint,
+        lastStoppedAt: now,
+        lastStopReason: "stop-phrase"
+      },
+      decision: "stop-phrase-matched"
+    };
+  }
   if (!fingerprint) return { chat: updated, decision: "no-messages" };
   if (chat.lastObservedSessionId !== sessionId) {
     return {
@@ -230,8 +252,18 @@ export function mergeRuntimeState(observedState, latestState) {
     chats: latestState.chats.map((latestChat) => {
       const observed = observedById.get(latestChat.id);
       if (!observed) return latestChat;
+      const sameControlRevision = nonNegativeInteger(observed.controlRevision)
+        === nonNegativeInteger(latestChat.controlRevision);
+      const stopPhraseApplied = sameControlRevision
+        && observed.enabled === false
+        && observed.lastStopReason === "stop-phrase";
       return {
         ...latestChat,
+        ...(stopPhraseApplied ? {
+          enabled: false,
+          lastStoppedAt: observed.lastStoppedAt,
+          lastStopReason: "stop-phrase"
+        } : {}),
         tabId: observed.tabId,
         lastObservedFingerprint: observed.lastObservedFingerprint,
         lastCommandedFingerprint: observed.lastCommandedFingerprint,
@@ -248,6 +280,11 @@ export function mergeRuntimeState(observedState, latestState) {
       };
     })
   };
+}
+
+export function normalizeStopPhrase(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, MAX_STOP_PHRASE_LENGTH);
 }
 
 function mergeLogs(latestLogs, observedLogs) {
