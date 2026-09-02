@@ -1,0 +1,111 @@
+name: HQ rebuild 0.5.4 service-worker patch
+
+on:
+  push:
+    branches: [release/0.5.4-rebuild]
+    paths:
+      - ".github/workflows/hq-rebuild-service-worker-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.5.4-rebuild
+          fetch-depth: 0
+      - name: Apply exact bounded replacements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('chrome-extension/background/service-worker-v2.js')
+          text = path.read_text()
+
+          def replace(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one match, got {count}: {old[:90]!r}')
+              text = text.replace(old, new, 1)
+
+          replace(
+              '  normalizeState,\n  planTabRecovery,',
+              '  normalizeState,\n  normalizeStopPhrase,\n  planTabRecovery,'
+          )
+          replace(
+              '''    case "TOGGLE_CHAT":\n      return { state: await mutateChat(message.chatId, (state, index) => {\n        state.chats[index].enabled = !state.chats[index].enabled;\n        const chat = state.chats[index];''',
+              '''    case "TOGGLE_CHAT":\n      return { state: await mutateChat(message.chatId, (state, index) => {\n        const current = state.chats[index];\n        state.chats[index] = {\n          ...current,\n          enabled: !current.enabled,\n          controlRevision: Number(current.controlRevision || 0) + 1,\n          lastObservedSessionId: null,\n          lastStoppedAt: null,\n          lastStopReason: null\n        };\n        const chat = state.chats[index];'''
+          )
+          replace(
+              '''      enabled: true,\n      lastObservedSessionId: null,\n      lastHardRefreshAt: new Date().toISOString()''',
+              '''      enabled: true,\n      controlRevision: Number(state.chats[index].controlRevision || 0) + 1,\n      lastObservedSessionId: null,\n      lastHardRefreshAt: new Date().toISOString(),\n      lastStoppedAt: null,\n      lastStopReason: null'''
+          )
+          replace(
+              '''  if (typeof patch.commandText === "string" && patch.commandText.trim()) {\n    state.commandText = patch.commandText.trim();\n  }\n  if (patch.theme === "macos" || patch.theme === "preview") {''',
+              '''  if (typeof patch.commandText === "string" && patch.commandText.trim()) {\n    state.commandText = patch.commandText.trim();\n  }\n  if (Object.hasOwn(patch, "stopPhrase")) {\n    state.stopPhrase = normalizeStopPhrase(patch.stopPhrase);\n  }\n  if (patch.theme === "macos" || patch.theme === "preview") {'''
+          )
+          replace(
+              '''        chat,\n        intervalMinutes: observedState.intervalMinutes\n      });''',
+              '''        chat,\n        intervalMinutes: observedState.intervalMinutes,\n        stopPhrase: observedState.stopPhrase\n      });'''
+          )
+          replace(
+              '''        chat: observedState.chats[index],\n        intervalMinutes: latestState.intervalMinutes,\n        allowPeriodicRefresh: false''',
+              '''        chat: observedState.chats[index],\n        intervalMinutes: latestState.intervalMinutes,\n        stopPhrase: latestState.stopPhrase,\n        allowPeriodicRefresh: false'''
+          )
+          replace(
+              '''async function obtainFreshSnapshot({\n  tab,\n  chat,\n  intervalMinutes,\n  allowPeriodicRefresh = true''',
+              '''async function obtainFreshSnapshot({\n  tab,\n  chat,\n  intervalMinutes,\n  stopPhrase = "",\n  allowPeriodicRefresh = true'''
+          )
+          replace(
+              '    return recoverAndInspect(currentTab.id, reason);',
+              '    return recoverAndInspect(currentTab.id, reason, stopPhrase);'
+          )
+          replace(
+              '''      currentTab.id,\n      { type: "CHATPULSE_INSPECT" },\n      { attempts: 2, timeoutMs: CONTENT_MESSAGE_TIMEOUT_MS }''',
+              '''      currentTab.id,\n      { type: "CHATPULSE_INSPECT", stopPhrase },\n      { attempts: 2, timeoutMs: CONTENT_MESSAGE_TIMEOUT_MS }'''
+          )
+          replace(
+              '  if (plan.refresh) return recoverAndInspect(currentTab.id, plan.reason);',
+              '  if (plan.refresh) return recoverAndInspect(currentTab.id, plan.reason, stopPhrase);'
+          )
+          replace(
+              '''async function recoverAndInspect(tabId, reason) {\n  await reloadTabAndWait(tabId, TAB_LOAD_TIMEOUT_MS);\n  await delay(POST_RELOAD_SETTLE_MS);\n  const snapshot = await waitForHydratedSnapshot(tabId, HYDRATION_TIMEOUT_MS);''',
+              '''async function recoverAndInspect(tabId, reason, stopPhrase = "") {\n  await reloadTabAndWait(tabId, TAB_LOAD_TIMEOUT_MS);\n  await delay(POST_RELOAD_SETTLE_MS);\n  const snapshot = await waitForHydratedSnapshot(tabId, HYDRATION_TIMEOUT_MS, stopPhrase);'''
+          )
+          replace(
+              'async function waitForHydratedSnapshot(tabId, timeoutMs) {',
+              'async function waitForHydratedSnapshot(tabId, timeoutMs, stopPhrase = "") {'
+          )
+          replace(
+              '''        tabId,\n        { type: "CHATPULSE_INSPECT" },\n        { attempts: 1, timeoutMs: CONTENT_MESSAGE_TIMEOUT_MS }''',
+              '''        tabId,\n        { type: "CHATPULSE_INSPECT", stopPhrase },\n        { attempts: 1, timeoutMs: CONTENT_MESSAGE_TIMEOUT_MS }'''
+          )
+          replace(
+              '''function decisionLevel(decision) {\n  return ["page-error", "not-authenticated"].includes(decision) ? "warning" : "debug";\n}''',
+              '''function decisionLevel(decision) {\n  if (decision === "stop-phrase-matched") return "info";\n  return ["page-error", "not-authenticated"].includes(decision) ? "warning" : "debug";\n}'''
+          )
+          replace(
+              '''    "already-continued": "этот ответ уже получил команду",\n    "send-continuation": "ответ стабилен и готов к продолжению"''',
+              '''    "already-continued": "этот ответ уже получил команду",\n    "stop-phrase-matched": "обнаружена стоп-фраза; наблюдение за чатом отключено",\n    "send-continuation": "ответ стабилен и готов к продолжению"'''
+          )
+
+          path.write_text(text)
+          PY
+          node --check chrome-extension/background/service-worker-v2.js
+          git diff --check
+      - name: Commit worker integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chrome-extension/background/service-worker-v2.js
+          git commit -m "feat: wire stop phrase through monitoring flow"
+          git push origin HEAD:release/0.5.4-rebuild
