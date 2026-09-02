@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 5
-updated_at: 2026-09-02T01:17:53Z
+critical_path_revision: 6
+updated_at: 2026-09-02T01:20:30Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: INFERRED
@@ -21,14 +21,15 @@ Release target: ChatPulse 0.5.4 beta with a per-chat stop phrase that stops moni
 Release surface:
 - 0.5.4 product source integrated into `main`.
 - GitHub Actions beta artifact `ChatPulse-Chrome-v0.5.4-beta.zip`.
-- Artifact SHA-256 must equal `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
+- Required artifact SHA-256: `64b1285a767dcebc35b34d515c1b3cb6161000f39a19f4daa0c1cc827b4c4ed3`.
+- Required source payload SHA-256: `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
 
 Definition of RELEASED:
-- Verified Issue #14 payload applied from its pinned archive.
+- Canonical pinned payload is recovered and applied without weakening the source pin.
 - Exact candidate validation/package/security gates pass.
 - Expected Actions artifact is published.
-- Canonical 0.5.4 PR is merge-ready and merged into live `main`.
-- Post-merge live `main` and retained artifact satisfy the contract.
+- Canonical 0.5.4 PR is verified, merge-ready and merged into live `main`.
+- Post-merge live `main` and retained artifact satisfy the complete contract.
 
 Explicit exclusions: PR #17 runner-policy refactor, legacy macOS cleanup, Chrome Web Store, GitHub Release/tag and native/Safari packaging unless separately proven required.
 
@@ -38,125 +39,166 @@ Working repository: `MishkaStrategy/ChatPulse`.
 Default branch: `main`.
 Canonical release branch: `feature/stop-phrase-0.5.4`.
 Canonical PR: #15 `Добавить стоп-фразу для остановки отдельного чата`.
-Exact release-candidate head before product integration: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
-Issue payload: #14.
-Pinned source SHA-256: `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
+Pinned pre-integration head: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+Issue payload source: #14 `Temporary verified payload for ChatPulse 0.5.4`.
 
-Portable bootstrap commits on PR #15:
-- `666138923d5d8925412ad600e541067175ae9e74` — Node.js 22 portable API/base64/SHA bootstrap.
-- `2e6d79971ccd58619acac28551ddcf6d457c71a1` — path-filter marker retrigger.
+Temporary execution bridge on `main`:
+- `.github/workflows/hq-0.5.4-release-bridge.yml`.
+- Creation commit `ba1afbac9ca67cab23698238642fd12900d47ff0`.
+- Exact upstream run guard: `30872588990`.
+- Exact release head guard: `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+- Must be removed after terminal release execution/recovery.
 
-Historical release runs:
-- #33 / `29983313396` on hosted Ubuntu: checkout current release branch by name, but deterministic failure because historical workflow uses unsupported `gh api --paginate --slurp --jq` combination.
-- #34 / `30871174014` on hosted Ubuntu: same deterministic `gh --slurp --jq` failure.
-- #35 / `30871703893`: moved to self-hosted fast; cancelled while queued.
-- #36 / `30872589019`, attempt 2, job `100082482958`: self-hosted runner assigned; checkout and Node 22 PASS; deterministic failure `gh: command not found`.
+## 3. Material Live Evidence
 
-Trigger evidence:
-- Connector-created commits and PR close/reopen produced no new `pull_request` Actions run for exact head `2e6d7997…`.
-- Available GitHub connector controls can rerun existing jobs but expose no manual workflow-dispatch action.
-- Existing `Dependency runner policy` workflow has historical PR #15 run `30872588990`, job `91877450201`, and can be rerun.
-- GitHub documentation confirms `workflow_run: types: [completed]` fires when the named upstream workflow completes, including reruns; only the `requested` activity type is omitted on rerun. The listening workflow must exist on the default branch.
+Historical PR-trigger execution defects are now superseded by a working repository-native execution route:
+- Historical hosted runs #33/#34 failed at incompatible `gh --slurp --jq` usage.
+- Historical self-hosted run #36 attempt 2 failed because `gh` was absent.
+- Connector-created PR branch mutations did not emit a new `pull_request` run.
+- A one-shot default-branch `workflow_run` bridge was created and triggered by rerunning existing `Dependency runner policy` run `30872588990`.
 
-## 3. Release Gates
+Bridge evidence:
+- Bridge run: `33578907906`.
+- Job: `100088820763`, `HQ pinned 0.5.4 integration`.
+- Runner: `mac-MacBook-Pro-MishkaStrategy-02`.
+- Checkout pinned release branch: PASS.
+- Exact-head assertion: PASS; log confirms `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+- Node.js 22: PASS.
+- Payload reconstruction/integrity step: FAIL.
+- Downstream tests, artifact, product commit and upload: SKIPPED.
 
-### GATE-1 — Canonical candidate/payload
+Exact new failure:
+- Live Issue #14 body plus all seven comments sorted by comment ID, whitespace removed, base64 decoded, yields SHA-256 `fe85f7384d7b8e1d85106ab4adae0f9d94cfb3a4e3c99a72cbf84c64a3d4753c`.
+- Release contract pins `f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5`.
+- The bridge rejected the mismatch before extraction, exactly as required.
+
+Issue #14 currently has seven comments with IDs, ascending:
+`5054867088`, `5054889283`, `5054906569`, `5054911921`, `5054916671`, `5054921582`, `5054925524`.
+
+No product source was written and no release artifact was produced by failed bridge run `33578907906`.
+
+## 4. Release Gates
+
+### GATE-1 — Canonical release target/candidate
 Status: SATISFIED.
-Evidence: PR #15 + Issue #14 + pinned source/artifact hashes.
+Evidence: PR #15, branch/head pin, Issue #14 source reference and expected source/artifact checksums remain unambiguous.
 
-### GATE-2 — Exact integration, validation and artifact
+### GATE-2A — Executable exact-head release route
+Status: SATISFIED.
+Evidence: bridge run `33578907906` executed on the self-hosted runner, checked out the canonical branch and passed the exact-head assertion.
+
+### GATE-2B — Canonical payload integrity/recovery
 Status: UNSATISFIED.
-Blocking item: execute the pinned candidate through a GitHub Actions route that uses the portable bootstrap and all mandatory gates.
+Blocking item: recover the exact archive bytes or exact intended Issue #14 reconstruction that produces pinned SHA `f1a702...`; do not accept `fe85f7...` merely because it is live.
+
+### GATE-2C — Product tests/package/security/artifact
+Status: UNSATISFIED.
+Blocks on GATE-2B.
 
 ### GATE-3 — Final merge readiness
 Status: UNSATISFIED.
-Blocks on GATE-2 and final exact-head diff/base reconciliation.
+Blocks on GATE-2C and final exact-head diff/base reconciliation.
 
-### GATE-4 — Merge/post-merge release verification
+### GATE-4 — Merge/post-merge verification
 Status: UNSATISFIED.
 Blocks on GATE-3.
 
-## 4. Current Critical Path
+## 5. Current Critical Path
 
-### CP-1 — Execute a pinned one-shot `workflow_run` release bridge
+### CP-1 — Recover and prove the pinned 0.5.4 payload
 Status: ACTIVE.
 
-Why critical: direct connector mutations do not emit a new PR run, while historical release runs are known-bad. A default-branch `workflow_run` listener can be triggered by a native Actions completion event from a rerun of the existing `Dependency runner policy` run.
+Why critical: the execution plane is now proven, but the current Issue #14 reconstruction fails the immutable source integrity pin before any product code can be trusted or applied.
 
-Execution plane: HQ_DIRECT creates/removes the temporary bridge; PROJECT_RUNNER executes it.
+Execution plane: HQ_DIRECT read/audit work; PROJECT_RUNNER only for deterministic diagnostics or final verified recovery.
 
-Exact route:
-1. Create temporary `.github/workflows/hq-0.5.4-release-bridge.yml` on `main` listening only for `workflow_run` completion of `Dependency runner policy`.
-2. Job-level guard requires upstream run ID `30872588990`, upstream head branch `feature/stop-phrase-0.5.4`, same repository, and current pinned release head `2e6d79971ccd58619acac28551ddcf6d457c71a1` after checkout.
-3. The bridge runs on `[self-hosted, fast]`, sets up Node.js 22, retrieves Issue #14 through authenticated REST, validates/decodes the pinned archive, checks 26 regular-file members/roots/paths, extracts, runs `npm run audit:ci`, verifies the pinned beta ZIP SHA, performs the secret/permission checks, preserves the artifact, removes `.release`, creates the single product commit and pushes it to the canonical branch, then uploads the beta artifact.
-4. Rerun historical policy job `91877450201` solely to create the native `workflow_run completed` event; its own result is not release evidence.
-5. Observe the bridge exact run/steps. After terminal bridge result, remove the temporary bridge from `main` and recalculate.
+Exact scope:
+1. Inspect Issue #14 body and each payload comment metadata (`created_at`, `updated_at`, IDs, body lengths/boundaries) for edits, later contamination or ordering mistakes.
+2. Search repository/PR/issue/commit history for the pinned source SHA `f1a702...`, artifact SHA `64b128...`, payload-generation provenance, alternate canonical archive/source or prior exact product snapshot.
+3. If needed, use the existing exact-pinned bridge only for non-secret diagnostics: report chunk IDs/lengths/timestamps and SHA-256 of safe candidate reconstructions/subsets; never log payload contents.
+4. Accept a reconstruction only if it independently yields exact pinned SHA `f1a702...` and passes the original member/path/type constraints.
+5. If no canonical bytes can be recovered after exhausting live repository evidence, escalate the minimal integrity decision rather than changing the pin by guess.
 
-Acceptance condition: bridge starts from pinned head `2e6d7997…` and either succeeds through product commit/artifact publication or produces a new exact terminal failure.
+Acceptance condition: exact archive SHA `f1a702...` is reproducibly recovered from authoritative live evidence, with a documented reconstruction/source path.
 
-### CP-2 — Verify final 0.5.4 product diff and release evidence
+### CP-2 — Run full 0.5.4 gate and publish product commit/artifact
 Status: PENDING.
-Depends on CP-1 success.
-Scope: final changed files, product behavior, manifest/permissions, package/version, tests, docs, artifact/checksum, reviews/threads, mergeability and current-base relation.
+Depends on CP-1.
+Scope: exact-head execution, `npm run audit:ci`, deterministic ZIP SHA, security checks, single product commit, Actions artifact upload.
 
-### CP-3 — Merge canonical 0.5.4 PR
+### CP-3 — Verify final product diff and merge readiness
 Status: PENDING.
 Depends on CP-2.
-Execution: deterministic GitHub control with exact expected head SHA only.
+Scope: product behavior, manifest/permissions, package/version, tests/docs, artifact evidence, reviews/threads, mergeability and current-base relation.
 
-### CP-4 — Verify released `main` and close state
+### CP-4 — Merge canonical PR and verify released `main`
 Status: PENDING.
 Depends on CP-3.
-Acceptance: live main + artifact satisfy full contract; then project state DONE.
+Execution: deterministic GitHub control with exact expected head; then post-merge default-branch/artifact verification.
 
-## 5. Active Execution Registry
+## 6. Active Execution Registry
 
 HQ:
 - Owner: HQ.
-- Scope: create one-shot bridge, rerun policy job, observe bridge, clean bridge.
-- Release ref: `feature/stop-phrase-0.5.4` at `2e6d79971ccd58619acac28551ddcf6d457c71a1` before execution.
-- Temporary main write surface: `.github/workflows/hq-0.5.4-release-bridge.yml` plus this state file.
+- Scope: payload provenance/integrity recovery.
+- Product ref: PR #15 / `feature/stop-phrase-0.5.4` / `2e6d79971ccd58619acac28551ddcf6d457c71a1`.
+- Read surfaces: Issue #14/comments, PR #15 commit/history, repository history/branches/workflows.
+- Temporary main write surface: bridge workflow retained for diagnostics/retry plus this state file.
 
-Workers: NONE — the execution route is deterministic control work and product writes must stay serialized.
+Workers: NONE — current task is evidence correlation on a single integrity chain; worker handoff would duplicate context without independent write-safe closure.
 Codex: NONE.
-Active external execution: NONE at checkpoint.
+Active external execution: NONE; bridge run `33578907906` is terminal failure.
 
-## 6. Safety / Adversarial Controls
+## 7. Safety / Adversarial Controls
 
-- Bridge is one-shot in practice: exact upstream run ID + head branch + repository + exact release-head assertion.
-- Upstream policy result is not trusted as release evidence; it is only a native completion-event source.
-- Historical release reruns are rejected because their immutable historical definitions are deterministically defective.
-- No runner-global installation or mutation is required.
-- No checksum/path/member/test/security/artifact gate is removed.
-- No unrelated PR #17 work is pulled into the release.
-- Temporary bridge must be removed from `main` after its terminal result.
-- Premature merge remains prohibited until CP-2.
+- Never replace expected source SHA with live `fe85f7...` without independent provenance proving a deliberate new canonical payload.
+- Never extract or execute an archive until its source SHA matches the release pin.
+- Do not merge PR #15 while payload/test/artifact gates are incomplete.
+- Do not treat the successful trigger bridge as product validation; it only proves GATE-2A.
+- Do not install global runner tooling or broaden permissions.
+- Do not pull PR #17 into the release unless evidence makes it a real dependency.
+- Do not expose giant payload chunks in normal user-visible output.
+- Remove temporary bridge after release execution/recovery is terminal.
 
-## 7. Critical Path Audits
+## 8. Critical Path Audits
 
-Repository Coverage Audit: PASS — current candidate, historical release runs, default-branch workflows, runner behavior and release surface covered.
-Evidence Audit: PASS — bridge route is supported by live run history plus current official GitHub event semantics; completion still requires live run evidence.
-Release Alignment Audit: PASS — bridge only restores execution of the existing 0.5.4 release gate and does not change the release target/surface.
-Dependency & Ordering Audit: PASS — bridge execution precedes final diff approval, merge and post-merge verification.
-Execution & Parallelism Audit: PASS — no parallel product writes; only deterministic trigger and runner execution.
-Adversarial Audit: PASS — exact run/head/repository pins prevent a generic privileged `workflow_run` path; stale historical release definitions and weakened bypasses rejected.
+Repository Coverage Audit: PASS — candidate, issue payload, all relevant historical release runs, bridge execution, default-branch control state and release surface are covered.
+Evidence Audit: PASS — new CP is driven by exact bridge log hashes and exact-head evidence; no payload-completion claim is inferred from chat memory.
+Release Alignment Audit: PASS — integrity recovery is mandatory to the existing 0.5.4 contract and does not widen product scope.
+Dependency & Ordering Audit: PASS — source integrity must precede extraction/tests/artifact/product commit, which precede final diff/merge/post-merge verification.
+Execution & Parallelism Audit: PASS — current evidence-recovery chain is read-heavy and serialized; no independent product write should run in parallel.
+Adversarial Audit: PASS — rejected hash-pin relaxation, stale historical workflow reruns, premature extraction, premature merge and unrelated infrastructure scope creep.
 
-## 8. Current Blocker / Unblock Condition
+## 9. Current Blocker / Unblock Condition
 
-Current blocker: GATE-2 lacks an executable exact-head run because connector PR mutations do not emit the required PR event.
+Exact blocker: authoritative live Issue #14 reconstruction currently hashes to `fe85f738...`, not required `f1a702c1...`.
+Affected gate: GATE-2B.
 
-Unblock route: one-shot default-branch `workflow_run` bridge triggered by rerun completion of policy run `30872588990`.
+Safe alternatives already resolved:
+- Runner availability: resolved.
+- Exact-head execution route: resolved via one-shot bridge.
+- Historical release reruns: rejected as deterministically defective.
+- Updating the expected SHA to observed live bytes: rejected as integrity bypass.
 
-Human action: NOT REQUIRED at this stage; an automated repository-native route exists.
+Unblock condition: recover/prove a source or reconstruction yielding exact pinned SHA `f1a702...`.
 
-## 9. Next Action
+Project state remains EXECUTING, not BLOCKED, because repository provenance search and deterministic diagnostics remain available.
+Human action: NOT REQUIRED yet.
 
-Create the exact-pinned one-shot bridge on `main`, rerun policy job `91877450201`, and capture the resulting bridge run/job identity and step-level evidence.
+## 10. Next Action
 
-## 10. Chat Rotation Checkpoint
+Search live GitHub history and inspect Issue #14 chunk metadata/provenance to determine whether the mismatch comes from an edited/extra chunk, reconstruction semantics, or loss of the original pinned payload. Use a diagnostic bridge rerun only if repository reads cannot resolve which chunk set is canonical.
+
+## 11. Last Material Revision
+
+What changed: the one-shot execution bridge successfully crossed runner/checkout/exact-head/Node gates but rejected the live Issue #14 reconstruction at source SHA verification.
+Why path changed: trigger/control is no longer the critical problem; payload integrity/provenance is.
+Evidence: bridge run `33578907906`, job `100088820763`, expected `f1a702...`, observed `fe85f738...`.
+
+## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last atomic action: persisted revision 5 selecting the audited `workflow_run` bridge route.
+Last completed atomic action: persisted revision 6 after integrating terminal bridge evidence and re-running all six audits.
 Active external executions: NONE.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: verify PR #15 remains at `2e6d7997…`; verify this state revision; create bridge if absent, otherwise inspect it before rerunning policy job.
+Recovery entrypoint: verify PR #15 remains at `2e6d7997...`, state revision 6 and bridge file still exist; then continue Issue #14 metadata/history and hash-provenance search before any new execution.
