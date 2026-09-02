@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 1
-updated_at: 2026-09-02T00:45:08Z
+critical_path_revision: 2
+updated_at: 2026-09-02T00:49:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: INFERRED
@@ -60,7 +60,7 @@ Default branch:
 
 Default branch observed SHA:
 
-`a017ad5083248abd3d5f34ae59e0909b2fad5f6b` before this state-only persistence commit.
+`a017ad5083248abd3d5f34ae59e0909b2fad5f6b` before HQ state-only persistence commits.
 
 Critical-path basis ref:
 
@@ -90,7 +90,8 @@ Relevant Issues:
 Relevant CI / workflows:
 
 - `.github/workflows/extension-ci.yml` — canonical 0.5.4 integration/validation/artifact workflow.
-- Previous PR #15 run `30872589019`, job `92189878750`: cancelled after receiving no steps; current runner availability must be re-tested live.
+- PR #15 run `30872589019`: attempt 1 was cancelled after receiving no steps; attempt 2 was explicitly started by HQ on 2026-09-02 and is currently queued.
+- Attempt 2 job: `100082482958`, status `queued`, no steps assigned at last live inspection.
 - `.github/workflows/docker-runner-policy.yml` — repository runner policy check; not a product release gate by itself.
 
 Relevant release/deployment state:
@@ -124,7 +125,7 @@ Main contains model, service-worker and stale-tab Node suites plus static/Manife
 
 CI:
 
-GitHub Actions. PR #15 selects `[self-hosted, fast]`; historical exact-head attempts were cancelled without job steps, so runner availability is an execution uncertainty, not yet a project blocker.
+GitHub Actions. PR #15 selects `[self-hosted, fast]`; historical exact-head attempts were cancelled without job steps. HQ has now started attempt 2, which is accepted by GitHub but remains queued without steps at the latest observation.
 
 Release / deployment:
 
@@ -145,8 +146,9 @@ Material findings:
 
 - `main` is still product version 0.5.2.
 - PR #15 has not yet applied the product payload; its live diff is only the integration workflow plus `.release/apply-0.5.4` marker.
-- PR #15 is ten commits behind current `main` but is reported mergeable; final product diff must be re-evaluated after integration.
+- PR #15 is ten product/history commits behind the pre-HQ-state `main` basis but is reported mergeable; final product diff must be re-evaluated after integration.
 - PR #17 is a separate CI-policy change and is excluded from current release scope unless live evidence makes it a prerequisite.
+- HQ state-only commits on `main` do not invalidate the product basis under the organizational self-invalidation rule.
 
 ## 4. Release Gates
 
@@ -168,11 +170,11 @@ Status: UNSATISFIED
 
 Evidence:
 
-PR #15 workflow run `30872589019` / job `92189878750` ended `cancelled`; no job steps ran. Product payload is therefore not yet integrated and no current successful 0.5.4 artifact evidence exists.
+HQ successfully requested attempt 2 of PR #15 workflow run `30872589019`. GitHub reports run attempt 2 as `queued`; new job `100082482958` is `queued` with no assigned steps. Product payload is therefore not yet integrated and no current successful 0.5.4 artifact evidence exists.
 
 Blocking items:
 
-Current availability of a `[self-hosted, fast]` runner is unproven. Previous cancellation is evidence of a past execution failure, not proof of a current hard blocker.
+The current attempt is waiting for a `[self-hosted, fast]` runner. This is an active external execution dependency, not yet a terminal project blocker.
 
 ### GATE-3 — Final merge-readiness
 
@@ -192,7 +194,7 @@ Status: UNSATISFIED
 
 Evidence:
 
-PR #15 is not merged; live `main` still reports version 0.5.2.
+PR #15 is not merged; live product state on `main` remains version 0.5.2.
 
 Blocking items:
 
@@ -200,7 +202,7 @@ GATE-3.
 
 ## 5. Current Critical Path
 
-### CP-1 — Re-run the exact PR #15 integration job and resolve its terminal result
+### CP-1 — Resolve exact PR #15 integration attempt 2
 
 Status: ACTIVE
 
@@ -210,7 +212,7 @@ GATE-2.
 
 Why critical:
 
-The product payload, validation result and 0.5.4 beta artifact do not exist on the PR head until this integration succeeds. Re-testing the previously unavailable execution path is the shortest falsifiable action and may remove the only current uncertainty immediately.
+The product payload, validation result and 0.5.4 beta artifact do not exist on the PR head until this integration succeeds. The current attempt is the shortest canonical route and is already accepted by GitHub.
 
 Depends on:
 
@@ -224,7 +226,7 @@ Execution plane: PROJECT_RUNNER
 
 Exact scope:
 
-Re-run cancelled job `92189878750` from workflow run `30872589019` on exact PR #15 head `8228662758041478aaf17b4e490a4007dabb4f85`; live-observe the attempt. If it succeeds, verify the pushed product commit and artifact. If it fails or remains unavailable, capture exact new evidence and re-route without bypassing release policy.
+Live-observe workflow run `30872589019`, attempt 2, job `100082482958`, on exact PR #15 head `8228662758041478aaf17b4e490a4007dabb4f85`. If it succeeds, verify the pushed product commit and artifact. If it reaches a terminal failure or demonstrates runner unavailability, capture exact evidence and re-route without bypassing release/security constraints.
 
 Acceptance condition:
 
@@ -232,7 +234,7 @@ Either (a) the workflow succeeds and produces the product commit plus expected a
 
 Evidence:
 
-Past attempt cancelled with zero steps; head and PR remain live and unchanged at this revision.
+Attempt 2 was started successfully by HQ and is queued; no steps were assigned at the last live check.
 
 ### CP-2 — Verify the integrated 0.5.4 product diff and release evidence
 
@@ -344,7 +346,7 @@ HQ:
 - Scope: critical-path control, live verification, persistence, PR integration and release verification.
 - Ref: PR #15 / `feature/stop-phrase-0.5.4` at `8228662758041478aaf17b4e490a4007dabb4f85`.
 - Write surface: `.github/HQ_CRITICAL_PATH.md` on `main`; subsequent ordinary GitHub PR lifecycle operations when gates permit.
-- Expected evidence: saved state file, current workflow result, final merge/release evidence.
+- Expected evidence: current workflow result, final merge/release evidence.
 
 Workers:
 
@@ -360,25 +362,29 @@ NONE active.
 
 CI/runtime:
 
-- CP-1 targets existing workflow run `30872589019`, job `92189878750`; a fresh rerun is the immediate next operation.
+- GitHub Actions run `30872589019`, attempt 2.
+- Job `100082482958` — `queued` at last live inspection.
+- Source: PR #15 head `8228662758041478aaf17b4e490a4007dabb4f85`.
+- Write surface if job starts: branch `feature/stop-phrase-0.5.4` through the workflow's exact product integration commit.
+- Expected evidence: completed validation steps, updated PR head, and artifact `ChatPulse-Chrome-v0.5.4-beta`.
 
 ## 7. Safe Parallel Work
 
 Independent slices:
 
-NONE — CP-1 is a short deterministic falsification of the currently uncertain runner path. Parallel worker/development work before its result would add coordination and stale-work risk without shortening the strict release chain.
+NONE — CP-1 is now active external execution. Product-diff verification cannot begin until its write completes, and a second executor touching the release branch would violate non-overlap safety.
 
 ## 8. Current Blockers
 
 No project-level blocker is currently declared.
 
-Execution uncertainty:
+Active external wait:
 
-- Exact issue: previous `[self-hosted, fast]` jobs for PR #15 and PR #17 were cancelled after receiving no steps.
+- Exact dependency: GitHub Actions job `100082482958` requires a matching `[self-hosted, fast]` runner.
 - Affected release gate: GATE-2.
-- Evidence: PR #15 run `30872589019` / job `92189878750` and PR #17 run `30873692666` were cancelled without completed steps.
-- Attempted safe alternatives: repository scan confirmed no reason to bypass the canonical release workflow; current live runner availability has not yet been re-tested in this HQ session.
-- Unblock condition: a fresh exact-head job obtains a runner and completes, or a fresh terminal failure provides evidence for a safe alternate execution route.
+- Evidence: attempt 2 is accepted and queued with no steps assigned.
+- Attempted safe alternatives: canonical rerun was performed; GitHub connector exposes no runner-management capability; no parallel write is safe while the release job is active.
+- Unblock condition: the job obtains a runner and completes, or reaches a terminal state that supplies exact failure evidence for rerouting.
 
 ## 9. Critical Path Audits
 
@@ -400,22 +406,22 @@ Material findings and resolutions:
 - Hidden competing product work: rejected. The only other open PR is draft #17 and changes CI policy, not product behavior.
 - Hidden release surface: rejected. README and historical merged 0.5.2 establish local unpacked extension + Actions ZIP distribution; no current GitHub Release exists and no production deployment is required.
 - Premature merge risk: resolved by requiring the workflow-created product commit, exact-head evidence and a fresh final diff review before merge.
-- Runner failure risk: incorporated as CP-1; past cancellation is not upgraded to BLOCKED until current retry and safe-route analysis prove it.
+- Runner risk: incorporated into active CP-1. Attempt 2 is live; no claim of terminal unavailability is made while it remains queued.
 - Scope creep: PR #17 and legacy cleanup explicitly excluded from current release path.
 
 ## 10. Next Action
 
 Exact next action:
 
-Re-run workflow job `92189878750` for PR #15 and live-inspect the new attempt on exact head `8228662758041478aaf17b4e490a4007dabb4f85`.
+Live-check workflow run `30872589019` attempt 2 / job `100082482958`; if execution begins, verify its steps and terminal result; if terminal, integrate the exact result immediately.
 
 Executor:
 
-PROJECT_RUNNER via HQ GitHub control.
+HQ observing PROJECT_RUNNER.
 
 Expected evidence:
 
-A new workflow attempt with queued/in-progress/completed status, step-level execution when a runner is assigned, and a terminal success or exact failure reason.
+Job status transition, step-level execution once assigned, and a terminal success or exact failure reason.
 
 Acceptance condition:
 
@@ -425,15 +431,15 @@ CP-1 reaches its acceptance condition and the critical path is recalculated from
 
 What changed:
 
-Initial verified HQ critical path created after first-run repository reconnaissance.
+HQ started exact PR #15 integration attempt 2. GitHub accepted the rerun and created job `100082482958`, which is queued without steps.
 
 Why the critical path changed:
 
-No prior canonical HQ state file existed. Live repository evidence identifies 0.5.4 PR #15 as the nearest release candidate and the cancelled integration workflow as the first unresolved release gate.
+The previous runner availability uncertainty is now an active external execution with an exact run attempt and job identity.
 
 Evidence causing the change:
 
-Live default branch `main`, PR #15, Issue #14, workflows, repository tree/governance/test surfaces, Actions history, empty GitHub Releases list, historical merged PR #12 and closed-unmerged PR #13.
+Workflow run `30872589019` reports `run_attempt: 2`, status `queued`, exact head `8228662758041478aaf17b4e490a4007dabb4f85`; job `100082482958` reports `queued` with no steps.
 
 ## 12. Chat Rotation Checkpoint
 
@@ -441,21 +447,23 @@ Safe to rotate chat: YES
 
 Last completed atomic action:
 
-First-run reconnaissance and 6/6 critical-path audit completed; this verified revision is being persisted as the state-only checkpoint.
+Started PR #15 integration attempt 2 and persisted its exact live identity/status.
 
 Active external executions and exact refs:
 
-No fresh external execution is active yet. Next target is workflow run `30872589019` / job `92189878750` on PR #15 head `8228662758041478aaf17b4e490a4007dabb4f85`.
+- GitHub Actions run `30872589019`, attempt 2.
+- Job `100082482958`, last known status `queued`.
+- PR #15 head `8228662758041478aaf17b4e490a4007dabb4f85`.
 
 Unpersisted material reasoning: NONE
 
 Recovery entrypoint:
 
-Live-fetch PR #15 head and workflow run/job state. Confirm whether CP-1 rerun has been initiated since this checkpoint.
+Live-fetch PR #15 head plus workflow run `30872589019` and job `100082482958`. Confirm whether attempt 2 is still queued, running, completed, or has pushed a new PR head.
 
 Exact next action after recovery:
 
-If no fresh attempt exists, re-run job `92189878750`; otherwise live-integrate the current attempt result and continue CP-1.
+Integrate the current attempt-2 result; on success proceed to CP-2, on terminal failure recalculate CP-1 from exact evidence, and if still queued continue live observation without overlapping writes.
 
 Rotation blockers, if any:
 
