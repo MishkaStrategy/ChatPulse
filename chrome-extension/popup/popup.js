@@ -76,14 +76,19 @@ async function request(type, payload = {}) {
 function render() {
   if (!currentState) return;
 
+  const activeTasks = currentState.chats.filter((chat) => chat.taskActive).length;
   elements.body.dataset.theme = currentState.theme === "preview" ? "preview" : "macos";
   elements.monitorState.textContent = currentState.checkInProgress
     ? "Проверка чатов…"
-    : currentState.enabled
-      ? "Работает"
-      : "Остановлено";
+    : !currentState.enabled
+      ? "Остановлено"
+      : currentState.taskOnly
+        ? `Задачи: ${activeTasks}`
+        : "Работает";
   elements.statusText.textContent = statusSummary(currentState);
-  elements.toggleButton.textContent = currentState.enabled ? "Остановить" : "Запустить";
+  elements.toggleButton.textContent = currentState.enabled
+    ? currentState.taskOnly ? "Остановить всё" : "Остановить"
+    : "Запустить";
   elements.toggleButton.dataset.running = String(currentState.enabled);
   elements.intervalSelect.value = String(currentState.intervalMinutes);
   elements.chatCount.textContent = String(currentState.chats.length);
@@ -100,6 +105,7 @@ function render() {
     const remove = fragment.querySelector(".chat-remove");
 
     card.dataset.enabled = String(chat.enabled);
+    card.dataset.task = String(chat.taskActive === true);
     fragment.querySelector(".chat-title").textContent = chat.title;
     fragment.querySelector(".chat-status").textContent = chatStatus(chat);
 
@@ -117,20 +123,46 @@ function render() {
 
 function statusSummary(state) {
   if (state.checkInProgress) return "Идёт последовательная проверка";
-  if (!state.enabled) return "Использует текущий профиль Chrome";
+  if (!state.enabled) return "Master-stop активен · фоновые отправки выключены";
   const enabledCount = state.chats.filter((chat) => chat.enabled).length;
+  const activeTasks = state.chats.filter((chat) => chat.taskActive).length;
+  if (state.taskOnly) {
+    return activeTasks > 0
+      ? `${activeTasks} задач работают; обычные чаты не проверяются`
+      : "Task-only engine завершает работу";
+  }
   if (!enabledCount) return "Добавьте или включите хотя бы один чат";
   if (state.nextCheckAt) return `Следующая проверка ${formatTime(state.nextCheckAt)}`;
-  return `${enabledCount} чатов под наблюдением`;
+  return `${enabledCount} чатов под наблюдением · ${activeTasks} задач`;
 }
 
 function chatStatus(chat) {
-  if (!chat.enabled) return "Наблюдение отключено";
+  if (chat.taskActive) {
+    const count = Number(chat.continuationCount || 0);
+    const limit = Number(chat.profile?.maxContinuations || 0);
+    return limit > 0
+      ? `Задача выполняется · ${count}/${limit} продолжений`
+      : `Задача выполняется · ${count} продолжений`;
+  }
+  if (!chat.enabled) return completionLabel(chat.lastStopReason) || "Наблюдение отключено";
   if (chat.lastError) return chat.lastError;
+  if (chat.lastStopReason) return completionLabel(chat.lastStopReason) || `Остановлен: ${chat.lastStopReason}`;
+  if (chat.nextEligibleAt) return `Следующая проверка ${formatTime(chat.nextEligibleAt)}`;
   if (chat.lastCommandAt) return `Команда отправлена ${formatTime(chat.lastCommandAt)}`;
   if (chat.lastRecoveryAt) return `Вкладка восстановлена ${formatTime(chat.lastRecoveryAt)}`;
   if (chat.lastObservedAt) return `Проверен ${formatTime(chat.lastObservedAt)}`;
   return "Ожидает первой проверки";
+}
+
+function completionLabel(reason) {
+  return {
+    "stop-phrase": "Остановлен стоп-фразой",
+    "continuation-limit": "Достигнут лимит продолжений",
+    "runtime-limit": "Достигнут лимит времени",
+    "manual-task-stop": "Задача остановлена вручную",
+    "global-stop": "Задача остановлена общим Stop",
+    manual: "Наблюдение отключено"
+  }[reason] || "";
 }
 
 function formatTime(value) {
