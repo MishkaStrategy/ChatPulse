@@ -1,0 +1,43 @@
+name: HQ one-shot 0.7.0 release surface
+
+on:
+  push:
+    branches:
+      - release/0.7.0-github-actions-watchdog
+    paths:
+      - scripts/hq_apply_070_release_surface.py
+      - .github/workflows/hq-apply-070-release-surface.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.7.0-github-actions-watchdog
+          fetch-depth: 0
+      - name: Apply release surface
+        run: python3 scripts/hq_apply_070_release_surface.py
+      - name: Verify full audit and reproducible package
+        run: |
+          set -euo pipefail
+          npm run audit:extension
+          npm run package:beta
+          test -f dist/ChatPulse-Chrome-v0.7.0-beta.zip
+          test -f dist/ChatPulse-Chrome-v0.7.0-source-manifest.txt
+          git diff --check
+      - name: Commit release surface and clean helper
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          rm -f scripts/hq_apply_070_release_surface.py .github/workflows/hq-apply-070-release-surface.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "release: prepare ChatPulse 0.7.0 beta watchdog"
+          git push origin HEAD:release/0.7.0-github-actions-watchdog
