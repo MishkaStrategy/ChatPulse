@@ -126,3 +126,35 @@ test("task-start Telegram event is emitted only after task state is persisted", 
   const notifyIndex = block.indexOf('notifyChatEvent(state, state.chats[index], "task-started")');
   assert.ok(persistIndex >= 0 && notifyIndex > persistIndex, "task start must be persisted before Telegram event");
 });
+
+test("task mode has its own engine scope while top Stop remains master stop", () => {
+  const startTaskIndex = workerSource.indexOf('case "START_TASK"');
+  const stopTaskIndex = workerSource.indexOf('case "STOP_TASK"');
+  const startTaskBlock = workerSource.slice(startTaskIndex, stopTaskIndex);
+  assert.ok(startTaskBlock.includes("taskOnly:"), "START_TASK must choose taskOnly engine mode");
+  assert.ok(startTaskBlock.includes('runCheck("task-start", false, selectedChatId)'), "task start immediate check must target only selected chat");
+
+  const stopMonitoringIndex = workerSource.indexOf('case "STOP_MONITORING"');
+  const checkNowIndex = workerSource.indexOf('case "CHECK_NOW"');
+  const stopBlock = workerSource.slice(stopMonitoringIndex, checkNowIndex);
+  assert.ok(stopBlock.includes("enabled: false"));
+  assert.ok(stopBlock.includes("taskOnly: false"));
+  assert.ok(stopBlock.includes('stopTaskMode(chat, "global-stop")'), "top Stop must terminate active task mode");
+});
+
+test("taskOnly loop excludes ordinary chats and live send gate requires same global session", () => {
+  assert.ok(workerSource.includes("if (observedState.taskOnly && !chat.taskActive && !allowWhenStopped) continue;"));
+  assert.ok(workerSource.includes("const sameSession = latestState.sessionId === observedState.sessionId;"));
+  assert.ok(workerSource.includes("!sameSession"), "old pre-Stop/Start checks must not send in a new global session");
+  assert.ok(workerSource.includes("!latestState.taskOnly || liveChat?.taskActive === true"));
+});
+
+test("destructive identity mutations are blocked during an active check", () => {
+  const removeIndex = workerSource.indexOf('case "REMOVE_CHAT"');
+  const toggleIndex = workerSource.indexOf('case "TOGGLE_CHAT"');
+  assert.ok(workerSource.slice(removeIndex, toggleIndex).includes("assertIdentityMutationSafe()"));
+  const importIndex = workerSource.indexOf('case "IMPORT_CONFIG"');
+  const clearLogsIndex = workerSource.indexOf('case "CLEAR_LOGS"');
+  assert.ok(workerSource.slice(importIndex, clearLogsIndex).includes("assertIdentityMutationSafe()"));
+  assert.ok(workerSource.includes("function assertIdentityMutationSafe()"));
+});
