@@ -24,6 +24,10 @@ test("GitHub API permission is optional and never an install-time host permissio
 test("Control Center requests GitHub permission only when saving an enabled watcher", () => {
   assert.ok(options.includes('const GITHUB_ORIGIN = "https://api.github.com/*"'));
   assert.ok(options.includes("chrome.permissions.request({ origins: [GITHUB_ORIGIN] })"));
+  const permissionStart = options.indexOf("async function ensureGithubPermission()");
+  const permissionEnd = options.indexOf("async function exportConfig()", permissionStart);
+  const permissionBlock = options.slice(permissionStart, permissionEnd);
+  assert.equal(permissionBlock.includes("permissions.contains"), false, "permission request must stay in the direct Save/Start user gesture");
   assert.ok(options.includes("if (draft.githubWatchEnabled)"));
   assert.ok(options.includes("await ensureGithubPermission()"));
   assert.ok(optionsHtml.includes("profile-github-watch-enabled"));

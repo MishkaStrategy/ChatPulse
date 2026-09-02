@@ -150,7 +150,6 @@ async function ensureTelegramPermission() {
 
 async function ensureGithubPermission() {
   try {
-    if (await chrome.permissions.contains({ origins: [GITHUB_ORIGIN] })) return true;
     const granted = await chrome.permissions.request({ origins: [GITHUB_ORIGIN] });
     if (!granted) {
       showMessage("GitHub Actions watchdog не включён: Chrome не выдал optional access к api.github.com.", "error");
