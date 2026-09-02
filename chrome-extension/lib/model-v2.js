@@ -424,17 +424,19 @@ export function mergeRuntimeState(observedState, latestState) {
       const sameControlRevision = nonNegativeInteger(observed.controlRevision)
         === nonNegativeInteger(latestChat.controlRevision);
       if (!sameControlRevision) return latestChat;
+      const runtimeAutoStop = observed.enabled === false
+        && ["stop-phrase", "continuation-limit", "runtime-limit"].includes(observed.lastStopReason);
       return {
         ...latestChat,
-        enabled: observed.enabled,
+        enabled: runtimeAutoStop ? false : latestChat.enabled,
         runStartedAt: observed.runStartedAt,
         continuationCount: observed.continuationCount,
-        taskActive: observed.taskActive,
+        taskActive: runtimeAutoStop ? false : observed.taskActive,
         taskStartedAt: observed.taskStartedAt,
-        taskCompletedAt: observed.taskCompletedAt,
-        taskCompletionReason: observed.taskCompletionReason,
+        taskCompletedAt: runtimeAutoStop ? observed.taskCompletedAt : latestChat.taskCompletedAt,
+        taskCompletionReason: runtimeAutoStop ? observed.taskCompletionReason : latestChat.taskCompletionReason,
         lastDecision: observed.lastDecision,
-        nextEligibleAt: observed.nextEligibleAt,
+        nextEligibleAt: runtimeAutoStop ? null : observed.nextEligibleAt,
         lastTelegramErrorKey: observed.lastTelegramErrorKey,
         tabId: observed.tabId,
         lastObservedFingerprint: observed.lastObservedFingerprint,
@@ -448,8 +450,8 @@ export function mergeRuntimeState(observedState, latestState) {
         lastRecoveryAt: observed.lastRecoveryAt,
         lastRecoveryReason: observed.lastRecoveryReason,
         staleRecoveries: observed.staleRecoveries,
-        lastStoppedAt: observed.lastStoppedAt,
-        lastStopReason: observed.lastStopReason,
+        lastStoppedAt: runtimeAutoStop ? observed.lastStoppedAt : latestChat.lastStoppedAt,
+        lastStopReason: runtimeAutoStop ? observed.lastStopReason : latestChat.lastStopReason,
         lastError: observed.lastError
       };
     })
