@@ -271,6 +271,33 @@
             <small>0 = без лимита.</small>
           </label>
 
+          <section class="integration-box profile-wide profile-github-watch" aria-label="GitHub Actions watchdog">
+            <div class="integration-heading">
+              <div>
+                <span class="eyebrow">Project watchdog</span>
+                <h3>GitHub Actions</h3>
+              </div>
+              <label class="toggle-line">
+                <input class="profile-github-watch-enabled" type="checkbox">
+                <span>Следить за activity</span>
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">
+                <span>Repository</span>
+                <input class="profile-github-repository" type="text" autocomplete="off" spellcheck="false" placeholder="owner/repo">
+                <small>Публичный GitHub repository, привязанный к этому project-чату.</small>
+              </label>
+              <label class="field">
+                <span>Перезапуск после простоя, минут</span>
+                <input class="profile-github-idle" type="number" min="10" max="10080" step="1" inputmode="numeric">
+                <small>Если новый workflow run не появился за N минут, будет максимум один controlled restart до следующей новой Actions activity.</small>
+              </label>
+            </div>
+            <small class="profile-github-status">Watchdog выключен.</small>
+            <p class="integration-note">Доступ к <code>api.github.com</code> запрашивается Chrome только при включении. ChatPulse читает только последний публичный workflow run, не использует GitHub token, не запускает workflows и не пишет в repository.</p>
+          </section>
+
           <label class="toggle-line profile-telegram">
             <input class="profile-telegram-notify" type="checkbox">
             <span>Telegram-события для этого чата</span>

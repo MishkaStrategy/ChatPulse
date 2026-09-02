@@ -11,19 +11,28 @@ import {
   decide,
   defaultState,
   effectiveChatProfile,
+  GITHUB_POLL_INTERVAL_MINUTES,
+  githubWatchdogDecision,
   hasCompletionGuard,
   isChatDue,
+  MAX_GITHUB_WATCHED_REPOSITORIES,
   mergeDispatchCheckpoint,
   mergeRuntimeState,
   normalizeChatProfile,
   normalizeChatURL,
+  normalizeGithubRepository,
   normalizeState,
   normalizeStopPhrase,
   planTabRecovery,
   prepareChatRun,
   recordDispatch,
+  recordGithubActionsObservation,
+  recordGithubRestart,
+  recordGithubWatchError,
   recordRecovery,
+  resetGithubWatchRuntime,
   scheduleNextChatCheck,
+  shouldPollGithubRepository,
   startChatRun,
   stopChatRun,
   stopTaskMode
@@ -34,9 +43,14 @@ import {
   sendTelegramTest,
   updateTelegramConfig
 } from "./telegram.js";
+import {
+  fetchLatestGithubWorkflowRun,
+  hasGithubApiPermission
+} from "./github-actions.js";
 
 const STORAGE_KEY = "chatpulseState";
 const ALARM_NAME = "chatpulse-monitor";
+const GITHUB_ALARM_NAME = "chatpulse-github-actions-watchdog";
 const CHATGPT_PATTERNS = ["https://chatgpt.com/*", "https://chat.openai.com/*"];
 const TAB_LOAD_TIMEOUT_MS = 45_000;
 const HYDRATION_TIMEOUT_MS = 20_000;
@@ -54,6 +68,7 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) void runCheck("alarm");
+  if (alarm.name === GITHUB_ALARM_NAME) void runCheck("github-watchdog");
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -103,7 +118,7 @@ async function handleMessage(message) {
       }, "info", "Наблюдение запущено");
       state = await configureAlarm(state);
       await persistAndPublish(state);
-      void runCheck("start");
+      void runCheck("start").then(() => runCheck("github-watchdog-start"));
       return { state };
     }
 
@@ -124,6 +139,7 @@ async function handleMessage(message) {
 
     case "CHECK_NOW":
       await runCheck("manual", true);
+      await runCheck("github-watchdog-manual");
       return { state: await loadState() };
 
     case "ADD_CURRENT_CHAT":
@@ -150,25 +166,14 @@ async function handleMessage(message) {
         );
       }) };
 
-    case "UPDATE_CHAT_PROFILE":
-      return { state: await mutateChat(message.chatId, (state, index) => {
-        const current = state.chats[index];
-        const profile = normalizeChatProfile({
-          ...current.profile,
-          ...(message.profile || {})
-        });
-        const candidate = {
-          ...current,
-          profile,
-          controlRevision: Number(current.controlRevision || 0) + 1,
-          nextEligibleAt: null
-        };
-        if (candidate.taskActive && !hasCompletionGuard(effectiveChatProfile(state, candidate))) {
-          throw new Error("Активная задача должна иметь стоп-фразу, лимит продолжений или лимит времени.");
-        }
-        state.chats[index] = candidate;
-        return appendLog(state, "info", `Профиль «${current.title}» обновлён`);
-      }) };
+    case "UPDATE_CHAT_PROFILE": {
+      const state = await updateChatProfile(message.chatId, message.profile || {});
+      const chat = state.chats.find((candidate) => candidate.id === message.chatId);
+      if (state.enabled && chat && effectiveChatProfile(state, chat).githubWatchEnabled) {
+        void runCheck("github-watchdog-profile");
+      }
+      return { state };
+    }
 
     case "START_TASK": {
       let state = await loadState();
@@ -189,7 +194,8 @@ async function handleMessage(message) {
       await persistAndPublish(state);
       state = await notifyChatEvent(state, state.chats[index], "task-started");
       await persistAndPublish(state);
-      void runCheck("task-start", false, selectedChatId);
+      void runCheck("task-start", false, selectedChatId)
+        .then(() => runCheck("github-watchdog-task-start"));
       return { state };
     }
 
@@ -236,8 +242,10 @@ async function handleMessage(message) {
     case "IMPORT_CONFIG": {
       assertIdentityMutationSafe();
       let state = applyPortableConfig(message.config);
+      assertGithubWatchCapacity(state);
       state = appendLog(state, "info", "Портативная конфигурация импортирована; мониторинг оставлен остановленным для безопасного baseline");
       await chrome.alarms.clear(ALARM_NAME);
+      await chrome.alarms.clear(GITHUB_ALARM_NAME);
       state = await configureAlarm(state);
       await persistAndPublish(state);
       return { state };
@@ -339,6 +347,51 @@ async function mutateChat(chatId, mutator) {
   return state;
 }
 
+async function updateChatProfile(chatId, profilePatch) {
+  let state = await loadState();
+  const index = state.chats.findIndex((chat) => chat.id === chatId);
+  if (index < 0) throw new Error("Чат не найден.");
+
+  const current = state.chats[index];
+  const requestedProfile = { ...current.profile, ...(profilePatch || {}) };
+  if (requestedProfile.githubWatchEnabled === true && !normalizeGithubRepository(requestedProfile.githubRepository)) {
+    throw new Error("Для GitHub Actions watchdog укажите repository в формате owner/repo.");
+  }
+  const profile = normalizeChatProfile(requestedProfile);
+  const previousProfile = normalizeChatProfile(current.profile);
+  const watchdogChanged = previousProfile.githubWatchEnabled !== profile.githubWatchEnabled
+    || previousProfile.githubRepository !== profile.githubRepository
+    || previousProfile.githubIdleMinutes !== profile.githubIdleMinutes;
+
+  let candidate = {
+    ...current,
+    profile,
+    controlRevision: Number(current.controlRevision || 0) + 1,
+    nextEligibleAt: null
+  };
+  if (watchdogChanged) candidate = resetGithubWatchRuntime(candidate);
+  if (candidate.taskActive && !hasCompletionGuard(effectiveChatProfile(state, candidate))) {
+    throw new Error("Активная задача должна иметь стоп-фразу, лимит продолжений или лимит времени.");
+  }
+  state.chats[index] = candidate;
+  assertGithubWatchCapacity(state);
+  state = appendLog(state, "info", `Профиль «${current.title}» обновлён`);
+  state = await configureAlarm(state);
+  await persistAndPublish(state);
+  return state;
+}
+
+function assertGithubWatchCapacity(state) {
+  const repositories = new Set();
+  for (const chat of state.chats) {
+    const profile = effectiveChatProfile(state, chat);
+    if (profile.githubWatchEnabled && profile.githubRepository) repositories.add(profile.githubRepository);
+  }
+  if (repositories.size > MAX_GITHUB_WATCHED_REPOSITORIES) {
+    throw new Error(`GitHub Actions watchdog поддерживает не более ${MAX_GITHUB_WATCHED_REPOSITORIES} уникальных repositories.`);
+  }
+}
+
 async function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
   if (activeCheck) return activeCheck;
   activeCheck = performCheck(source, allowWhenStopped, onlyChatId).finally(() => {
@@ -348,6 +401,9 @@ async function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
 }
 
 async function performCheck(source, allowWhenStopped, onlyChatId = null) {
+  if (source.startsWith("github-watchdog")) {
+    return performGithubWatchdog(source);
+  }
   let observedState = await loadState();
   if (!observedState.enabled && !allowWhenStopped) return;
 
@@ -575,6 +631,275 @@ async function performCheck(source, allowWhenStopped, onlyChatId = null) {
   let merged = mergeRuntimeState(observedState, latestState);
   merged = await configureAlarm(merged);
   await persistAndPublish(merged);
+}
+
+async function performGithubWatchdog(source) {
+  let observedState = await loadState();
+  if (!observedState.enabled) return;
+
+  const eligible = observedState.chats.filter((chat) => {
+    if (!chat.enabled) return false;
+    if (observedState.taskOnly && !chat.taskActive) return false;
+    const profile = effectiveChatProfile(observedState, chat);
+    return profile.githubWatchEnabled && Boolean(profile.githubRepository);
+  });
+  if (!eligible.length) return;
+
+  const groups = new Map();
+  for (const chat of eligible) {
+    const profile = effectiveChatProfile(observedState, chat);
+    const list = groups.get(profile.githubRepository) || [];
+    list.push(chat.id);
+    groups.set(profile.githubRepository, list);
+  }
+  if (groups.size > MAX_GITHUB_WATCHED_REPOSITORIES) {
+    observedState = appendLog(observedState, "error", `GitHub Actions watchdog остановлен: превышен лимит ${MAX_GITHUB_WATCHED_REPOSITORIES} repositories`);
+    const latest = await loadState();
+    const merged = mergeRuntimeState({ ...observedState, lastCheckAt: latest.lastCheckAt }, latest);
+    await persistAndPublish(merged);
+    return;
+  }
+
+  const forcePoll = source === "github-watchdog-manual";
+  const permissionGranted = await hasGithubApiPermission();
+  const now = new Date().toISOString();
+  let touched = false;
+  const successfulRepositories = new Set();
+
+  for (const [repository, chatIds] of groups) {
+    const groupChats = chatIds
+      .map((id) => observedState.chats.find((chat) => chat.id === id))
+      .filter(Boolean);
+    if (!forcePoll && !groupChats.some((chat) => shouldPollGithubRepository(chat))) continue;
+
+    touched = true;
+    if (!permissionGranted) {
+      for (const chatId of chatIds) {
+        const index = observedState.chats.findIndex((chat) => chat.id === chatId);
+        if (index >= 0) {
+          observedState.chats[index] = recordGithubWatchError(
+            observedState.chats[index],
+            "Chrome не выдал optional access к api.github.com.",
+            now
+          );
+        }
+      }
+      observedState = appendLog(observedState, "warning", `${repository}: GitHub Actions watchdog ждёт optional permission`);
+      continue;
+    }
+
+    try {
+      const activity = await fetchLatestGithubWorkflowRun(repository);
+      successfulRepositories.add(repository);
+      for (const chatId of chatIds) {
+        const index = observedState.chats.findIndex((chat) => chat.id === chatId);
+        if (index >= 0) {
+          observedState.chats[index] = recordGithubActionsObservation(
+            observedState.chats[index],
+            activity,
+            now
+          );
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      for (const chatId of chatIds) {
+        const index = observedState.chats.findIndex((chat) => chat.id === chatId);
+        if (index >= 0) observedState.chats[index] = recordGithubWatchError(observedState.chats[index], message, now);
+      }
+      observedState = appendLog(observedState, "warning", `${repository}: ${message}`);
+    }
+  }
+
+  if (!touched) return;
+  const latestAfterFetch = await loadState();
+  let merged = mergeRuntimeState({ ...observedState, lastCheckAt: latestAfterFetch.lastCheckAt }, latestAfterFetch);
+  merged = await configureAlarm(merged);
+  await persistAndPublish(merged);
+
+  const restartIds = merged.chats
+    .filter((chat) => {
+      if (!chat.enabled || (merged.taskOnly && !chat.taskActive)) return false;
+      const profile = effectiveChatProfile(merged, chat);
+      return profile.githubWatchEnabled
+        && successfulRepositories.has(profile.githubRepository)
+        && githubWatchdogDecision(chat, profile.githubIdleMinutes).decision === "restart";
+    })
+    .map((chat) => chat.id);
+
+  for (const chatId of restartIds) {
+    await attemptGithubWatchdogRestart(chatId);
+  }
+}
+
+async function attemptGithubWatchdogRestart(chatId) {
+  let state = await loadState();
+  if (!state.enabled) return;
+  let index = state.chats.findIndex((chat) => chat.id === chatId);
+  if (index < 0) return;
+  let chat = state.chats[index];
+  if (!chat.enabled || (state.taskOnly && !chat.taskActive)) return;
+
+  let profile = effectiveChatProfile(state, chat);
+  if (!profile.githubWatchEnabled || !profile.githubRepository) return;
+  const stall = githubWatchdogDecision(chat, profile.githubIdleMinutes);
+  if (stall.decision !== "restart" || !stall.restartKey) return;
+
+  const guard = completionGuardReason(chat, profile);
+  if (guard) {
+    state.chats[index] = applyCompletion(chat, guard);
+    state = appendLog(state, "info", `${chat.title}: ${completionDescription(guard)}`);
+    state = await notifyChatEvent(state, state.chats[index], guard);
+    state = await configureAlarm(state);
+    await persistAndPublish(state);
+    return;
+  }
+
+  const sessionId = state.sessionId;
+  const controlRevision = Number(chat.controlRevision || 0);
+  try {
+    let tab = await ensureChatTab(chat);
+    const freshness = await obtainFreshSnapshot({
+      tab,
+      chat,
+      intervalMinutes: profile.intervalMinutes,
+      stopPhrase: profile.stopPhrase,
+      allowPeriodicRefresh: false
+    });
+    tab = freshness.tab;
+    let runtimeChat = { ...chat, tabId: tab.id ?? null };
+    if (freshness.recoveryReason) runtimeChat = recordRecovery(runtimeChat, freshness.recoveryReason);
+    const firstDecision = decide(runtimeChat, freshness.snapshot, sessionId);
+    runtimeChat = firstDecision.chat;
+
+    if (firstDecision.decision === "stop-phrase-matched") {
+      if (await persistSingleRuntimeChat(runtimeChat, sessionId)) {
+        const stopped = await loadState();
+        const stoppedChat = stopped.chats.find((candidate) => candidate.id === chatId);
+        if (stoppedChat) {
+          const notified = await notifyChatEvent(stopped, stoppedChat, "stop-phrase");
+          await persistAndPublish(await configureAlarm(notified));
+        }
+      }
+      return;
+    }
+
+    if (freshness.snapshot?.hasDraft === true) {
+      await persistSingleRuntimeChat({ ...runtimeChat, lastDecision: "github-restart-user-draft" }, sessionId);
+      await appendGithubRestartLog(chatId, "restart отложен: в поле ввода есть пользовательский черновик", "info");
+      return;
+    }
+    if (!["send-continuation", "already-continued"].includes(firstDecision.decision)) {
+      await persistSingleRuntimeChat(runtimeChat, sessionId);
+      await appendGithubRestartLog(chatId, `restart отложен: ${decisionDescription(firstDecision.decision)}`, "info");
+      return;
+    }
+
+    state = await loadState();
+    index = state.chats.findIndex((candidate) => candidate.id === chatId);
+    if (index < 0) return;
+    chat = state.chats[index];
+    profile = effectiveChatProfile(state, chat);
+    const stillSameControl = Number(chat.controlRevision || 0) === controlRevision;
+    const stillSameSession = state.sessionId === sessionId;
+    const stillEligible = state.enabled && chat.enabled && (!state.taskOnly || chat.taskActive)
+      && profile.githubWatchEnabled;
+    const liveStall = githubWatchdogDecision(chat, profile.githubIdleMinutes);
+    if (!stillSameControl || !stillSameSession || !stillEligible || liveStall.restartKey !== stall.restartKey
+        || liveStall.decision !== "restart") {
+      return;
+    }
+
+    const liveGuard = completionGuardReason(chat, profile);
+    if (liveGuard) {
+      state.chats[index] = applyCompletion(chat, liveGuard);
+      state = appendLog(state, "info", `${chat.title}: ${completionDescription(liveGuard)}`);
+      state = await notifyChatEvent(state, state.chats[index], liveGuard);
+      await persistAndPublish(await configureAlarm(state));
+      return;
+    }
+
+    const preflight = await obtainFreshSnapshot({
+      tab: await chrome.tabs.get(tab.id),
+      chat,
+      intervalMinutes: profile.intervalMinutes,
+      stopPhrase: profile.stopPhrase,
+      allowPeriodicRefresh: false
+    });
+    if (preflight.snapshot?.hasDraft === true) {
+      await appendGithubRestartLog(chatId, "restart отложен после preflight: обнаружен пользовательский черновик", "info");
+      return;
+    }
+    const preflightDecision = decide(chat, preflight.snapshot, sessionId);
+    if (preflightDecision.decision === "stop-phrase-matched") {
+      if (await persistSingleRuntimeChat(preflightDecision.chat, sessionId)) {
+        const stopped = await loadState();
+        const stoppedChat = stopped.chats.find((candidate) => candidate.id === chatId);
+        if (stoppedChat) {
+          const notified = await notifyChatEvent(stopped, stoppedChat, "stop-phrase");
+          await persistAndPublish(await configureAlarm(notified));
+        }
+      }
+      return;
+    }
+    if (!["send-continuation", "already-continued"].includes(preflightDecision.decision)) {
+      await persistSingleRuntimeChat(preflightDecision.chat, sessionId);
+      await appendGithubRestartLog(chatId, `restart отменён после preflight: ${decisionDescription(preflightDecision.decision)}`, "info");
+      return;
+    }
+
+    const fingerprint = String(preflight.snapshot?.latestFingerprint || "");
+    if (!fingerprint) return;
+    const response = await sendToContent(preflight.tab.id, {
+      type: "CHATPULSE_SEND",
+      command: profile.commandText
+    }, { attempts: 2, timeoutMs: 15_000 });
+    if (!response?.ok) throw new Error(response?.error || "Команда watchdog restart не отправлена.");
+
+    const outcome = response.outcome === "confirmed" ? "confirmed" : "submitted-unconfirmed";
+    runtimeChat = recordDispatch(preflightDecision.chat, fingerprint, outcome);
+    runtimeChat = recordGithubRestart(runtimeChat, stall.restartKey);
+    const checkpoint = await persistDispatchCheckpoint(runtimeChat);
+
+    let latest = await loadState();
+    const persistedChat = latest.chats.find((candidate) => candidate.id === chatId) || checkpoint.chat;
+    latest = appendLog(
+      latest,
+      outcome === "confirmed" ? "info" : "warning",
+      `GitHub Actions stall: restart-команда отправлена в «${persistedChat.title}» · ${persistedChat.profile?.githubRepository || profile.githubRepository} · продолжение ${persistedChat.continuationCount}`
+    );
+    latest = await notifyChatEvent(latest, persistedChat, "continuation", outcome);
+    if (checkpoint.guard) {
+      latest = appendLog(latest, "info", `${persistedChat.title}: ${completionDescription(checkpoint.guard)}`);
+      latest = await notifyChatEvent(latest, persistedChat, checkpoint.guard);
+    }
+    await persistAndPublish(await configureAlarm(latest));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await appendGithubRestartLog(chatId, `GitHub Actions stall restart не выполнен: ${message}`, "warning");
+  }
+}
+
+async function persistSingleRuntimeChat(runtimeChat, expectedSessionId) {
+  const latest = await loadState();
+  if (latest.sessionId !== expectedSessionId) return false;
+  const index = latest.chats.findIndex((chat) => chat.id === runtimeChat.id);
+  if (index < 0) return false;
+  if (Number(latest.chats[index].controlRevision || 0) !== Number(runtimeChat.controlRevision || 0)) return false;
+  const observed = {
+    ...latest,
+    lastCheckAt: latest.lastCheckAt,
+    chats: latest.chats.map((chat, chatIndex) => chatIndex === index ? runtimeChat : chat)
+  };
+  await saveState(mergeRuntimeState(observed, latest));
+  return true;
+}
+
+async function appendGithubRestartLog(chatId, message, level = "info") {
+  let latest = await loadState();
+  const chat = latest.chats.find((candidate) => candidate.id === chatId);
+  latest = appendLog(latest, level, `${chat?.title || "Чат"}: ${message}`);
+  await persistAndPublish(latest);
 }
 
 async function persistRunStartCheckpoint(runtimeChat) {
@@ -849,6 +1174,7 @@ async function sendToContent(
 
 async function configureAlarm(state) {
   await chrome.alarms.clear(ALARM_NAME);
+  await chrome.alarms.clear(GITHUB_ALARM_NAME);
   const globalInterval = clampInterval(state.intervalMinutes);
   if (!state.enabled) {
     return { ...state, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
@@ -867,6 +1193,18 @@ async function configureAlarm(state) {
     delayInMinutes: alarmInterval,
     periodInMinutes: alarmInterval
   });
+
+  const watchedRepositories = new Set(eligibleChats
+    .map((chat) => effectiveChatProfile(state, chat))
+    .filter((profile) => profile.githubWatchEnabled && profile.githubRepository)
+    .map((profile) => profile.githubRepository));
+  if (watchedRepositories.size > 0 && watchedRepositories.size <= MAX_GITHUB_WATCHED_REPOSITORIES) {
+    await chrome.alarms.create(GITHUB_ALARM_NAME, {
+      delayInMinutes: GITHUB_POLL_INTERVAL_MINUTES,
+      periodInMinutes: GITHUB_POLL_INTERVAL_MINUTES
+    });
+  }
+
   return {
     ...state,
     intervalMinutes: globalInterval,

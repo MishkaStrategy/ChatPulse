@@ -10,8 +10,8 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 assert.equal(manifest.manifest_version, 3, "Требуется Manifest V3");
 assert.equal(manifest.name, "ChatPulse");
-assert.equal(manifest.version, "0.6.0");
-assert.equal(manifest.version_name, "0.6.0 beta");
+assert.equal(manifest.version, "0.7.0");
+assert.equal(manifest.version_name, "0.7.0 beta");
 assert.equal(manifest.background?.type, "module");
 assert.equal(manifest.background?.service_worker, "background/service-worker-v2.js");
 assert.equal(manifest.action?.default_popup, "popup/popup.html");
@@ -34,10 +34,11 @@ assert.deepEqual(
 const optionalHosts = new Set(manifest.optional_host_permissions || []);
 assert.deepEqual(
   [...optionalHosts].sort(),
-  ["https://api.telegram.org/*"],
-  "Telegram должен быть единственным опциональным host permission"
+  ["https://api.github.com/*", "https://api.telegram.org/*"],
+  "Внешние API должны оставаться только opt-in optional host permissions"
 );
 assert.ok(!hosts.has("https://api.telegram.org/*"), "Telegram запрещён в постоянных host_permissions");
+assert.ok(!hosts.has("https://api.github.com/*"), "GitHub API запрещён в постоянных host_permissions");
 assert.ok(!JSON.stringify(manifest).includes("<all_urls>"), "Запрещён широкий доступ <all_urls>");
 assert.ok(!JSON.stringify(manifest).includes("http://*/*"), "Запрещён общий HTTP-доступ");
 
@@ -46,6 +47,7 @@ const requiredFiles = [
   "assets/logo.svg",
   "lib/model-v2.js",
   "background/service-worker-v2.js",
+  "background/github-actions.js",
   "background/telegram.js",
   "content/content-script.js",
   "popup/popup.html",
@@ -68,7 +70,11 @@ for (const testFile of [
   "profile-task.test.mjs",
   "task-service-worker.test.mjs",
   "dispatch-checkpoint.test.mjs",
-  "configuration-safety.test.mjs"
+  "configuration-safety.test.mjs",
+  "github-watchdog.test.mjs",
+  "github-actions-client.test.mjs",
+  "github-watchdog-runtime.test.mjs",
+  "github-watchdog-ui.test.mjs"
 ]) {
   await stat(path.join(root, "tests/chrome-extension", testFile));
 }
@@ -76,6 +82,7 @@ await stat(path.join(root, "scripts/package_extension.py"));
 
 const model = await readFile(path.join(extensionRoot, "lib/model-v2.js"), "utf8");
 const background = await readFile(path.join(extensionRoot, "background/service-worker-v2.js"), "utf8");
+const githubActions = await readFile(path.join(extensionRoot, "background/github-actions.js"), "utf8");
 const telegram = await readFile(path.join(extensionRoot, "background/telegram.js"), "utf8");
 const content = await readFile(path.join(extensionRoot, "content/content-script.js"), "utf8");
 const popupHTML = await readFile(path.join(extensionRoot, "popup/popup.html"), "utf8");
@@ -112,9 +119,9 @@ assert.ok(content.includes("MutationObserver"));
 assert.ok(content.includes("hasDraft"));
 assert.ok(content.includes("document.wasDiscarded"));
 
-// 0.6.0 state/profile/task/configuration contract.
+// 0.6.0 state/profile/task/configuration boundaries retained in 0.7.0.
 for (const token of [
-  "schemaVersion: 4",
+  "schemaVersion: 5",
   "taskOnly: false",
   "defaultChatProfile",
   "effectiveChatProfile",
@@ -132,7 +139,7 @@ for (const token of [
   "credentialsIncluded: false",
   "runtimeStateIncluded: false"
 ]) {
-  assert.ok(model.includes(token), `Model missing 0.6.0 invariant: ${token}`);
+  assert.ok(model.includes(token), `Model missing retained profile/task invariant: ${token}`);
 }
 for (const token of [
   'case "UPDATE_CHAT_PROFILE"',
@@ -152,7 +159,7 @@ for (const token of [
   "profile.intervalMinutes",
   "profile.stopPhrase"
 ]) {
-  assert.ok(background.includes(token), `Service worker missing 0.6.0 invariant: ${token}`);
+  assert.ok(background.includes(token), `Service worker missing retained profile/task invariant: ${token}`);
 }
 assert.ok(
   background.indexOf("recordDispatch(") < background.indexOf("persistDispatchCheckpoint(observedState.chats[index])"),
@@ -170,6 +177,57 @@ assert.ok(background.includes('runCheck("task-start", false, selectedChatId)'), 
 assert.ok(background.includes("if (observedState.taskOnly && !chat.taskActive && !allowWhenStopped) continue;"));
 assert.ok(background.includes("latestState.sessionId === observedState.sessionId"));
 assert.ok(background.includes('stopTaskMode(chat, "global-stop")'), "Top Stop must terminate active task mode");
+
+
+// 0.7.0 GitHub Actions watchdog boundary.
+for (const token of [
+  "MIN_GITHUB_IDLE_MINUTES = 10",
+  "GITHUB_POLL_INTERVAL_MINUTES = 10",
+  "MAX_GITHUB_WATCHED_REPOSITORIES = 8",
+  "normalizeGithubRepository",
+  "recordGithubActionsObservation",
+  "githubWatchdogDecision",
+  "recordGithubRestart",
+  "resetGithubWatchRuntime"
+]) {
+  assert.ok(model.includes(token), `Model missing GitHub watchdog invariant: ${token}`);
+}
+for (const token of [
+  "GITHUB_ALARM_NAME",
+  "performGithubWatchdog",
+  "attemptGithubWatchdogRestart",
+  "successfulRepositories.has(profile.githubRepository)",
+  "sameSession",
+  "completionGuardReason",
+  "recordGithubRestart",
+  "persistDispatchCheckpoint",
+  "MAX_GITHUB_WATCHED_REPOSITORIES"
+]) {
+  assert.ok(background.includes(token), `Service worker missing GitHub watchdog invariant: ${token}`);
+}
+assert.ok(!background.slice(
+  background.indexOf("async function attemptGithubWatchdogRestart"),
+  background.indexOf("async function persistSingleRuntimeChat")
+).includes("startChatRun("), "Watchdog restart must preserve the existing run counter/runtime");
+assert.ok(background.includes("successfulRepositories.has(profile.githubRepository)"), "Current failed GitHub poll must not select a restart");
+assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
+assert.ok(githubActions.includes('credentials: "omit"'), "GitHub client must omit browser credentials");
+assert.ok(!githubActions.includes("Authorization"), "0.7.0 public GitHub client must not send an Authorization header");
+assert.ok(!githubActions.includes("github_pat_"), "GitHub PAT material is forbidden");
+assert.ok(githubActions.includes("actions/runs?per_page=1"));
+assert.ok(githubActions.includes("x-ratelimit-remaining"));
+for (const className of [
+  "profile-github-watch-enabled",
+  "profile-github-repository",
+  "profile-github-idle",
+  "profile-github-status"
+]) {
+  assert.ok(optionsHTML.includes(className), `Control Center missing GitHub watchdog control ${className}`);
+}
+assert.ok(optionsJS.includes('const GITHUB_ORIGIN = "https://api.github.com/*"'));
+assert.ok(optionsJS.includes("chrome.permissions.request({ origins: [GITHUB_ORIGIN] })"));
+assert.ok(optionsJS.includes("if (draft.githubWatchEnabled)"));
+assert.ok(optionsHTML.includes("не использует GitHub token"));
 
 // Telegram stays optional, generic, post-state and privacy-safe.
 for (const token of [
@@ -256,7 +314,7 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
     `В обоих интерфейсах отсутствует цвет превью ${color}`
   );
 }
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.6.0-beta.zip'));
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.6.0-source-manifest.txt'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.0-beta.zip'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.0-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v4 profiles/tasks, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy boundaries ChatPulse 0.6.0 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, GitHub Actions watchdog fail-closed boundary, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.0 прошли статический аудит.");

@@ -26,7 +26,7 @@ ChatPulse:
 - runs locally in Google Chrome;
 - has no backend and no telemetry;
 - keeps permanent host access restricted to `chatgpt.com` and `chat.openai.com`;
-- declares `https://api.telegram.org/*` only as an optional host permission and asks for it from a direct settings action;
+- declares `https://api.telegram.org/*` and `https://api.github.com/*` only as optional host permissions and asks for each from the corresponding direct settings action;
 - does not request `cookies`, `history`, `webRequest`, `debugger`, `nativeMessaging` or `<all_urls>`;
 - stores ordinary settings, per-chat profiles and runtime state in `chrome.storage.local`;
 - stores Telegram chat ID and bot token in a separate local config, while exposing only `enabled`, `chatId`, `tokenConfigured` and permission status to UI runtime state;
@@ -39,6 +39,16 @@ Per-chat profiles reuse the same scheduler, freshness-preflight, `controlRevisio
 A continuation limit is checked before dispatch and again immediately after `recordDispatch()`. The count advances only after the dispatch outcome has been fixed, so a limit of `N` permits at most `N` commands, never `N+1`. Runtime limits are checked before a new send. The resulting fingerprint/outcome checkpoint is persisted to local storage before Telegram or other network notification work; a concurrent profile edit keeps the newer profile/control state while still accounting for the real same-run dispatch.
 
 The **run until completion** mode is rejected unless the effective profile has at least one completion guard: stop phrase, continuation limit or runtime limit. Starting a task resets only that chat's run counter/baseline and does not erase the global safety state of other chats. If ordinary monitoring is off, the engine enters `taskOnly` mode and schedules only active task chats; unrelated enabled chats remain dormant. The top Stop action is still a master stop: it turns the engine off and closes active task mode without disabling the chat itself. Manual/global task stop advances `controlRevision`, invalidating any older in-flight task snapshot.
+
+## GitHub Actions watchdog boundary
+
+The 0.7.0 watchdog is read-only and public-repository-only. It sends no GitHub token or `Authorization` header, performs no GitHub writes and never dispatches workflows. Public API polling is deduplicated by repository, throttled to a fixed safe cadence and bounded to a small number of unique repositories.
+
+The first successful observation establishes a fresh inactivity baseline. GitHub permission/network/403/404/rate-limit/invalid-response failures are errors only and are never converted into a stall. Restart selection is allowed only after a successful current poll, and a workflow-run marker can produce at most one submitted restart until a new run appears.
+
+A watchdog restart stays inside the existing ChatGPT conversation and reuses the existing safety state machine. It does not call `startChatRun()`, reset counters or bypass runtime/continuation limits. Before sending it revalidates master-stop/task scope, chat enabled state, global session, `controlRevision`, stop phrase, completion guards, page/auth state, generation and user draft. The actual dispatch and watchdog restart key are durably checkpointed before optional notification work.
+
+Portable configuration may contain the non-secret `owner/repo`, enabled flag and idle timeout, but excludes observed workflow-run IDs, activity/check timestamps, restart history and watchdog errors.
 
 ## Portable configuration boundary
 

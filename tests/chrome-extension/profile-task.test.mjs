@@ -18,7 +18,7 @@ import {
   startChatRun
 } from "../../chrome-extension/lib/model-v2.js";
 
-test("schema v3 state migrates to schema v4 with inheriting safe chat profile", () => {
+test("schema v3 state migrates to schema v5 with inheriting safe chat profile and watchdog off", () => {
   const state = normalizeState({
     schemaVersion: 3,
     intervalMinutes: 5,
@@ -26,11 +26,14 @@ test("schema v3 state migrates to schema v4 with inheriting safe chat profile", 
     stopPhrase: "ГОТОВО",
     chats: [{ title: "Legacy", url: "https://chatgpt.com/c/legacy", enabled: true }]
   });
-  assert.equal(state.schemaVersion, 4);
+  assert.equal(state.schemaVersion, 5);
   assert.equal(state.chats[0].profile.commandText, null);
   assert.equal(state.chats[0].profile.intervalMinutes, null);
   assert.equal(state.chats[0].profile.stopPhrase, null);
   assert.equal(state.chats[0].profile.telegramNotify, true);
+  assert.equal(state.chats[0].profile.githubWatchEnabled, false);
+  assert.equal(state.chats[0].profile.githubRepository, null);
+  assert.equal(state.chats[0].profile.githubIdleMinutes, 30);
   assert.equal(state.chats[0].continuationCount, 0);
   assert.equal(state.chats[0].taskActive, false);
 });
@@ -49,7 +52,10 @@ test("per-chat profile inherits globals and can explicitly disable global stop p
     stopPhrase: "ГОТОВО",
     maxContinuations: 0,
     maxRuntimeMinutes: 0,
-    telegramNotify: true
+    telegramNotify: true,
+    githubWatchEnabled: false,
+    githubRepository: null,
+    githubIdleMinutes: 30
   });
 
   const overridden = {
@@ -69,7 +75,10 @@ test("per-chat profile inherits globals and can explicitly disable global stop p
     stopPhrase: "",
     maxContinuations: 7,
     maxRuntimeMinutes: 90,
-    telegramNotify: false
+    telegramNotify: false,
+    githubWatchEnabled: false,
+    githubRepository: null,
+    githubIdleMinutes: 30
   });
 });
 
