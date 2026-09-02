@@ -284,12 +284,12 @@ function renderChats() {
   for (const chat of state.chats) {
     const fragment = ui.chatRowTemplate.content.cloneNode(true);
     const row = fragment.querySelector(".chat-row");
-    const details = fragment.querySelector(".profile-details");
-    const openButton = fragment.querySelector(".open-chat");
-    const toggleButton = fragment.querySelector(".toggle-chat");
-    const taskButton = fragment.querySelector(".task-chat");
-    const removeButton = fragment.querySelector(".remove-chat");
-    const saveProfileButton = fragment.querySelector(".save-profile");
+    const details = row.querySelector(".profile-details");
+    const openButton = row.querySelector(".open-chat");
+    const toggleButton = row.querySelector(".toggle-chat");
+    const taskButton = row.querySelector(".task-chat");
+    const removeButton = row.querySelector(".remove-chat");
+    const saveProfileButton = row.querySelector(".save-profile");
     const effective = effectiveProfile(chat);
     const draft = profileDrafts.get(chat.id) || profileToDraft(chat.profile);
 
@@ -304,24 +304,24 @@ function renderChats() {
       else openProfiles.delete(chat.id);
     });
 
-    fragment.querySelector(".chat-title").textContent = chat.title;
-    fragment.querySelector(".chat-url").textContent = chat.url;
-    fragment.querySelector(".chat-status-label").textContent = chatStatusLabel(chat);
-    fragment.querySelector(".chat-runtime-text").textContent = runtimeText(chat);
-    renderProgress(fragment, chat, effective);
+    row.querySelector(".chat-title").textContent = chat.title;
+    row.querySelector(".chat-url").textContent = chat.url;
+    row.querySelector(".chat-status-label").textContent = chatStatusLabel(chat);
+    row.querySelector(".chat-runtime-text").textContent = runtimeText(chat);
+    renderProgress(row, chat, effective);
 
     toggleButton.textContent = chat.enabled ? "Отключить" : "Включить";
     taskButton.textContent = chat.taskActive ? "Остановить задачу" : "Запустить до завершения";
     taskButton.dataset.running = String(chat.taskActive === true);
 
-    const command = fragment.querySelector(".profile-command");
-    const interval = fragment.querySelector(".profile-interval");
-    const stopMode = fragment.querySelector(".profile-stop-mode");
-    const stop = fragment.querySelector(".profile-stop");
-    const maxContinuations = fragment.querySelector(".profile-max-continuations");
-    const maxRuntime = fragment.querySelector(".profile-max-runtime");
-    const telegramNotify = fragment.querySelector(".profile-telegram-notify");
-    const effectiveText = fragment.querySelector(".profile-effective");
+    const command = row.querySelector(".profile-command");
+    const interval = row.querySelector(".profile-interval");
+    const stopMode = row.querySelector(".profile-stop-mode");
+    const stop = row.querySelector(".profile-stop");
+    const maxContinuations = row.querySelector(".profile-max-continuations");
+    const maxRuntime = row.querySelector(".profile-max-runtime");
+    const telegramNotify = row.querySelector(".profile-telegram-notify");
+    const effectiveText = row.querySelector(".profile-effective");
 
     command.value = draft.commandText || "";
     command.placeholder = `Общая: ${truncate(state.commandText, 80)}`;
@@ -336,7 +336,7 @@ function renderChats() {
     effectiveText.textContent = profileSummary(effective);
 
     const capture = () => {
-      const nextDraft = readProfileDraft(fragment);
+      const nextDraft = readProfileDraft(row);
       profileDrafts.set(chat.id, nextDraft);
       stop.disabled = nextDraft.stopMode !== "custom";
     };
@@ -347,8 +347,8 @@ function renderChats() {
 
     openButton.addEventListener("click", () => action("OPEN_CHAT", { chatId: chat.id }));
     toggleButton.addEventListener("click", () => action("TOGGLE_CHAT", { chatId: chat.id }));
-    saveProfileButton.addEventListener("click", () => { void saveChatProfile(chat.id, fragment); });
-    taskButton.addEventListener("click", () => { void toggleTask(chat, fragment); });
+    saveProfileButton.addEventListener("click", () => { void saveChatProfile(chat.id, row); });
+    taskButton.addEventListener("click", () => { void toggleTask(chat, row); });
     removeButton.addEventListener("click", async () => {
       if (!confirm(`Удалить чат «${chat.title}» из ChatPulse?`)) return;
       profileDrafts.delete(chat.id);
@@ -356,40 +356,40 @@ function renderChats() {
       await action("REMOVE_CHAT", { chatId: chat.id });
     });
 
-    ui.chatTable.append(fragment);
+    ui.chatTable.append(row);
   }
 }
 
-async function saveChatProfile(chatId, fragment, showSuccess = true) {
-  const draft = readProfileDraft(fragment);
+async function saveChatProfile(chatId, row, showSuccess = true) {
+  const draft = readProfileDraft(row);
   const profile = draftToProfile(draft);
   const saved = await action("UPDATE_CHAT_PROFILE", { chatId, profile }, showSuccess);
   if (saved) profileDrafts.delete(chatId);
   return saved;
 }
 
-async function toggleTask(chat, fragment) {
+async function toggleTask(chat, row) {
   if (chat.taskActive) {
     await action("STOP_TASK", { chatId: chat.id });
     return;
   }
   if (profileDrafts.has(chat.id)) {
-    const saved = await saveChatProfile(chat.id, fragment, false);
+    const saved = await saveChatProfile(chat.id, row, false);
     if (!saved) return;
   }
   await action("START_TASK", { chatId: chat.id });
 }
 
-function readProfileDraft(fragment) {
-  const intervalRaw = fragment.querySelector(".profile-interval").value;
+function readProfileDraft(root) {
+  const intervalRaw = root.querySelector(".profile-interval").value;
   return {
-    commandText: fragment.querySelector(".profile-command").value.trim(),
+    commandText: root.querySelector(".profile-command").value.trim(),
     intervalMinutes: intervalRaw === "" ? null : Number(intervalRaw),
-    stopMode: fragment.querySelector(".profile-stop-mode").value,
-    stopPhrase: fragment.querySelector(".profile-stop").value,
-    maxContinuations: nonNegativeInteger(fragment.querySelector(".profile-max-continuations").value),
-    maxRuntimeMinutes: nonNegativeInteger(fragment.querySelector(".profile-max-runtime").value),
-    telegramNotify: fragment.querySelector(".profile-telegram-notify").checked
+    stopMode: root.querySelector(".profile-stop-mode").value,
+    stopPhrase: root.querySelector(".profile-stop").value,
+    maxContinuations: nonNegativeInteger(root.querySelector(".profile-max-continuations").value),
+    maxRuntimeMinutes: nonNegativeInteger(root.querySelector(".profile-max-runtime").value),
+    telegramNotify: root.querySelector(".profile-telegram-notify").checked
   };
 }
 
@@ -450,14 +450,15 @@ function profileSummary(profile) {
   return pieces.join(" · ");
 }
 
-function renderProgress(fragment, chat, profile) {
-  const text = fragment.querySelector(".chat-progress-text");
-  const bar = fragment.querySelector(".chat-progress-bar");
+function renderProgress(root, chat, profile) {
+  const text = root.querySelector(".chat-progress-text");
+  const bar = root.querySelector(".chat-progress-bar");
   const pieces = [];
   pieces.push(`${chat.continuationCount || 0}${profile.maxContinuations > 0 ? `/${profile.maxContinuations}` : ""} продолжений`);
 
-  const elapsedMinutes = chat.runStartedAt
-    ? Math.max(0, Math.floor((Date.now() - Date.parse(chat.runStartedAt)) / 60_000))
+  const startedAt = Date.parse(String(chat.runStartedAt || ""));
+  const elapsedMinutes = Number.isFinite(startedAt)
+    ? Math.max(0, Math.floor((Date.now() - startedAt) / 60_000))
     : 0;
   if (profile.maxRuntimeMinutes > 0) {
     pieces.push(`${formatDuration(elapsedMinutes)} / ${formatDuration(profile.maxRuntimeMinutes)}`);
@@ -636,6 +637,15 @@ function setBusy(value) {
   busy = value;
   for (const control of document.querySelectorAll("button, select, textarea, input")) {
     control.disabled = value;
+  }
+  if (!value) syncProfileStopDisabled();
+}
+
+function syncProfileStopDisabled() {
+  for (const row of ui.chatTable.querySelectorAll(".chat-row")) {
+    const mode = row.querySelector(".profile-stop-mode");
+    const stop = row.querySelector(".profile-stop");
+    if (mode && stop) stop.disabled = mode.value !== "custom";
   }
 }
 
