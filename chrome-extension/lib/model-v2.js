@@ -254,8 +254,11 @@ export function mergeRuntimeState(observedState, latestState) {
       if (!observed) return latestChat;
       const sameControlRevision = nonNegativeInteger(observed.controlRevision)
         === nonNegativeInteger(latestChat.controlRevision);
-      const stopPhraseApplied = sameControlRevision
-        && observed.enabled === false
+      // A manual toggle/add-current action owns the newer control revision. No runtime
+      // data from the stale in-flight check may cross that boundary, otherwise a fresh
+      // baseline reset could be silently undone and cause an immediate continuation.
+      if (!sameControlRevision) return latestChat;
+      const stopPhraseApplied = observed.enabled === false
         && observed.lastStopReason === "stop-phrase";
       return {
         ...latestChat,
