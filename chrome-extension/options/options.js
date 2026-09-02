@@ -236,9 +236,11 @@ function render(initial = false) {
     ? "Проверка…"
     : state.enabled
       ? "Работает"
-      : "Остановлен";
-  ui.statusDetail.textContent = state.enabled
-    ? `${activeChats} активных · ${activeTasks} задач · ${errors} ошибок`
+      : activeTasks > 0
+        ? "Работают задачи"
+        : "Остановлен";
+  ui.statusDetail.textContent = state.enabled || activeTasks > 0
+    ? `${activeChats} активных · ${activeTasks} задач · ${errors} ошибок${state.enabled ? "" : " · обычное наблюдение выключено"}`
     : "Фоновый таймер не активен";
   ui.chatMetric.textContent = String(activeChats);
   ui.taskMetric.textContent = String(activeTasks);
@@ -571,7 +573,7 @@ function ensureProfileIntervalOption(select, value) {
 function successMessage(type) {
   const messages = {
     START_MONITORING: "Наблюдение запущено. Первая проверка новой сессии будет пассивной.",
-    STOP_MONITORING: "Наблюдение остановлено.",
+    STOP_MONITORING: "Обычное наблюдение остановлено. Активные задачи продолжаются до своих guard-условий.",
     CHECK_NOW: "Ручная проверка завершена.",
     ADD_CURRENT_CHAT: "Последний использованный чат ChatGPT добавлен или обновлён.",
     REMOVE_CHAT: "Чат удалён.",

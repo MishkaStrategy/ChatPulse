@@ -100,13 +100,15 @@ async function handleMessage(message) {
 
     case "STOP_MONITORING": {
       let state = await loadState();
+      const activeTasks = state.chats.filter((chat) => chat.taskActive).length;
       state = appendLog({
         ...state,
         enabled: false,
-        checkInProgress: false,
-        nextCheckAt: null
-      }, "info", "Наблюдение остановлено");
-      await chrome.alarms.clear(ALARM_NAME);
+        checkInProgress: false
+      }, "info", activeTasks > 0
+        ? "Обычное наблюдение остановлено; активные задачи продолжаются"
+        : "Наблюдение остановлено");
+      state = await configureAlarm(state);
       await persistAndPublish(state);
       return { state };
     }
@@ -167,10 +169,7 @@ async function handleMessage(message) {
         throw new Error("Для запуска задачи задайте стоп-фразу, лимит продолжений или лимит времени.");
       }
       state.chats[index] = startChatRun(state.chats[index], { task: true });
-      state = appendLog({
-        ...state,
-        enabled: true
-      }, "info", `Задача «${state.chats[index].title}» запущена до условия завершения`);
+      state = appendLog(state, "info", `Задача «${state.chats[index].title}» запущена до условия завершения`);
       state = await configureAlarm(state);
       await persistAndPublish(state);
       state = await notifyChatEvent(state, state.chats[index], "task-started");
@@ -345,7 +344,8 @@ async function runCheck(source, allowWhenStopped = false) {
 
 async function performCheck(source, allowWhenStopped) {
   let observedState = await loadState();
-  if (!observedState.enabled && !allowWhenStopped) return;
+  const hasActiveTasks = observedState.chats.some((chat) => chat.enabled && chat.taskActive);
+  if (!observedState.enabled && !hasActiveTasks && !allowWhenStopped) return;
 
   observedState = appendLog(
     { ...observedState, checkInProgress: true },
@@ -358,6 +358,7 @@ async function performCheck(source, allowWhenStopped) {
   for (let index = 0; index < observedState.chats.length; index += 1) {
     let chat = observedState.chats[index];
     if (!chat.enabled) continue;
+    if (!observedState.enabled && !chat.taskActive && !allowWhenStopped) continue;
     if (!bypassSchedule && !isChatDue(chat)) continue;
 
     let profile = effectiveChatProfile(observedState, chat);
@@ -424,7 +425,7 @@ async function performCheck(source, allowWhenStopped) {
       const liveChat = latestState.chats.find((candidate) => candidate.id === chat.id);
       const sameControlRevision = Number(liveChat?.controlRevision || 0)
         === Number(observedState.chats[index].controlRevision || 0);
-      if (!liveChat?.enabled || !sameControlRevision || (!latestState.enabled && !allowWhenStopped)) {
+      if (!liveChat?.enabled || !sameControlRevision || (!latestState.enabled && !liveChat.taskActive && !allowWhenStopped)) {
         observedState = appendLog(
           observedState,
           "info",
@@ -841,10 +842,11 @@ async function sendToContent(
 async function configureAlarm(state) {
   await chrome.alarms.clear(ALARM_NAME);
   const globalInterval = clampInterval(state.intervalMinutes);
-  if (!state.enabled) return { ...state, intervalMinutes: globalInterval, nextCheckAt: null };
+  const eligibleChats = state.chats.filter((chat) => chat.enabled && (state.enabled || chat.taskActive));
+  const engineActive = state.enabled || eligibleChats.length > 0;
+  if (!engineActive) return { ...state, intervalMinutes: globalInterval, nextCheckAt: null };
 
-  const enabledIntervals = state.chats
-    .filter((chat) => chat.enabled)
+  const enabledIntervals = eligibleChats
     .map((chat) => effectiveChatProfile(state, chat).intervalMinutes);
   const alarmInterval = enabledIntervals.length
     ? Math.min(...enabledIntervals)
