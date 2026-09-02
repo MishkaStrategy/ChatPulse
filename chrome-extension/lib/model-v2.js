@@ -3,9 +3,14 @@ export const MAX_STOP_PHRASE_LENGTH = 500;
 export const MIN_INTERVAL_MINUTES = 0.5;
 export const MAX_INTERVAL_MINUTES = 1_440;
 export const MAX_LOG_ENTRIES = 300;
+export const MAX_CHAT_COUNT = 100;
+export const MAX_CONTINUATIONS = 10_000;
+export const MAX_RUNTIME_MINUTES = 10_080;
 export const MIN_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const MAX_REFRESH_INTERVAL_MS = 15 * 60_000;
 export const STUCK_GENERATION_MS = 20 * 60_000;
+export const PORTABLE_CONFIG_FORMAT = "chatpulse-config";
+export const PORTABLE_CONFIG_VERSION = 1;
 
 export function createSessionId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -37,6 +42,119 @@ export function normalizeChatURL(rawValue) {
   }
 }
 
+export function defaultChatProfile() {
+  return {
+    commandText: null,
+    intervalMinutes: null,
+    stopPhrase: null,
+    maxContinuations: 0,
+    maxRuntimeMinutes: 0,
+    telegramNotify: true
+  };
+}
+
+export function normalizeChatProfile(raw) {
+  const fallback = defaultChatProfile();
+  const commandText = typeof raw?.commandText === "string" && raw.commandText.trim()
+    ? raw.commandText.trim().slice(0, 4_000)
+    : null;
+  const intervalMinutes = raw?.intervalMinutes === null || raw?.intervalMinutes === undefined
+    ? null
+    : clampInterval(raw.intervalMinutes);
+  let stopPhrase = null;
+  if (raw && Object.hasOwn(raw, "stopPhrase")) {
+    stopPhrase = raw.stopPhrase === null ? null : normalizeStopPhrase(raw.stopPhrase);
+  }
+  return {
+    commandText,
+    intervalMinutes,
+    stopPhrase,
+    maxContinuations: boundedInteger(raw?.maxContinuations, MAX_CONTINUATIONS),
+    maxRuntimeMinutes: boundedInteger(raw?.maxRuntimeMinutes, MAX_RUNTIME_MINUTES),
+    telegramNotify: raw?.telegramNotify !== false && fallback.telegramNotify
+  };
+}
+
+export function effectiveChatProfile(state, chat) {
+  const profile = normalizeChatProfile(chat?.profile);
+  return {
+    commandText: profile.commandText || state.commandText || DEFAULT_COMMAND,
+    intervalMinutes: profile.intervalMinutes === null
+      ? clampInterval(state.intervalMinutes)
+      : profile.intervalMinutes,
+    stopPhrase: profile.stopPhrase === null
+      ? normalizeStopPhrase(state.stopPhrase)
+      : normalizeStopPhrase(profile.stopPhrase),
+    maxContinuations: profile.maxContinuations,
+    maxRuntimeMinutes: profile.maxRuntimeMinutes,
+    telegramNotify: profile.telegramNotify
+  };
+}
+
+export function hasCompletionGuard(profile) {
+  return Boolean(normalizeStopPhrase(profile?.stopPhrase))
+    || boundedInteger(profile?.maxContinuations, MAX_CONTINUATIONS) > 0
+    || boundedInteger(profile?.maxRuntimeMinutes, MAX_RUNTIME_MINUTES) > 0;
+}
+
+export function applyGlobalSettingsPatch(state, patch = {}) {
+  const next = { ...state };
+  const previousCommand = state.commandText || DEFAULT_COMMAND;
+  const previousInterval = clampInterval(state.intervalMinutes);
+  const previousStopPhrase = normalizeStopPhrase(state.stopPhrase);
+
+  if (Object.hasOwn(patch, "intervalMinutes")) {
+    next.intervalMinutes = clampInterval(patch.intervalMinutes);
+  }
+  if (typeof patch.commandText === "string" && patch.commandText.trim()) {
+    next.commandText = patch.commandText.trim().slice(0, 4_000);
+  }
+  if (Object.hasOwn(patch, "stopPhrase")) {
+    next.stopPhrase = normalizeStopPhrase(patch.stopPhrase);
+  }
+  if (patch.theme === "macos" || patch.theme === "preview") {
+    next.theme = patch.theme;
+  }
+
+  const commandChanged = (next.commandText || DEFAULT_COMMAND) !== previousCommand;
+  const intervalChanged = clampInterval(next.intervalMinutes) !== previousInterval;
+  const stopChanged = normalizeStopPhrase(next.stopPhrase) !== previousStopPhrase;
+
+  next.chats = state.chats.map((chat) => {
+    const profile = normalizeChatProfile(chat.profile);
+    const inheritsChangedSetting = (commandChanged && profile.commandText === null)
+      || (intervalChanged && profile.intervalMinutes === null)
+      || (stopChanged && profile.stopPhrase === null);
+    return inheritsChangedSetting
+      ? {
+          ...chat,
+          controlRevision: nonNegativeInteger(chat.controlRevision) + 1,
+          nextEligibleAt: null
+        }
+      : chat;
+  });
+
+  for (const chat of next.chats) {
+    if (chat.taskActive && !hasCompletionGuard(effectiveChatProfile(next, chat))) {
+      throw new Error(`Активная задача «${chat.title}» потеряет последний guard. Сначала задайте стоп-фразу, лимит продолжений или лимит времени.`);
+    }
+  }
+  return next;
+}
+
+export function stopTaskMode(chat, reason = "manual-task-stop", at = new Date().toISOString()) {
+  if (!chat.taskActive) return chat;
+  return {
+    ...chat,
+    controlRevision: nonNegativeInteger(chat.controlRevision) + 1,
+    taskActive: false,
+    taskCompletedAt: at,
+    taskCompletionReason: String(reason),
+    nextEligibleAt: null,
+    lastDecision: `task-stopped-${String(reason)}`
+  };
+}
+
 export function createChat({ title, url, tabId = null, now = new Date().toISOString() }) {
   const normalizedURL = normalizeChatURL(url);
   if (!normalizedURL) throw new Error("Открыта не страница конкретного чата ChatGPT.");
@@ -46,6 +164,16 @@ export function createChat({ title, url, tabId = null, now = new Date().toISOStr
     url: normalizedURL,
     enabled: true,
     controlRevision: 0,
+    profile: defaultChatProfile(),
+    runStartedAt: null,
+    continuationCount: 0,
+    taskActive: false,
+    taskStartedAt: null,
+    taskCompletedAt: null,
+    taskCompletionReason: null,
+    lastDecision: null,
+    nextEligibleAt: null,
+    lastTelegramErrorKey: null,
     tabId: Number.isInteger(tabId) ? tabId : null,
     lastObservedFingerprint: null,
     lastCommandedFingerprint: null,
@@ -73,6 +201,16 @@ export function normalizeChat(raw) {
     url: normalizedURL,
     enabled: raw.enabled !== false,
     controlRevision: nonNegativeInteger(raw.controlRevision),
+    profile: normalizeChatProfile(raw.profile),
+    runStartedAt: stringOrNull(raw.runStartedAt),
+    continuationCount: nonNegativeInteger(raw.continuationCount),
+    taskActive: raw.taskActive === true,
+    taskStartedAt: stringOrNull(raw.taskStartedAt),
+    taskCompletedAt: stringOrNull(raw.taskCompletedAt),
+    taskCompletionReason: stringOrNull(raw.taskCompletionReason),
+    lastDecision: stringOrNull(raw.lastDecision),
+    nextEligibleAt: stringOrNull(raw.nextEligibleAt),
+    lastTelegramErrorKey: stringOrNull(raw.lastTelegramErrorKey),
     tabId: Number.isInteger(raw.tabId) ? raw.tabId : null,
     lastObservedFingerprint: stringOrNull(raw.lastObservedFingerprint),
     lastCommandedFingerprint: stringOrNull(raw.lastCommandedFingerprint),
@@ -93,8 +231,9 @@ export function normalizeChat(raw) {
 
 export function defaultState() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     enabled: false,
+    taskOnly: false,
     checkInProgress: false,
     intervalMinutes: 5,
     commandText: DEFAULT_COMMAND,
@@ -111,8 +250,9 @@ export function defaultState() {
 export function normalizeState(raw) {
   const fallback = defaultState();
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     enabled: raw?.enabled === true,
+    taskOnly: raw?.taskOnly === true,
     checkInProgress: raw?.checkInProgress === true,
     intervalMinutes: clampInterval(raw?.intervalMinutes ?? fallback.intervalMinutes),
     commandText: typeof raw?.commandText === "string" && raw.commandText.trim()
@@ -123,7 +263,9 @@ export function normalizeState(raw) {
     sessionId: typeof raw?.sessionId === "string" && raw.sessionId ? raw.sessionId : fallback.sessionId,
     lastCheckAt: stringOrNull(raw?.lastCheckAt),
     nextCheckAt: stringOrNull(raw?.nextCheckAt),
-    chats: Array.isArray(raw?.chats) ? raw.chats.map(normalizeChat).filter(Boolean) : [],
+    chats: Array.isArray(raw?.chats)
+      ? raw.chats.map(normalizeChat).filter(Boolean).slice(0, MAX_CHAT_COUNT)
+      : [],
     logs: Array.isArray(raw?.logs)
       ? raw.logs.filter(isValidLog).slice(-MAX_LOG_ENTRIES)
       : []
@@ -152,45 +294,133 @@ export function decide(chat, snapshot, sessionId) {
     lastSnapshotAt: observedAt,
     lastError: null
   };
-  if (!chat.enabled) return { chat: updated, decision: "disabled" };
-  if (!snapshot?.pageReady) return { chat: updated, decision: "page-not-ready" };
-  if (!snapshot?.authenticated) return { chat: updated, decision: "not-authenticated" };
-  if (snapshot.errorDetected) return { chat: updated, decision: "page-error" };
-  if (snapshot.isGenerating) return { chat: updated, decision: "generating" };
+  if (!chat.enabled) return decisionResult(updated, "disabled");
+  if (!snapshot?.pageReady) return decisionResult(updated, "page-not-ready");
+  if (!snapshot?.authenticated) return decisionResult(updated, "not-authenticated");
+  if (snapshot.errorDetected) return decisionResult(updated, "page-error");
+  if (snapshot.isGenerating) return decisionResult(updated, "generating");
 
   const fingerprint = stringOrNull(snapshot.latestFingerprint);
   if (snapshot.stopPhraseMatched === true && snapshot.latestRole === "assistant") {
-    return {
-      chat: {
-        ...updated,
-        enabled: false,
-        lastObservedFingerprint: fingerprint || chat.lastObservedFingerprint,
-        lastStoppedAt: now,
-        lastStopReason: "stop-phrase"
-      },
-      decision: "stop-phrase-matched"
-    };
+    return decisionResult({
+      ...updated,
+      enabled: false,
+      taskActive: false,
+      taskCompletedAt: chat.taskActive ? now : chat.taskCompletedAt,
+      taskCompletionReason: chat.taskActive ? "stop-phrase" : chat.taskCompletionReason,
+      nextEligibleAt: null,
+      lastObservedFingerprint: fingerprint || chat.lastObservedFingerprint,
+      lastStoppedAt: now,
+      lastStopReason: "stop-phrase"
+    }, "stop-phrase-matched");
   }
-  if (!fingerprint) return { chat: updated, decision: "no-messages" };
+  if (!fingerprint) return decisionResult(updated, "no-messages");
   if (chat.lastObservedSessionId !== sessionId) {
-    return {
-      chat: { ...updated, lastObservedSessionId: sessionId, lastObservedFingerprint: fingerprint },
-      decision: "baseline-recorded"
-    };
+    return decisionResult({
+      ...updated,
+      lastObservedSessionId: sessionId,
+      lastObservedFingerprint: fingerprint
+    }, "baseline-recorded");
   }
   if (chat.lastObservedFingerprint !== fingerprint) {
-    return {
-      chat: { ...updated, lastObservedFingerprint: fingerprint },
-      decision: "response-changed"
-    };
+    return decisionResult({ ...updated, lastObservedFingerprint: fingerprint }, "response-changed");
   }
   if (snapshot.latestRole !== "assistant") {
-    return { chat: updated, decision: "waiting-for-assistant" };
+    return decisionResult(updated, "waiting-for-assistant");
   }
   if (chat.lastCommandedFingerprint === fingerprint) {
-    return { chat: updated, decision: "already-continued" };
+    return decisionResult(updated, "already-continued");
   }
-  return { chat: updated, decision: "send-continuation", fingerprint };
+  return {
+    chat: { ...updated, lastDecision: "send-continuation" },
+    decision: "send-continuation",
+    fingerprint
+  };
+}
+
+export function prepareChatRun(chat, at = new Date().toISOString()) {
+  if (!chat.enabled || chat.runStartedAt) return chat;
+  return { ...chat, runStartedAt: at };
+}
+
+export function startChatRun(chat, { task = false, at = new Date().toISOString() } = {}) {
+  return {
+    ...chat,
+    enabled: true,
+    controlRevision: nonNegativeInteger(chat.controlRevision) + 1,
+    runStartedAt: at,
+    continuationCount: 0,
+    taskActive: task,
+    taskStartedAt: task ? at : null,
+    taskCompletedAt: null,
+    taskCompletionReason: null,
+    lastDecision: task ? "task-started" : "enabled",
+    nextEligibleAt: null,
+    lastObservedSessionId: null,
+    lastStoppedAt: null,
+    lastStopReason: null,
+    lastError: null,
+    lastTelegramErrorKey: null
+  };
+}
+
+export function stopChatRun(chat, reason = "manual", at = new Date().toISOString()) {
+  return {
+    ...chat,
+    enabled: false,
+    controlRevision: nonNegativeInteger(chat.controlRevision) + 1,
+    taskActive: false,
+    taskCompletedAt: chat.taskActive ? at : chat.taskCompletedAt,
+    taskCompletionReason: chat.taskActive ? String(reason) : chat.taskCompletionReason,
+    nextEligibleAt: null,
+    lastStoppedAt: at,
+    lastStopReason: String(reason),
+    lastDecision: `stopped-${String(reason)}`
+  };
+}
+
+export function completionGuardReason(chat, profile, now = Date.now()) {
+  const maxContinuations = boundedInteger(profile?.maxContinuations, MAX_CONTINUATIONS);
+  if (maxContinuations > 0 && nonNegativeInteger(chat?.continuationCount) >= maxContinuations) {
+    return "continuation-limit";
+  }
+  const maxRuntimeMinutes = boundedInteger(profile?.maxRuntimeMinutes, MAX_RUNTIME_MINUTES);
+  if (maxRuntimeMinutes > 0 && chat?.runStartedAt) {
+    const startedAt = Date.parse(chat.runStartedAt);
+    if (Number.isFinite(startedAt) && now - startedAt >= maxRuntimeMinutes * 60_000) {
+      return "runtime-limit";
+    }
+  }
+  return null;
+}
+
+export function applyCompletion(chat, reason, at = new Date().toISOString()) {
+  const wasTask = chat.taskActive === true;
+  return {
+    ...chat,
+    enabled: false,
+    taskActive: false,
+    taskCompletedAt: wasTask ? at : chat.taskCompletedAt,
+    taskCompletionReason: wasTask ? String(reason) : chat.taskCompletionReason,
+    nextEligibleAt: null,
+    lastStoppedAt: at,
+    lastStopReason: String(reason),
+    lastDecision: `stopped-${String(reason)}`
+  };
+}
+
+export function isChatDue(chat, now = Date.now()) {
+  if (!chat?.enabled) return false;
+  const next = Date.parse(String(chat.nextEligibleAt || ""));
+  return !Number.isFinite(next) || next <= now;
+}
+
+export function scheduleNextChatCheck(chat, intervalMinutes, now = Date.now()) {
+  if (!chat.enabled) return { ...chat, nextEligibleAt: null };
+  return {
+    ...chat,
+    nextEligibleAt: new Date(now + clampInterval(intervalMinutes) * 60_000).toISOString()
+  };
 }
 
 export function planTabRecovery({ tab, snapshot, chat, intervalMinutes, now = Date.now() }) {
@@ -198,8 +428,6 @@ export function planTabRecovery({ tab, snapshot, chat, intervalMinutes, now = Da
   if (tab.discarded === true) return { refresh: true, reason: "discarded-tab" };
   if (tab.frozen === true) return { refresh: true, reason: "frozen-tab" };
 
-  // Никогда не обновляем активную вкладку автоматически: пользователь может читать,
-  // выделять текст или работать с интерфейсом, даже если content script временно недоступен.
   if (tab.active === true) return { refresh: false, reason: null };
   if (!snapshot) return { refresh: true, reason: "content-unreachable" };
 
@@ -232,14 +460,49 @@ export function recordRecovery(chat, reason, at = new Date().toISOString()) {
   };
 }
 
-export function recordDispatch(chat, fingerprint, outcome) {
+export function recordDispatch(chat, fingerprint, outcome, at = new Date().toISOString()) {
   return {
     ...chat,
+    continuationCount: nonNegativeInteger(chat.continuationCount) + 1,
     lastCommandedFingerprint: fingerprint,
-    lastCommandAt: new Date().toISOString(),
+    lastCommandAt: at,
     lastDispatchOutcome: outcome,
     lastError: outcome === "confirmed" ? null : "Отправка нажата, но DOM не подтвердил сообщение"
   };
+}
+
+export function mergeDispatchCheckpoint(runtimeChat, latestChat) {
+  const sameControlRevision = nonNegativeInteger(runtimeChat?.controlRevision)
+    === nonNegativeInteger(latestChat?.controlRevision);
+  const runtimeRunStartedAt = stringOrNull(runtimeChat?.runStartedAt);
+  const latestRunStartedAt = stringOrNull(latestChat?.runStartedAt);
+  const canAdoptRunStart = sameControlRevision && !latestRunStartedAt && Boolean(runtimeRunStartedAt);
+  const sameRun = runtimeRunStartedAt === latestRunStartedAt || canAdoptRunStart;
+  const merged = {
+    ...latestChat,
+    continuationCount: sameRun
+      ? Math.max(nonNegativeInteger(latestChat?.continuationCount), nonNegativeInteger(runtimeChat?.continuationCount))
+      : nonNegativeInteger(latestChat?.continuationCount),
+    ...(sameControlRevision ? {
+      runStartedAt: canAdoptRunStart ? runtimeRunStartedAt : latestChat.runStartedAt,
+      tabId: runtimeChat.tabId,
+      lastObservedFingerprint: runtimeChat.lastObservedFingerprint,
+      lastObservedAt: runtimeChat.lastObservedAt,
+      lastObservedSessionId: runtimeChat.lastObservedSessionId,
+      lastSnapshotAt: runtimeChat.lastSnapshotAt,
+      lastHardRefreshAt: runtimeChat.lastHardRefreshAt,
+      lastRecoveryAt: runtimeChat.lastRecoveryAt,
+      lastRecoveryReason: runtimeChat.lastRecoveryReason,
+      staleRecoveries: runtimeChat.staleRecoveries,
+      lastDecision: runtimeChat.lastDecision,
+      nextEligibleAt: runtimeChat.nextEligibleAt
+    } : {}),
+    lastCommandedFingerprint: runtimeChat.lastCommandedFingerprint,
+    lastCommandAt: runtimeChat.lastCommandAt,
+    lastDispatchOutcome: runtimeChat.lastDispatchOutcome,
+    lastError: runtimeChat.lastError
+  };
+  return merged;
 }
 
 export function mergeRuntimeState(observedState, latestState) {
@@ -254,19 +517,21 @@ export function mergeRuntimeState(observedState, latestState) {
       if (!observed) return latestChat;
       const sameControlRevision = nonNegativeInteger(observed.controlRevision)
         === nonNegativeInteger(latestChat.controlRevision);
-      // A manual toggle/add-current action owns the newer control revision. No runtime
-      // data from the stale in-flight check may cross that boundary, otherwise a fresh
-      // baseline reset could be silently undone and cause an immediate continuation.
       if (!sameControlRevision) return latestChat;
-      const stopPhraseApplied = observed.enabled === false
-        && observed.lastStopReason === "stop-phrase";
+      const runtimeAutoStop = observed.enabled === false
+        && ["stop-phrase", "continuation-limit", "runtime-limit"].includes(observed.lastStopReason);
       return {
         ...latestChat,
-        ...(stopPhraseApplied ? {
-          enabled: false,
-          lastStoppedAt: observed.lastStoppedAt,
-          lastStopReason: "stop-phrase"
-        } : {}),
+        enabled: runtimeAutoStop ? false : latestChat.enabled,
+        runStartedAt: observed.runStartedAt,
+        continuationCount: observed.continuationCount,
+        taskActive: runtimeAutoStop ? false : observed.taskActive,
+        taskStartedAt: observed.taskStartedAt,
+        taskCompletedAt: runtimeAutoStop ? observed.taskCompletedAt : latestChat.taskCompletedAt,
+        taskCompletionReason: runtimeAutoStop ? observed.taskCompletionReason : latestChat.taskCompletionReason,
+        lastDecision: observed.lastDecision,
+        nextEligibleAt: runtimeAutoStop ? null : observed.nextEligibleAt,
+        lastTelegramErrorKey: observed.lastTelegramErrorKey,
         tabId: observed.tabId,
         lastObservedFingerprint: observed.lastObservedFingerprint,
         lastCommandedFingerprint: observed.lastCommandedFingerprint,
@@ -279,6 +544,8 @@ export function mergeRuntimeState(observedState, latestState) {
         lastRecoveryAt: observed.lastRecoveryAt,
         lastRecoveryReason: observed.lastRecoveryReason,
         staleRecoveries: observed.staleRecoveries,
+        lastStoppedAt: runtimeAutoStop ? observed.lastStoppedAt : latestChat.lastStoppedAt,
+        lastStopReason: runtimeAutoStop ? observed.lastStopReason : latestChat.lastStopReason,
         lastError: observed.lastError
       };
     })
@@ -288,6 +555,85 @@ export function mergeRuntimeState(observedState, latestState) {
 export function normalizeStopPhrase(value) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, MAX_STOP_PHRASE_LENGTH);
+}
+
+export function createPortableConfig(state, exportedAt = new Date().toISOString()) {
+  const normalized = normalizeState(state);
+  return {
+    format: PORTABLE_CONFIG_FORMAT,
+    version: PORTABLE_CONFIG_VERSION,
+    exportedAt,
+    credentialsIncluded: false,
+    runtimeStateIncluded: false,
+    defaults: {
+      intervalMinutes: normalized.intervalMinutes,
+      commandText: normalized.commandText,
+      stopPhrase: normalized.stopPhrase,
+      theme: normalized.theme
+    },
+    chats: normalized.chats.map((chat) => ({
+      title: chat.title,
+      url: chat.url,
+      enabled: chat.enabled,
+      profile: normalizeChatProfile(chat.profile)
+    }))
+  };
+}
+
+export function applyPortableConfig(raw, at = new Date().toISOString()) {
+  if (!raw || typeof raw !== "object") throw new Error("Файл конфигурации ChatPulse повреждён.");
+  if (raw.format !== PORTABLE_CONFIG_FORMAT || Number(raw.version) !== PORTABLE_CONFIG_VERSION) {
+    throw new Error("Неподдерживаемый формат конфигурации ChatPulse.");
+  }
+  if (!Array.isArray(raw.chats)) throw new Error("В конфигурации отсутствует список чатов.");
+  if (raw.chats.length > MAX_CHAT_COUNT) {
+    throw new Error(`Конфигурация содержит больше ${MAX_CHAT_COUNT} чатов.`);
+  }
+
+  const next = defaultState();
+  next.enabled = false;
+  next.intervalMinutes = clampInterval(raw.defaults?.intervalMinutes ?? next.intervalMinutes);
+  next.commandText = typeof raw.defaults?.commandText === "string" && raw.defaults.commandText.trim()
+    ? raw.defaults.commandText.trim().slice(0, 4_000)
+    : DEFAULT_COMMAND;
+  next.stopPhrase = normalizeStopPhrase(raw.defaults?.stopPhrase);
+  next.theme = raw.defaults?.theme === "preview" ? "preview" : "macos";
+  next.sessionId = createSessionId();
+  next.logs = [];
+  const seenURLs = new Set();
+  next.chats = raw.chats.map((rawChat) => {
+    const chat = createChat({
+      title: rawChat?.title,
+      url: rawChat?.url,
+      tabId: null,
+      now: at
+    });
+    if (seenURLs.has(chat.url)) {
+      throw new Error("Конфигурация содержит один и тот же чат несколько раз.");
+    }
+    seenURLs.add(chat.url);
+    return {
+      ...chat,
+      enabled: rawChat?.enabled !== false,
+      profile: normalizeChatProfile(rawChat?.profile),
+      runStartedAt: null,
+      continuationCount: 0,
+      taskActive: false,
+      taskStartedAt: null,
+      taskCompletedAt: null,
+      taskCompletionReason: null,
+      lastObservedSessionId: null,
+      lastObservedFingerprint: null,
+      lastCommandedFingerprint: null,
+      nextEligibleAt: null,
+      tabId: null
+    };
+  });
+  return next;
+}
+
+function decisionResult(chat, decision) {
+  return { chat: { ...chat, lastDecision: decision }, decision };
 }
 
 function mergeLogs(latestLogs, observedLogs) {
@@ -312,6 +658,12 @@ function timestampOrZero(value) {
 function finiteNonNegative(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function boundedInteger(value, maximum) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(Math.max(Math.trunc(parsed), 0), maximum);
 }
 
 function nonNegativeInteger(value) {

@@ -61,6 +61,10 @@ export async function sendTelegramTest() {
 }
 
 export async function notifyTelegramContinuation({ chatTitle, outcome }) {
+  return notifyTelegramEvent({ chatTitle, event: "continuation", outcome });
+}
+
+export async function notifyTelegramEvent({ chatTitle, event, outcome = null }) {
   const config = await loadTelegramConfig();
   if (!config.enabled) return { sent: false };
   if (!(await hasTelegramPermission())) {
@@ -73,10 +77,8 @@ export async function notifyTelegramContinuation({ chatTitle, outcome }) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 160) || "Чат ChatGPT";
-  const status = outcome === "confirmed"
-    ? "команда продолжения отправлена"
-    : "кнопка отправки нажата; повтор заблокирован";
-  await sendTelegramMessage(config, `ChatPulse · ${safeTitle}\n${status}.`);
+  const status = eventMessage(event, outcome);
+  await sendTelegramMessage(config, `ChatPulse · ${safeTitle}\n${status}`);
   return { sent: true };
 }
 
@@ -107,6 +109,19 @@ async function hasTelegramPermission() {
   } catch {
     return false;
   }
+}
+
+function eventMessage(event, outcome) {
+  return {
+    continuation: outcome === "confirmed"
+      ? "команда продолжения отправлена."
+      : "кнопка отправки нажата; повтор для этого ответа заблокирован.",
+    "stop-phrase": "задача остановлена: обнаружена стоп-фраза.",
+    "continuation-limit": "задача остановлена: достигнут лимит продолжений.",
+    "runtime-limit": "задача остановлена: достигнут лимит времени.",
+    "automation-error": "автоматика встретила ошибку; подробности доступны локально в Control Center.",
+    "task-started": "режим «до завершения» запущен."
+  }[event] || "изменилось состояние автоматизации. Откройте Control Center для подробностей.";
 }
 
 function assertValidChatId(value) {
