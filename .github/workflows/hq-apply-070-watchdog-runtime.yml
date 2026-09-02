@@ -1,0 +1,41 @@
+name: HQ one-shot 0.7.0 watchdog runtime
+
+on:
+  push:
+    branches:
+      - release/0.7.0-github-actions-watchdog
+    paths:
+      - scripts/hq_apply_070_watchdog_runtime.py
+      - .github/workflows/hq-apply-070-watchdog-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.7.0-github-actions-watchdog
+          fetch-depth: 0
+      - name: Apply runtime patch
+        run: python3 scripts/hq_apply_070_watchdog_runtime.py
+      - name: Verify runtime and focused watchdog suites
+        run: |
+          set -euo pipefail
+          node --check chrome-extension/background/github-actions.js
+          node --check chrome-extension/background/service-worker-v2.js
+          node --test tests/chrome-extension/github-watchdog.test.mjs tests/chrome-extension/github-actions-client.test.mjs tests/chrome-extension/github-watchdog-runtime.test.mjs
+          git diff --check
+      - name: Commit runtime and clean helper
+        run: |
+          set -euo pipefail
+          rm -f scripts/hq_apply_070_watchdog_runtime.py .github/workflows/hq-apply-070-watchdog-runtime.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: restart stalled project chats from GitHub Actions activity"
+          git push origin HEAD:release/0.7.0-github-actions-watchdog
