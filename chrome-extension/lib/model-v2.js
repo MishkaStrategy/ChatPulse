@@ -420,11 +420,11 @@ export function mergeDispatchCheckpoint(runtimeChat, latestChat) {
   const sameRun = runtimeRunStartedAt === latestRunStartedAt || canAdoptRunStart;
   const merged = {
     ...latestChat,
+    continuationCount: sameRun
+      ? Math.max(nonNegativeInteger(latestChat?.continuationCount), nonNegativeInteger(runtimeChat?.continuationCount))
+      : nonNegativeInteger(latestChat?.continuationCount),
     ...(sameControlRevision ? {
       runStartedAt: canAdoptRunStart ? runtimeRunStartedAt : latestChat.runStartedAt,
-      continuationCount: sameRun
-        ? Math.max(nonNegativeInteger(latestChat?.continuationCount), nonNegativeInteger(runtimeChat?.continuationCount))
-        : nonNegativeInteger(latestChat?.continuationCount),
       tabId: runtimeChat.tabId,
       lastObservedFingerprint: runtimeChat.lastObservedFingerprint,
       lastObservedAt: runtimeChat.lastObservedAt,
