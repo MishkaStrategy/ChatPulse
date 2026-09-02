@@ -13,6 +13,12 @@ import {
   recordDispatch,
   recordRecovery
 } from "../lib/model-v2.js";
+import {
+  attachTelegramState,
+  notifyTelegramContinuation,
+  sendTelegramTest,
+  updateTelegramConfig
+} from "./telegram.js";
 
 const STORAGE_KEY = "chatpulseState";
 const ALARM_NAME = "chatpulse-monitor";
@@ -37,7 +43,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handleMessage(message)
-    .then((result) => sendResponse({ ok: true, ...result }))
+    .then(async (result) => {
+      const response = result?.state
+        ? { ...result, state: await attachTelegramState(result.state) }
+        : result;
+      sendResponse({ ok: true, ...response });
+    })
     .catch((error) => sendResponse({
       ok: false,
       error: error instanceof Error ? error.message : String(error)
@@ -138,8 +149,15 @@ async function handleMessage(message) {
       return { state };
     }
 
-    case "UPDATE_SETTINGS":
-      return { state: await updateSettings(message.patch || {}) };
+    case "UPDATE_SETTINGS": {
+      const patch = message.patch || {};
+      await updateTelegramConfig(patch);
+      return { state: await updateSettings(patch) };
+    }
+
+    case "TEST_TELEGRAM":
+      await sendTelegramTest();
+      return { state: await loadState() };
 
     case "CLEAR_LOGS": {
       const state = { ...(await loadState()), logs: [] };
@@ -370,6 +388,25 @@ async function performCheck(source, allowWhenStopped) {
           ? `Команда отправлена в «${chat.title}»`
           : `Кнопка отправки нажата в «${chat.title}»; повтор для ответа заблокирован`
       );
+      try {
+        const telegram = await notifyTelegramContinuation({ chatTitle: chat.title, outcome });
+        if (telegram.sent) {
+          observedState = appendLog(
+            observedState,
+            "info",
+            `Telegram: отправлено уведомление для «${chat.title}»`
+          );
+        }
+      } catch (notificationError) {
+        const message = notificationError instanceof Error
+          ? notificationError.message
+          : String(notificationError);
+        observedState = appendLog(
+          observedState,
+          "warning",
+          `Telegram: уведомление для «${chat.title}» не отправлено (${message})`
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       observedState.chats[index] = { ...observedState.chats[index], lastError: message };
@@ -634,7 +671,10 @@ async function persistAndPublish(state) {
   await saveState(state);
   await updateBadge(state);
   try {
-    await chrome.runtime.sendMessage({ type: "STATE_UPDATED", state });
+    await chrome.runtime.sendMessage({
+      type: "STATE_UPDATED",
+      state: await attachTelegramState(state)
+    });
   } catch {
     // Popup/options могут быть закрыты.
   }
