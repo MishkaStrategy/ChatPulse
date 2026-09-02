@@ -2,124 +2,148 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 21
-updated_at: 2026-09-02T07:03:00Z
-project_state: EXECUTING
+critical_path_revision: 22
+updated_at: 2026-09-02T07:24:00Z
+project_state: VALIDATING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: main
-basis_sha: ca202a094424ae637c2ad381b44300fb604ccec8
+basis_ref: release/0.7.0-github-actions-watchdog
+basis_sha: 0d5f8e941c04a2a231dc846c5d45180a7514f78b
 ---
 
 # HQ Critical Path
 
-## 1. Last Released Contract — ChatPulse 0.6.0 beta
+## 1. Released predecessor
 
-0.6.0 is RELEASED.
+ChatPulse 0.6.0 beta is RELEASED.
+Product merge on main: `ca202a094424ae637c2ad381b44300fb604ccec8`.
+Canonical 0.6.0 ZIP: `54963345846658b7e8794ec3fafbb45fecfd0abcd17fd1e808c75795bfd9b82b`.
+Canonical 0.6.0 source manifest: `4e08b1108a7a91ec00299e198a97d92d1af6d631e485a091d30ab03c2b2f7690`.
+Branch/PR/main five-cycle evidence and dependency runner policy are PASS.
 
-Canonical branch head: `994fbcbccf2169bf00fd74a390752e922401f95d`.
-Branch run `33599862500`: 5/5 audit cycles, 58/58 tests per cycle, static/package/security PASS.
-Canonical PR: #21, merge-tree `5bd8769f2c5e46969227ce380b1f583cd526f165`.
-PR run `33600098493`: 5/5, 58/58, package/security PASS, no reviews or unresolved threads.
-Merged exact head to `main` as `ca202a094424ae637c2ad381b44300fb604ccec8`.
-Post-merge main run `33601361550`: 5/5, 58/58, static/package/security PASS.
-Dependency runner policy run `33601361484`: PASS.
-Canonical 0.6.0 product ZIP SHA-256: `54963345846658b7e8794ec3fafbb45fecfd0abcd17fd1e808c75795bfd9b82b`.
-Canonical source-manifest SHA-256: `4e08b1108a7a91ec00299e198a97d92d1af6d631e485a091d30ab03c2b2f7690`.
+## 2. Current release contract — ChatPulse 0.7.0 beta
 
-## 2. Current Release Contract — ChatPulse 0.7.0 beta
+Owner scope: per-chat GitHub Actions inactivity watchdog. A project chat may bind to public GitHub `owner/repo`; if no new Actions workflow run is created for configured `N` minutes, ChatPulse may perform one controlled restart-send for that inactivity episode.
 
-Explicit owner scope: add per-chat GitHub Actions activity watchdog. A chat can bind to a project repository; if no new GitHub Actions workflow run is created for configured `N` minutes, ChatPulse performs one controlled restart-send for that inactivity episode.
+Interpretation of new repository work: appearance of a new latest GitHub Actions workflow-run ID. Restart stays in the same ChatGPT conversation and uses the chat's effective continuation command.
 
-Interpretation of “new tasks”: creation of new GitHub Actions workflow runs in the configured repository, using the latest run ID/`created_at` as the activity marker.
+Explicit exclusions: private-repository auth/token, GitHub writes/workflow dispatch, cloud/backend, opening a new ChatGPT conversation, counting API failures as inactivity, resetting run/runtime counters, or changing ordinary scheduler at-most-once behavior.
+
+## 3. Safety contract
+
+- schema v5; watchdog disabled by default;
+- strict `owner/repo` normalization;
+- idle window bounded 10–10080 minutes;
+- GitHub public API poll cadence at least 10 minutes;
+- at most eight unique watched repositories and deduplicated polling per cycle;
+- GitHub API is only `optional_host_permissions: https://api.github.com/*`;
+- public client sends no Authorization/token and makes read-only `actions/runs?per_page=1` requests;
+- first successful observation always establishes a fresh baseline, never immediate restart;
+- new workflow-run ID resets inactivity episode/restart key;
+- successful empty run list creates baseline at observation time;
+- permission/network/403/404/rate-limit/malformed response records error only;
+- restart candidates are selected only for repositories successfully polled in the current watchdog cycle;
+- one activity marker permits at most one submitted restart before a new run appears;
+- restart does not call `startChatRun()`, so `runStartedAt` and continuation count are preserved;
+- before send: master engine/chat/task scope, `controlRevision`, global session, limits, stop phrase, auth/page-ready, generation, draft and fresh preflight are revalidated;
+- watchdog may intentionally nudge an externally stalled response under its separate repository-episode idempotency, while the ordinary scheduler's response-level at-most-once path remains unchanged;
+- actual restart is a real `recordDispatch()` plus `recordGithubRestart()` and is durably checkpointed before optional notification;
+- master Stop disables watchdog;
+- portable config includes only watcher enabled/repository/idle settings and excludes all run/activity/restart/error runtime state.
+
+## 4. Implemented candidate
+
+Canonical branch: `release/0.7.0-github-actions-watchdog`.
+Current frozen candidate: `0d5f8e941c04a2a231dc846c5d45180a7514f78b`.
+
+Core/model:
+- GitHub watcher profile + runtime fields and migration to schema v5;
+- baseline/activity/error/restart/poll transitions;
+- dispatch-checkpoint merge preserves real watchdog restart through concurrent profile edits;
+- watcher runtime reset never resets normal run/runtime counters.
+
+GitHub client/runtime:
+- new `background/github-actions.js` read-only public client;
+- serialized watchdog uses same `activeCheck` lock as normal scheduler;
+- separate 10-minute watchdog alarm;
+- repository polling dedup/cap/throttle;
+- current-success gate prevents stale baseline restart after an API failure;
+- controlled same-chat restart with stop/limit/session/control/draft/generation preflight and durable dispatch checkpoint.
+
+Control Center/config:
+- per-chat GitHub enabled toggle, `owner/repo`, idle `N`, status/activity/restart/error display;
+- optional permission requested directly from Save/Start user gesture (no asynchronous `permissions.contains` before request);
+- portable export carries configuration only and drops all watchdog runtime history.
 
 Release surface:
-- schema/profile/runtime support for repository watcher;
-- optional GitHub API host permission;
-- GitHub Actions polling client;
-- controlled restart integrated with existing stop/limit/session/at-most-once safety;
-- Control Center configuration/status;
-- configuration-only export/import support;
-- regression/static/package/release evidence for 0.7.0.
+- Manifest/package set to 0.7.0 beta / 0.7.0-beta.1;
+- syntax gate includes `github-actions.js`;
+- static validator asserts schema-v5/watchdog/privacy/optional-permission/no-Authorization boundaries;
+- deterministic package names moved to 0.7.0;
+- README/CHANGELOG/PRIVACY/SECURITY updated;
+- exact 0.7 release workflow listens to `release/0.7.0-github-actions-watchdog`, PRs to main and main.
 
-RELEASED requires canonical non-draft PR + exact-head merge, branch/PR/main regression and package/security gates, and reproducible final 0.7.0 package provenance.
+## 5. Evidence so far
 
-Explicit exclusions:
-- GitHub repository writes or workflow dispatches;
-- private-repository token/auth in this release;
-- cloud backend/accounts;
-- opening a brand-new ChatGPT conversation as “restart”;
-- treating GitHub API/network/permission/rate-limit errors as inactivity;
-- resetting continuation/runtime counters on watchdog restart;
-- weakening normal `at-most-once`, stop phrase, draft/active-generation, `controlRevision`, global-session or master-stop gates.
+Core focused gate: PASS.
+Runtime focused/full regression gate: PASS; current suite grew from 58 to 77 tests before UI.
+Control Center/UI gate: PASS; suite grew to 80 tests.
+Release-surface smoke before workflow control-plane split: 80/80 PASS, static audit PASS, deterministic package PASS.
+Observed pre-freeze package smoke hashes (must be re-proven at frozen head):
+- ZIP `36b8decd2e79d782e0b566138ce6a2a81420f1e887b1879dae9b17c2fd55de60`;
+- source manifest `da443cde522abf7cc8299983c512ff42dbc8dcd47bf0b6a2104b58cf16c7bed1`;
+- packaged extension file count 15.
+Permission-gesture hardening gate: PASS with all regressions.
+All temporary helper scripts/workflows are removed from frozen candidate.
 
-## 3. Watchdog Safety Contract
-
-- Watchdog is disabled by default and configured per chat.
-- Repository identifiers are normalized as `owner/repo`; malformed identifiers fail closed.
-- GitHub API access is `optional_host_permissions` for `https://api.github.com/*`; no install-time GitHub access.
-- First successful repository observation establishes baseline and never immediately restarts a chat.
-- A new latest workflow-run ID resets the inactivity episode and clears restart idempotency.
-- An empty but successful workflow-run list starts a baseline at observation time.
-- API/network/403/404/rate-limit/invalid-response/permission failure records an error only and never advances the idle decision.
-- Public unauthenticated API load is bounded: unique repositories are deduplicated per cycle, maximum watched unique repositories is bounded, and each repository is polled no more often than a fixed safe minimum interval.
-- One activity marker can cause at most one successful restart-send; retry is allowed only while restart has not actually been submitted and the page is temporarily unsafe.
-- Restart means a controlled continuation in the same ChatGPT conversation, preserving context; it does not call `startChatRun()` and does not reset `runStartedAt` or `continuationCount`.
-- Watchdog restart must pass live same-chat `controlRevision`, same global session, enabled/master engine, completion guards, stop-phrase, authentication/page-ready, no active generation, no user draft, and fresh DOM preflight.
-- A successful watchdog restart is a real dispatch: fingerprint/outcome/count and watchdog restart key are durably saved before optional notification; continuation/time limits still apply.
-- Top Stop disables watchdog execution together with all other background sending.
-- Portable export may contain non-secret watcher configuration but never latest run IDs, activity timestamps, restart keys/counts or errors.
-
-## 4. Release Gates
+## 6. Release gates
 
 GATE-1 0.6.0 predecessor release: SATISFIED.
-GATE-2 schema/watchdog decision model + migration: ACTIVE.
-GATE-3 GitHub client/runtime controlled restart + optional permission: PENDING GATE-2.
-GATE-4 Control Center/config/docs + static privacy boundary: PENDING GATE-3.
-GATE-5 exact branch regression/package/security: PENDING GATE-4.
-GATE-6 canonical PR merge-tree equality: PENDING GATE-5.
-GATE-7 exact-head merge + post-merge `main`: PENDING GATE-6.
+GATE-2 schema/watchdog decision model + migration: SATISFIED.
+GATE-3 GitHub client/runtime controlled restart + fail-closed API handling: SATISFIED.
+GATE-4 Control Center/config/docs + optional-permission/privacy boundary: SATISFIED.
+GATE-5 exact frozen branch 5-cycle regression/package/security: ACTIVE.
+GATE-6 canonical PR merge-tree equality/reviews/threads: PENDING GATE-5.
+GATE-7 exact-head merge + post-merge main equality: PENDING GATE-6.
 
-## 5. Current Critical Path
+## 7. Current critical path
 
-CP-1 ACTIVE — create `release/0.7.0-github-actions-watchdog` from released product SHA `ca202a09...`; implement schema v5, pure watchdog state transitions and regression tests.
-CP-2 PENDING — implement GitHub Actions read-only client and serialized watchdog runtime with controlled restart safety.
-CP-3 PENDING — add per-chat Control Center fields/permission/status, safe portable config, privacy/security/docs and 0.7 release metadata.
-CP-4 PENDING — exact-head adversarial diff review + branch gate/package.
-CP-5 PENDING — canonical PR, merge-tree gate and review/thread audit.
-CP-6 PENDING — exact-head merge, post-merge main gate/provenance, persist DONE.
+CP-1 ACTIVE — resolve exact-head run `33603354170` for `0d5f8e94...`; require 5/5 cycles, 80/80 tests each, static PASS and reproducible 0.7 package/provenance.
+CP-2 PENDING — adversarial final diff review against released product `ca202a09...`, confirm no helper files/scope drift and canonical hashes.
+CP-3 PENDING — open one canonical non-draft PR, verify merge-tree exact evidence plus reviews/threads/mergeability.
+CP-4 PENDING — merge exact head, run post-merge main release gate and dependency policy, verify hashes, persist DONE.
 
-## 6. Active Execution Registry
+## 8. Active execution registry
 
-HQ: 0.7.0 architecture, implementation, integration and release owner.
-PROJECT_RUNNER: NONE at this checkpoint; implementation branch not yet created.
-Workers: NONE — model/service-worker/options/release surfaces are tightly coupled and one canonical writer is lower risk.
+HQ: final 0.7.0 candidate validation and release owner.
+PROJECT_RUNNER: run `33603354170`, branch `release/0.7.0-github-actions-watchdog`, exact head `0d5f8e941c04a2a231dc846c5d45180a7514f78b`, last observed queued.
+Workers: NONE — validation/release chain is sequential and exact-head-sensitive.
 Codex: NONE.
 Human gate: NONE.
 
-## 7. Current Blockers
+## 9. Current blockers
 
-NONE.
+NONE. Exact-head runner execution is pending/active; no user action required.
 
-## 8. Six Critical Path Audits
+## 10. Six critical-path audits
 
-Repository Coverage Audit: PASS — manifest/model/service worker/Control Center/portable config/tests/static validation/package/workflow/docs/privacy/security are included.
-Evidence Audit: PASS — owner request plus released `ca202a09...` architecture and 0.6 safety evidence are live-verified.
-Release Alignment Audit: PASS — path implements only repository Actions inactivity restart; private auth/repo writes/new-chat/cloud scope excluded.
-Dependency & Ordering Audit: PASS — 0.6.0 is fully released before 0.7 product writes; schema precedes runtime/UI/release validation.
-Execution & Parallelism Audit: PASS — coupled state/runtime/UI surfaces require one writer; deterministic project runner will validate exact refs.
-Adversarial Audit: PASS — API ambiguity/rate limits, repeated stall sends, master-stop, stale session/profile, active generation/draft, counter reset, export runtime leakage and shared-repo request amplification have explicit fail-closed rules.
+Repository Coverage Audit: PASS — manifest/model/service worker/GitHub client/Control Center/portable config/tests/static validator/package/workflow/docs/privacy/security covered.
+Evidence Audit: PASS for implementation; final exact-head/merge-tree/main evidence still pending gates.
+Release Alignment Audit: PASS — only requested public GitHub Actions inactivity watchdog; no private auth/writes/cloud/new-chat scope.
+Dependency & Ordering Audit: PASS — predecessor released first; model → runtime → UI → release surface → exact validation.
+Execution & Parallelism Audit: PASS — one canonical writer and deterministic project runner; no conflicting worker writes.
+Adversarial Audit: PASS at freeze — current API failure cannot trigger restart, polling bounded, permission remains optional/direct-gesture, one restart per activity episode, counters/guards/session/control/draft/generation preserved, runtime excluded from export.
 
-## 9. Next Action
+## 11. Next action
 
-Create `release/0.7.0-github-actions-watchdog` from `ca202a094424ae637c2ad381b44300fb604ccec8`, implement schema/watchdog core first, then run focused regressions before runtime/UI integration.
+Inspect run `33603354170`; on green, perform final diff/helper audit and open canonical non-draft 0.7.0 PR. On any failure, repair only the evidence-backed defect and re-freeze a new exact head.
 
-## 10. Chat Rotation Checkpoint
+## 12. Chat rotation checkpoint
 
 Safe to rotate: YES.
-Last completed atomic action: 0.6.0 branch/PR/main evidence verified and PR #21 merged; 0.7.0 owner scope audited and revision 21 persisted.
-Active external execution: NONE.
+Last completed atomic action: 0.7.0 candidate frozen at `0d5f8e94...`; exact release workflow committed HQ_DIRECT; revision 22 persisted.
+Active external execution: run `33603354170`.
 Unpersisted material reasoning: NONE.
-Recovery: read live master + revision 21 + current main; verify 0.7 branch state if created after this checkpoint.
-Exact next action after recovery: create or inspect `release/0.7.0-github-actions-watchdog` from released product SHA and continue CP-1.
+Recovery: live-read master + revision 22 + branch head + run `33603354170`.
+Exact next action after recovery: inspect exact-head release run, then adversarial diff/PR or evidence-backed repair.
