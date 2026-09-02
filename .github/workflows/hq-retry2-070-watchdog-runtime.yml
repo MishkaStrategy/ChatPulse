@@ -1,0 +1,88 @@
+name: HQ retry2 0.7.0 watchdog runtime
+
+on:
+  push:
+    branches:
+      - release/0.7.0-github-actions-watchdog
+    paths:
+      - .github/workflows/hq-retry2-070-watchdog-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.7.0-github-actions-watchdog
+          fetch-depth: 0
+      - name: Apply runtime, fail-closed poll gate and schema-v5 test migration
+        run: |
+          set -euo pipefail
+          python3 scripts/hq_apply_070_watchdog_runtime.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          worker = Path('chrome-extension/background/service-worker-v2.js')
+          text = worker.read_text(encoding='utf-8')
+          replacements = [
+            ('  const now = new Date().toISOString();\n  let touched = false;\n\n  for (const [repository, chatIds] of groups) {',
+             '  const now = new Date().toISOString();\n  let touched = false;\n  const successfulRepositories = new Set();\n\n  for (const [repository, chatIds] of groups) {'),
+            ('      const activity = await fetchLatestGithubWorkflowRun(repository);\n      for (const chatId of chatIds) {',
+             '      const activity = await fetchLatestGithubWorkflowRun(repository);\n      successfulRepositories.add(repository);\n      for (const chatId of chatIds) {'),
+            ('      return profile.githubWatchEnabled\n        && githubWatchdogDecision(chat, profile.githubIdleMinutes).decision === "restart";',
+             '      return profile.githubWatchEnabled\n        && successfulRepositories.has(profile.githubRepository)\n        && githubWatchdogDecision(chat, profile.githubIdleMinutes).decision === "restart";')
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'worker anchor mismatch count={text.count(old)}: {old[:70]!r}')
+              text = text.replace(old, new, 1)
+          worker.write_text(text, encoding='utf-8')
+
+          runtime_test = Path('tests/chrome-extension/github-watchdog-runtime.test.mjs')
+          rt = runtime_test.read_text(encoding='utf-8')
+          old = '''  const catchIndex = block.indexOf("} catch (error)");\n  const restartIndex = block.indexOf("attemptGithubWatchdogRestart");\n  assert.ok(catchIndex >= 0);\n  assert.equal(restartIndex, -1, "fetch loop must persist observations before invoking restart attempts");'''
+          new = '''  const catchIndex = block.indexOf("} catch (error)");\n  const persistIndex = block.indexOf("await persistAndPublish(merged)");\n  const restartListIndex = block.indexOf("const restartIds");\n  assert.ok(catchIndex >= 0);\n  assert.ok(persistIndex >= 0 && restartListIndex > persistIndex, "observations must be durable before restart selection");\n  assert.ok(block.includes("successfulRepositories.has(profile.githubRepository)"), "failed API polls must never select restart candidates");'''
+          if rt.count(old) != 1:
+              raise SystemExit('runtime test anchor mismatch')
+          runtime_test.write_text(rt.replace(old, new, 1), encoding='utf-8')
+
+          profile_test = Path('tests/chrome-extension/profile-task.test.mjs')
+          pt = profile_test.read_text(encoding='utf-8')
+          changes = [
+            ('test("schema v3 state migrates to schema v4 with inheriting safe chat profile"',
+             'test("schema v3 state migrates to schema v5 with inheriting safe chat profile and watchdog off"'),
+            ('  assert.equal(state.schemaVersion, 4);', '  assert.equal(state.schemaVersion, 5);'),
+            ('  assert.equal(state.chats[0].profile.telegramNotify, true);\n  assert.equal(state.chats[0].continuationCount, 0);',
+             '  assert.equal(state.chats[0].profile.telegramNotify, true);\n  assert.equal(state.chats[0].profile.githubWatchEnabled, false);\n  assert.equal(state.chats[0].profile.githubRepository, null);\n  assert.equal(state.chats[0].profile.githubIdleMinutes, 30);\n  assert.equal(state.chats[0].continuationCount, 0);'),
+            ('    maxRuntimeMinutes: 0,\n    telegramNotify: true\n  });',
+             '    maxRuntimeMinutes: 0,\n    telegramNotify: true,\n    githubWatchEnabled: false,\n    githubRepository: null,\n    githubIdleMinutes: 30\n  });'),
+            ('    maxRuntimeMinutes: 90,\n    telegramNotify: false\n  });',
+             '    maxRuntimeMinutes: 90,\n    telegramNotify: false,\n    githubWatchEnabled: false,\n    githubRepository: null,\n    githubIdleMinutes: 30\n  });')
+          ]
+          for old, new in changes:
+              if pt.count(old) != 1:
+                  raise SystemExit(f'profile test anchor mismatch count={pt.count(old)}: {old[:70]!r}')
+              pt = pt.replace(old, new, 1)
+          profile_test.write_text(pt, encoding='utf-8')
+          PY
+      - name: Verify all tests and runtime syntax
+        run: |
+          set -euo pipefail
+          node --check chrome-extension/background/github-actions.js
+          node --check chrome-extension/background/service-worker-v2.js
+          npm test
+          git diff --check
+      - name: Commit runtime and clean helpers
+        run: |
+          set -euo pipefail
+          rm -f scripts/hq_apply_070_watchdog_runtime.py .github/workflows/hq-apply-070-watchdog-runtime.yml .github/workflows/hq-retry-070-watchdog-runtime.yml .github/workflows/hq-retry2-070-watchdog-runtime.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: restart stalled project chats from GitHub Actions activity"
+          git push origin HEAD:release/0.7.0-github-actions-watchdog
