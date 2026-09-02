@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.4 beta — per-chat stop phrase rebuild
+
+- add a configurable stop phrase for completed assistant responses;
+- normalize matching with Unicode NFKC, case folding and collapsed whitespace;
+- disable only the chat whose latest completed assistant response contains the phrase;
+- never dispatch a continuation for a stop-matched response;
+- preserve manual re-enable with a control revision so an in-flight check cannot re-disable it;
+- keep response text and the configured phrase out of logs;
+- add model and service-worker coverage for stop matching, user/generation exclusions and two-chat isolation;
+- rebuild the release from current `main` rather than the retired incomplete Issue #14 payload;
+- add reproducible beta ZIP packaging with a canonical source manifest and new SHA-256 evidence.
+
 ## 0.5.2 beta — release hardening
 
 - derive popup and options version labels from the extension Manifest;
