@@ -5,208 +5,124 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/hq-0.5.4-payload-diagnostics.yml"
-  workflow_run:
-    workflows: ["Dependency runner policy"]
-    types: [completed]
 
 permissions:
   contents: read
-  issues: read
 
 concurrency:
-  group: hq-chatpulse-0.5.4-payload-diagnostics-v2
+  group: hq-chatpulse-0.5.4-payload-history-v3
   cancel-in-progress: false
 
 jobs:
-  diagnose-payload:
-    if: >-
-      github.event_name == 'push' ||
-      (github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.repository.full_name == github.repository)
-    name: Pinned payload provenance diagnostics
+  diagnose-payload-history:
+    name: Search Git history for payload snapshot
     runs-on: [self-hosted, fast]
     timeout-minutes: 10
-    env:
-      EXPECTED_PAYLOAD_SHA: f1a702c1bfab1c167b486bd6d7c8a722eb1800ae58c58d1b45c9a8730a7748f5
 
     steps:
-      - name: Diagnose Issue 14 reconstruction without executing payload
+      - name: Checkout complete repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch retained pull-request heads
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin '+refs/pull/*/head:refs/remotes/pull/*' || true
+
+      - name: Compare archived file hashes with reachable commits
+        shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64
           import hashlib
-          import io
-          import itertools
           import json
-          import os
-          from pathlib import PurePosixPath
-          import tarfile
-          import urllib.request
+          import subprocess
 
-          repository = os.environ['GITHUB_REPOSITORY']
-          token = os.environ['GH_TOKEN']
-          expected = os.environ['EXPECTED_PAYLOAD_SHA']
-          allowed_roots = {
-              '.github', 'CHANGELOG.md', 'README.md', 'chrome-extension',
-              'package.json', 'scripts', 'tests',
+          expected = {
+              '.github/workflows/extension-ci.yml': 'd9d9f26da2afd2fd14cebaee88718a5d139a94b61f642a6c756862ed44c218ea',
+              'CHANGELOG.md': '9fa03a5019a004e42840164786f6032b2f97fee1f0b9ad9f6cb58ae67640443a',
+              'README.md': '9ef72a5d4cf84bf46d175e93d203d4c0eb6aa6d2ddf03475bda4522553850cf6',
+              'chrome-extension/README.md': 'cbdc15ea35bc43dc45f9f13b320d336a30c767a6a70de8f256d69b07619a722b',
+              'chrome-extension/assets/icon-128.png': 'd41c501d7d292572f8c7a17802e09bd65e8760a41171d389e39eb02c60e064f1',
+              'chrome-extension/assets/icon-16.png': 'f8e1f2a3fbb111b35d487b2ee65c764e62513b4dee784bf61e6af4c993125e26',
+              'chrome-extension/assets/icon-32.png': '232c3f1a3ed0c77f7c0632f0069313f260dfe670ed844343a63c68c49b3e5742',
+              'chrome-extension/assets/icon-48.png': '195fa7eb16dd9d540f9856c6cc1fdcd3b94ebcc4ceae9e98bf20046a9ca2b928',
+              'chrome-extension/assets/logo.svg': '3604e6a2cb5fcc5fcad70ba5448767de22692a9bd759fae0d2d68a21f2911e8c',
+              'chrome-extension/background/service-worker-v2.js': '2fc80e99f31d30b14302e8672744c70095d329ab5abdfc89df5d760c0a2a826a',
+              'chrome-extension/content/content-script.js': 'fd2ade10d3923ee1413202f8fbb749331f600837abe8f449ba5e148cc0323700',
+              'chrome-extension/lib/model-v2.js': 'e4e0fbf10e4a31579b6a3c4ed9c98cd1ed5703e7f2db0c9a12ef88141675903a',
           }
+          product_keys = [
+              'chrome-extension/background/service-worker-v2.js',
+              'chrome-extension/content/content-script.js',
+              'chrome-extension/lib/model-v2.js',
+          ]
 
-          def sha256(data: bytes) -> str:
-              return hashlib.sha256(data).hexdigest()
-
-          def api(api_path):
-              request = urllib.request.Request(
-                  f'https://api.github.com/repos/{repository}{api_path}',
-                  headers={
-                      'Accept': 'application/vnd.github+json',
-                      'Authorization': f'Bearer {token}',
-                      'X-GitHub-Api-Version': '2022-11-28',
-                      'User-Agent': 'chatpulse-hq-payload-diagnostics',
-                  },
+          def git(*args, check=True):
+              result = subprocess.run(
+                  ['git', *args],
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+                  check=check,
               )
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return json.load(response)
+              return result.stdout
 
-          def normalized_base64(chunks):
-              return ''.join(''.join((chunk.get('body') or '').split()) for chunk in chunks)
+          def file_bytes(commit, path):
+              result = subprocess.run(
+                  ['git', 'show', f'{commit}:{path}'],
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+              )
+              return result.stdout if result.returncode == 0 else None
 
-          def decoded_bytes(chunks):
-              encoded = normalized_base64(chunks)
-              if not encoded:
-                  return None
-              try:
-                  return base64.b64decode(encoded, validate=True)
-              except Exception:
-                  return None
+          def digest(data):
+              return hashlib.sha256(data).hexdigest() if data is not None else None
 
-          def decoded_hash(chunks):
-              decoded = decoded_bytes(chunks)
-              return sha256(decoded) if decoded is not None else None
-
-          issue = api('/issues/14')
-          comments = []
-          page = 1
-          while True:
-              batch = api(f'/issues/14/comments?per_page=100&page={page}')
-              comments.extend(batch)
-              if len(batch) < 100:
-                  break
-              page += 1
-          comments.sort(key=lambda item: item['id'])
-
-          chunks = [{
-              'key': 'issue-body',
-              'id': issue['id'],
-              'created_at': issue['created_at'],
-              'updated_at': issue['updated_at'],
-              'body': issue.get('body') or '',
-          }]
-          chunks.extend({
-              'key': f"comment-{comment['id']}",
-              'id': comment['id'],
-              'created_at': comment['created_at'],
-              'updated_at': comment['updated_at'],
-              'body': comment.get('body') or '',
-          } for comment in comments)
-
-          print(json.dumps({
-              'issue': {
-                  'number': issue['number'],
-                  'created_at': issue['created_at'],
-                  'updated_at': issue['updated_at'],
-                  'comments': len(comments),
-              },
-              'chunks': [{
-                  'key': chunk['key'],
-                  'created_at': chunk['created_at'],
-                  'updated_at': chunk['updated_at'],
-                  'body_length': len(chunk['body']),
-                  'body_sha256': sha256(chunk['body'].encode()),
-              } for chunk in chunks],
-          }, indent=2))
-
-          observed = decoded_bytes(chunks)
-          if observed is None:
-              raise SystemExit('Current Issue #14 chunk stream is not valid base64')
-          observed_hash = sha256(observed)
-          print(f'observed_archive_sha256={observed_hash}')
-          print(f'expected_archive_sha256={expected}')
-          print(f'observed_size_bytes={len(observed)}')
-          print(f'gzip_magic={observed[:3].hex()}')
-
-          issue_chunk = chunks[0]
-          comment_chunks = chunks[1:]
-
-          ordered_subset_matches = []
-          for mask in range(1 << len(comment_chunks)):
-              candidate = [issue_chunk] + [
-                  chunk for index, chunk in enumerate(comment_chunks)
-                  if mask & (1 << index)
-              ]
-              if decoded_hash(candidate) == expected:
-                  ordered_subset_matches.append([chunk['key'] for chunk in candidate])
-          print('ordered_subset_matches=' + json.dumps(ordered_subset_matches))
-
-          permutation_matches = []
-          for permutation in itertools.permutations(comment_chunks):
-              candidate = [issue_chunk, *permutation]
-              if decoded_hash(candidate) == expected:
-                  permutation_matches.append([chunk['key'] for chunk in permutation])
-          print('full_comment_permutation_matches=' + json.dumps(permutation_matches))
-
-          unsafe_paths = []
-          roots = set()
-          regular_count = 0
-          manifest = []
-          with tarfile.open(fileobj=io.BytesIO(observed), mode='r:gz') as bundle:
-              members = bundle.getmembers()
-              for member in members:
-                  path = PurePosixPath(member.name)
-                  parts = [part for part in path.parts if part not in ('', '.')]
-                  if parts:
-                      roots.add(parts[0])
-                  if path.is_absolute() or not parts or '..' in parts:
-                      unsafe_paths.append(member.name)
-                  if not parts or parts[0] not in allowed_roots:
-                      unsafe_paths.append(member.name)
-                  if member.isfile():
-                      regular_count += 1
-                      source = bundle.extractfile(member)
-                      data = source.read() if source else b''
-                      manifest.append({
-                          'name': member.name,
-                          'size': member.size,
-                          'sha256': sha256(data),
-                      })
+          commits = git('rev-list', '--all').decode().splitlines()
+          rows = []
+          for commit in commits:
+              matched = []
+              missing = []
+              mismatched = []
+              for path, wanted in expected.items():
+                  data = file_bytes(commit, path)
+                  if data is None:
+                      missing.append(path)
+                  elif digest(data) == wanted:
+                      matched.append(path)
                   else:
-                      manifest.append({
-                          'name': member.name,
-                          'size': member.size,
-                          'sha256': None,
-                      })
+                      mismatched.append(path)
+              product_matches = sum(path in matched for path in product_keys)
+              if matched or product_matches:
+                  message = git('show', '-s', '--format=%s', commit).decode(errors='replace').strip()
+                  timestamp = git('show', '-s', '--format=%cI', commit).decode(errors='replace').strip()
+                  rows.append({
+                      'commit': commit,
+                      'matched_count': len(matched),
+                      'product_matches': product_matches,
+                      'missing_count': len(missing),
+                      'mismatched_count': len(mismatched),
+                      'message': message,
+                      'timestamp': timestamp,
+                      'matched': matched,
+                  })
 
-          manifest_canonical = '\n'.join(
-              f"{item['name']}\t{item['size']}\t{item['sha256'] or '-'}"
-              for item in manifest
-          ).encode()
-          print('archive_structure=' + json.dumps({
-              'member_count': len(manifest),
-              'regular_file_count': regular_count,
-              'allowed_roots_only': not unsafe_paths,
-              'unsafe_paths': sorted(set(unsafe_paths)),
-              'roots': sorted(roots),
-              'content_manifest_sha256': sha256(manifest_canonical),
-          }))
-          print('member_manifest=' + json.dumps(manifest))
+          rows.sort(key=lambda row: (row['matched_count'], row['product_matches'], row['timestamp']), reverse=True)
+          top = rows[:20]
+          exact = [row for row in rows if row['matched_count'] == len(expected)]
+          product_exact = [row for row in rows if row['product_matches'] == len(product_keys)]
 
-          if observed_hash == expected:
-              print('RESULT=EXPECTED_HASH_MATCH')
-          elif ordered_subset_matches or permutation_matches:
-              print('RESULT=RECONSTRUCTION_MATCH_FOUND')
+          print(f'reachable_commit_count={len(commits)}')
+          print('exact_12_file_matches=' + json.dumps(exact))
+          print('exact_3_product_file_matches=' + json.dumps(product_exact[:20]))
+          print('top_reachable_matches=' + json.dumps(top))
+
+          if exact:
+              print('RESULT=EXACT_SNAPSHOT_COMMIT_FOUND')
+          elif product_exact:
+              print('RESULT=PRODUCT_CORE_COMMIT_FOUND')
           else:
-              print('RESULT=NO_SIMPLE_RECONSTRUCTION_MATCH')
+              print('RESULT=NO_REACHABLE_PRODUCT_SNAPSHOT')
           PY
