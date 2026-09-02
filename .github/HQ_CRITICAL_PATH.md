@@ -2,108 +2,123 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 13
-updated_at: 2026-09-02T02:14:15Z
+critical_path_revision: 14
+updated_at: 2026-09-02T02:22:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: release/0.5.4-rebuild
-basis_sha: 641e60c2f95f151ded2c660a19b8e3c5df916843
+basis_ref: main
+basis_sha: 4a8ec711a3adde13580e16351997621abe2a95fd
 ---
 
 # HQ Critical Path
 
-## Release Contract
+## 1. ChatPulse 0.5.4 beta — RELEASED
 
-Owner-authorized ChatPulse 0.5.4 beta rebuild from fresh `main` with new hashes and per-chat stop phrase. Historical Issue #14 pins `f1a702...` / `64b128...` are RETIRED and must never be restored as current requirements.
+Owner decision `пересобирай 0.5.4 с новыми хэшами` has been fully executed. Historical Issue #14 source/artifact pins are retired and remain evidence only.
 
-Release acceptance:
-- stop phrase optional/empty by default/max 500;
-- latest completed assistant response only;
-- NFKC + case-insensitive + collapsed-whitespace substring match;
-- match disables only the matching chat and never dispatches continuation;
-- user messages/generating responses never trigger stop;
-- manual re-enable creates a fresh baseline and must win over any in-flight stale runtime state;
-- at-most-once, stale-tab recovery, local storage and Chrome MV3 permission boundaries remain intact;
-- five exact-head audits, reproducible package/provenance, canonical PR merge and post-merge `main` gate must pass.
+Canonical rebuilt release:
+- branch head: `release/0.5.4-rebuild@641e60c2f95f151ded2c660a19b8e3c5df916843`;
+- PR #19: merged with exact-head guard;
+- merge/main release SHA: `4a8ec711a3adde13580e16351997621abe2a95fd`;
+- Manifest: `0.5.4`, version name `0.5.4 beta`;
+- product ZIP SHA-256: `c5751017ae42f3f37d1e6c333d31789df7d204335f2e5ff3a4f45f8cc32bf8d0`;
+- source manifest SHA-256: `ee2aa2178707011c2d87ea9f4c0aa3195f1cf324590bd58401a77dfef54410a4`;
+- packaged extension file count: 12.
 
-Telegram PR #18 remains VERIFIED/PARKED until 0.5.4 is released to `main`.
+Final branch exact-head evidence:
+- run `33582428168` — 5/5 audit cycles PASS, 29/29 tests PASS, reproducible package/security PASS;
+- artifact ID `9828902479`.
 
-## Canonical Candidate / PR
+PR merge-tree evidence:
+- run `33582421913` — 5/5 audit cycles PASS, reproducible package/security PASS;
+- same product/source hashes;
+- artifact ID `9828895644`.
 
-Fresh product base: `d3684d865abf1fd174d537933cca50d5aa0955e8`.
-Canonical branch: `release/0.5.4-rebuild`.
-Current head: `641e60c2f95f151ded2c660a19b8e3c5df916843`.
-Canonical rebuilt PR: #19 `Пересобрать ChatPulse 0.5.4 beta со стоп-фразой`.
-Superseded old PR #15: CLOSED UNMERGED with pointer to #19.
+Post-merge `main` evidence:
+- run `33582724814` on exact merge SHA `4a8ec711...` — 5/5 audit cycles PASS;
+- reproducible package built twice identically;
+- static/security/version checks PASS;
+- same canonical ZIP/source hashes;
+- retained artifact ID `9828998086`, 32167 bytes, live until `2026-09-03T02:18:23Z` under repository one-day retention cap;
+- Actions wrapper digest `e40f2013...` is transport metadata, not the product ZIP hash.
 
-PR #19 diff before final race fix was exactly the expected 15 release files; final head additionally adds `tests/chrome-extension/control-revision.test.mjs`, so expected final set is 16 files. No temporary diagnostic/patch workflows belong in the final tree.
+Material adversarial repair included before release:
+- stale runtime state is fully rejected across a newer `controlRevision`, preserving fresh baseline after manual re-enable;
+- dedicated regression plus two-chat stop isolation passed on final and post-merge heads.
 
-## Material Adversarial Finding and Repair
+Old PR #15 is CLOSED UNMERGED as superseded. Temporary semantic/patch/ref-cleanup workflows and accidental ref aliases were removed; only canonical release branch remains from the rebuild controls.
 
-Final PR diff review found a real race at `b217c33f...`: `controlRevision` prevented stale `enabled=false` from overriding a manual re-enable, but `mergeRuntimeState()` still copied stale runtime fields such as `lastObservedSessionId` into the newer chat revision. That could silently undo the required fresh baseline and allow an immediate continuation.
+0.5.4 release gates: 6/6 SATISFIED. Release status: RELEASED.
 
-Repair:
-- commit `0906d150f3b69d84600ae36ce987b83baf1c3a69`: if observed/latest `controlRevision` differ, return the latest chat without merging any stale runtime snapshot;
-- commit `641e60c2f95f151ded2c660a19b8e3c5df916843`: regression test asserts tab ID, fingerprints, session ID, snapshot/recovery/stop fields all remain from the newer revision.
+## 2. Active Owner Request — Telegram notifications
 
-Because packaged `model-v2.js` changed, all prior product hashes are now historical. Final hashes must come from `641e60c2...` gates.
+Owner request: `Добавь уведомления в тг`.
 
-## Historical Passing Evidence
+Previously implemented/verified design on Draft PR #18:
+- Telegram optional and disabled by default;
+- optional host permission `https://api.telegram.org/*`, requested only from a direct user action;
+- bot token stored separately in `chrome.storage.local` and never exposed in public runtime state/logs;
+- notifications after successful/submitted-unconfirmed continuation only;
+- no ChatGPT response text or conversation URL sent to Telegram;
+- Telegram failure is non-critical and cannot alter at-most-once continuation semantics;
+- unrelated settings remain independent of Telegram permission.
 
-`b217c33fc53aa05d7fcd0dc710be3e6ff9e69b64` run `33582114197` passed 5/5 audit cycles plus package/security. At that historical head:
-- ZIP SHA `686a0df219c38c00623b4906c6b88395cb8ae1d19929927c6e8cfcdeba998357`;
-- source manifest SHA `9b677a711394f1c94e68a5315df439f19ca6a2e498f94446b814b6f88551a36f`;
-- artifact ID `9828782332`.
-These hashes are NOT final after the race fix.
+Historical PR #18 head `308f8e362f3c93a607f6a2bbc21ea11a74523959` passed its old exact-head audit, but is now 43 commits behind released `main`. Historical PASS is no longer merge evidence.
 
-## Release Gates
+## 3. Current Critical Path
 
-GATE-1 explicit rebuild authority/fresh base: SATISFIED.
-GATE-2 stop-phrase semantics/fresh implementation: SATISFIED.
-GATE-3 final exact-head branch validation: ACTIVE on push run `33582428168` for `641e60c2...`.
-GATE-4 PR/merge-tree validation: ACTIVE on PR run `33582421913` for PR #19 head `641e60c2...`.
-GATE-5 final source/artifact hashes: PENDING successful final package job; old hashes invalidated by model change.
-GATE-6 merge/post-merge main verification: PENDING GATE-3/4/5.
+### TG-1 — Reconcile Telegram implementation onto released 0.5.4
+Status: ACTIVE.
+Execution plane: HQ_DIRECT on `feature/telegram-notifications`.
+Exact scope:
+1. rebuild/rebase the Draft PR from current released `main`, preserving the verified Telegram security model;
+2. merge Telegram into the current stop-phrase/service-worker/options/package surfaces without losing 0.5.4 protections;
+3. assign the next product version rather than silently changing released 0.5.4 bits;
+4. add/retain Telegram permission/privacy tests plus all 0.5.4 regression tests.
+Acceptance: clean diff from released main; no loss of stop-phrase, controlRevision, at-most-once or recovery guarantees.
 
-## Critical Path
+### TG-2 — Exact-head Telegram validation and release provenance
+Status: PENDING TG-1.
+Required: syntax/unit/static/security, existing 0.5.4 tests, Telegram tests, deterministic package/provenance on exact head.
 
-CP-1 bounded semantic recovery: DONE.
-CP-2 fresh candidate implementation: DONE.
-CP-3 adversarial diff review: DONE; race found and repaired.
-CP-4 final branch + PR gates and new provenance: ACTIVE.
-CP-5 verify PR #19 reviews/threads/mergeability, merge exact head, run post-merge main gate: PENDING CP-4.
-CP-6 reconcile Telegram PR #18 onto released 0.5.4: PENDING FOLLOW-UP.
+### TG-3 — PR #18 review/merge and post-merge verification
+Status: PENDING TG-2.
 
-## Active Execution Registry
+## 4. Active Execution Registry
 
-PROJECT_RUNNER push: run `33582428168`, exact head `641e60c2...`, five-cycle + package gate.
-PROJECT_RUNNER PR: run `33582421913`, PR #19 merge-tree gate.
-HQ: observe both, capture final hashes/artifact, re-run diff/review/mergeability checks, merge only exact head after green evidence.
-Workers: NONE — single release writer and read-only validation are already optimal.
+HQ: Telegram compatibility/rebuild from released `main`.
+PROJECT_RUNNER: NONE active at this checkpoint.
+Workers: NONE — Telegram touches the same worker/options/Manifest/package surfaces, so a single writer avoids conflicts.
 Codex: NONE.
 
-## Safety Controls
+## 5. Safety Controls
 
-Never execute damaged Issue #14 payload. Never log response text or configured stop phrase. Never dispatch on stop match or disable another chat. Never merge stale runtime state across a control revision. Permanent host permissions remain only ChatGPT domains. Release CI is read-only. Telegram #18 stays separate until 0.5.4 base is final.
+- Preserve every released 0.5.4 stop-phrase/controlRevision/at-most-once/recovery regression.
+- Telegram host access remains optional only; never add it to permanent `host_permissions`.
+- Never expose/log bot token, response text or conversation URL.
+- Telegram failure must never cause continuation retry or state rollback.
+- Do not treat historical PR #18 PASS as current-head evidence after base reconciliation.
+- Do not overwrite released 0.5.4 identity with Telegram changes; use the next product version.
 
-## Six Audits
+## 6. Six Audits
 
-Repository Coverage: PASS — main, PR #19, final 16-file surface, tests, packaging and release workflow covered.
-Evidence: PASS — stale hashes explicitly invalidated; final acceptance waits for `641e60c2...` runs.
-Release Alignment: PASS — only 0.5.4 stop phrase + necessary release infrastructure.
-Dependency/Ordering: PASS — race repair → final gates → hashes → merge → post-merge gate.
-Execution/Parallelism: PASS — single release branch; runner read-only; no conflicting writers.
-Adversarial: PASS — race was discovered before merge and now has explicit regression coverage.
+Repository Coverage: PASS — released 0.5.4 and stale Telegram PR #18 compatibility surfaces identified.
+Evidence: PASS — 0.5.4 has branch/PR/main exact evidence; Telegram historical evidence is explicitly marked stale for merge.
+Release Alignment: PASS — 0.5.4 is closed; Telegram is now the sole active owner-requested product slice.
+Dependency/Ordering: PASS — rebase/reconcile → exact-head validation → PR merge → post-merge verification.
+Execution/Parallelism: PASS — single writer on overlapping product surfaces; no useful independent worker slice.
+Adversarial: PASS — protects optional permission, token privacy, stop-phrase/controlRevision semantics and at-most-once behavior.
 
-## Next Action
+## 7. Next Action
 
-Wait for `33582428168` and `33582421913`. On green: capture new ZIP/source-manifest SHA and artifact, verify PR #19 has only expected 16 files/no reviews/no unresolved threads/mergeable exact head, merge with expected head `641e60c2...`, then require the path-filtered `main` push gate before declaring 0.5.4 released.
+Rebuild `feature/telegram-notifications` from released `main`, integrate the known verified Telegram module/tests into current 0.5.4 surfaces, bump to the next beta version, and run a fresh exact-head gate.
 
-## Rotation Checkpoint
+## 8. Rotation Checkpoint
 
 Safe to rotate: YES.
-Persistence: revision 13 saved.
-Active external refs: push `33582428168`; PR `33582421913`; head `641e60c2f95f151ded2c660a19b8e3c5df916843`.
+Last completed atomic action: ChatPulse 0.5.4 beta released and post-merge verified; revision 14 persisted.
+Active external execution: NONE.
 Unpersisted material reasoning: NONE.
+Recovery entrypoint: live-read revision 14 and PR #18; start TG-1 from current `main` product state.
