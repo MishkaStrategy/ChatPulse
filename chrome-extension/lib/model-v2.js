@@ -411,6 +411,40 @@ export function recordDispatch(chat, fingerprint, outcome, at = new Date().toISO
   };
 }
 
+export function mergeDispatchCheckpoint(runtimeChat, latestChat) {
+  const sameControlRevision = nonNegativeInteger(runtimeChat?.controlRevision)
+    === nonNegativeInteger(latestChat?.controlRevision);
+  const runtimeRunStartedAt = stringOrNull(runtimeChat?.runStartedAt);
+  const latestRunStartedAt = stringOrNull(latestChat?.runStartedAt);
+  const canAdoptRunStart = sameControlRevision && !latestRunStartedAt && Boolean(runtimeRunStartedAt);
+  const sameRun = runtimeRunStartedAt === latestRunStartedAt || canAdoptRunStart;
+  const merged = {
+    ...latestChat,
+    ...(sameControlRevision ? {
+      runStartedAt: canAdoptRunStart ? runtimeRunStartedAt : latestChat.runStartedAt,
+      continuationCount: sameRun
+        ? Math.max(nonNegativeInteger(latestChat?.continuationCount), nonNegativeInteger(runtimeChat?.continuationCount))
+        : nonNegativeInteger(latestChat?.continuationCount),
+      tabId: runtimeChat.tabId,
+      lastObservedFingerprint: runtimeChat.lastObservedFingerprint,
+      lastObservedAt: runtimeChat.lastObservedAt,
+      lastObservedSessionId: runtimeChat.lastObservedSessionId,
+      lastSnapshotAt: runtimeChat.lastSnapshotAt,
+      lastHardRefreshAt: runtimeChat.lastHardRefreshAt,
+      lastRecoveryAt: runtimeChat.lastRecoveryAt,
+      lastRecoveryReason: runtimeChat.lastRecoveryReason,
+      staleRecoveries: runtimeChat.staleRecoveries,
+      lastDecision: runtimeChat.lastDecision,
+      nextEligibleAt: runtimeChat.nextEligibleAt
+    } : {}),
+    lastCommandedFingerprint: runtimeChat.lastCommandedFingerprint,
+    lastCommandAt: runtimeChat.lastCommandAt,
+    lastDispatchOutcome: runtimeChat.lastDispatchOutcome,
+    lastError: runtimeChat.lastError
+  };
+  return merged;
+}
+
 export function mergeRuntimeState(observedState, latestState) {
   const observedById = new Map(observedState.chats.map((chat) => [chat.id, chat]));
   return {

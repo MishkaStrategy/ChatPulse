@@ -12,6 +12,7 @@ import {
   effectiveChatProfile,
   hasCompletionGuard,
   isChatDue,
+  mergeDispatchCheckpoint,
   mergeRuntimeState,
   normalizeChatProfile,
   normalizeChatURL,
@@ -170,8 +171,9 @@ async function handleMessage(message) {
         ...state,
         enabled: true
       }, "info", `Задача «${state.chats[index].title}» запущена до условия завершения`);
-      state = await notifyChatEvent(state, state.chats[index], "task-started");
       state = await configureAlarm(state);
+      await persistAndPublish(state);
+      state = await notifyChatEvent(state, state.chats[index], "task-started");
       await persistAndPublish(state);
       void runCheck("task-start");
       return { state };
@@ -361,6 +363,7 @@ async function performCheck(source, allowWhenStopped) {
     let profile = effectiveChatProfile(observedState, chat);
     chat = prepareChatRun(chat);
     observedState.chats[index] = chat;
+    await persistRunStartCheckpoint(chat);
 
     const preCheckGuard = completionGuardReason(chat, profile);
     if (preCheckGuard) {
@@ -507,6 +510,8 @@ async function performCheck(source, allowWhenStopped) {
         preflightDecision.fingerprint,
         outcome
       );
+      const checkpoint = await persistDispatchCheckpoint(observedState.chats[index]);
+      observedState.chats[index] = checkpoint.chat;
       observedState = appendLog(
         observedState,
         outcome === "confirmed" ? "info" : "warning",
@@ -521,18 +526,16 @@ async function performCheck(source, allowWhenStopped) {
         outcome
       );
 
-      const postDispatchGuard = completionGuardReason(observedState.chats[index], profile);
-      if (postDispatchGuard) {
-        observedState.chats[index] = applyCompletion(observedState.chats[index], postDispatchGuard);
+      if (checkpoint.guard) {
         observedState = appendLog(
           observedState,
           "info",
-          `${chat.title}: ${completionDescription(postDispatchGuard)}`
+          `${chat.title}: ${completionDescription(checkpoint.guard)}`
         );
         observedState = await notifyChatEvent(
           observedState,
           observedState.chats[index],
-          postDispatchGuard
+          checkpoint.guard
         );
       }
     } catch (error) {
@@ -563,6 +566,37 @@ async function performCheck(source, allowWhenStopped) {
   let merged = mergeRuntimeState(observedState, latestState);
   merged = await configureAlarm(merged);
   await persistAndPublish(merged);
+}
+
+async function persistRunStartCheckpoint(runtimeChat) {
+  const latestState = await loadState();
+  const index = latestState.chats.findIndex((candidate) => candidate.id === runtimeChat.id);
+  if (index < 0) return;
+  const latestChat = latestState.chats[index];
+  const sameControlRevision = Number(latestChat.controlRevision || 0)
+    === Number(runtimeChat.controlRevision || 0);
+  if (!sameControlRevision || latestChat.runStartedAt || !runtimeChat.runStartedAt) return;
+  latestState.chats[index] = { ...latestChat, runStartedAt: runtimeChat.runStartedAt };
+  await saveState(latestState);
+}
+
+async function persistDispatchCheckpoint(runtimeChat) {
+  const latestState = await loadState();
+  const index = latestState.chats.findIndex((candidate) => candidate.id === runtimeChat.id);
+  if (index < 0) return { chat: runtimeChat, guard: null };
+
+  let checkpointChat = mergeDispatchCheckpoint(runtimeChat, latestState.chats[index]);
+  latestState.chats[index] = checkpointChat;
+  const currentProfile = effectiveChatProfile(latestState, checkpointChat);
+  const guard = checkpointChat.enabled
+    ? completionGuardReason(checkpointChat, currentProfile)
+    : null;
+  if (guard) {
+    checkpointChat = applyCompletion(checkpointChat, guard);
+    latestState.chats[index] = checkpointChat;
+  }
+  await saveState(latestState);
+  return { chat: checkpointChat, guard };
 }
 
 async function notifyChatEvent(state, chat, event, outcome = null) {
