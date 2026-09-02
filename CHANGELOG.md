@@ -5,6 +5,8 @@
 - add per-chat profiles with inherited/custom continuation command, interval and stop phrase;
 - add exact per-run continuation and runtime limits, checked before sending and again after a recorded dispatch so `N` can never become `N+1`;
 - add guarded **run until completion** mode that refuses to start without a stop phrase, continuation limit or runtime limit;
+- add isolated `taskOnly` engine mode when a task starts from master-stop, so unrelated ordinary chats stay dormant; keep the top Stop action as a full master-stop for active tasks and ordinary monitoring;
+- persist at-most-once dispatch fingerprints/counts before Telegram/network notification work and invalidate stale task checks on manual/global stop;
 - add schema v4 runtime fields for task progress, completion reason, per-chat scheduling and control-revision-safe profile changes;
 - replace the simple chat list in full options with a Control Center showing status, next check, progress, errors and task state for every tracked chat;
 - add Telegram operational events for task start, stop phrase, continuation/runtime limits and generic automation errors without sending response text, URL, command or stop phrase;
