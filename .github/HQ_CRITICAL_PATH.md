@@ -2,116 +2,149 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 28
-updated_at: 2026-09-05T10:07:00Z
-project_state: DONE
+critical_path_revision: 29
+updated_at: 2026-09-05T10:25:00Z
+project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
-handoff_status: READY
+handoff_status: NOT_READY
 basis_ref: main
-basis_sha: eb009837505c570cc1646485244b8fbc4563a6ea
+basis_sha: 5593bc3894ba2404adad87a97fc103d0a61f1e6a
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.1 beta patch for active GitHub Actions awareness and explicit repository-field guidance.
+Release target: ChatPulse 0.7.2 beta — private GitHub repository support through a locally stored read-only GitHub token, plus an explicit token-permission verification control in the per-chat GitHub Actions settings.
 
-Release surface: GitHub Actions public client/runtime model, Control Center guidance, watchdog deterministic/browser tests, release workflow/versioning/packaging documentation. The service-worker restart flow itself required no behavioral rewrite because it already consumes model decisions and current-successful-poll gating.
+Release surface: GitHub Actions client/auth storage, Control Center GitHub integration UI, security/privacy documentation, deterministic tests, loaded-Chromium regression gate, release versioning and reproducible packaging.
 
-Definition of RELEASED: ChatPulse polls GitHub independently every 10 minutes; any observed non-`completed` workflow run is active work that blocks same-chat restart; active work refreshes activity and an `active -> no active runs` transition starts a fresh idle interval; API/permission/malformed uncertainty remains fail-closed; new-run reset and one-restart-per-marker semantics remain intact; the repository field visibly documents valid `owner/repo` syntax with a concrete example; exact frozen branch, PR merge-tree and post-merge main evidence all pass.
+Definition of RELEASED: public repositories continue to work without credentials; a private repository can be watched when a GitHub token with repository access and Actions read permission is stored; a pasted token can be checked against the exact configured `owner/repo` Actions endpoint before it is saved; credentials remain local-only, hidden from content scripts, excluded from portable export/logs/runtime state, and never grant or perform GitHub writes; existing active-run, idle-reset, fail-closed and at-most-once restart semantics remain intact; frozen branch, canonical PR merge-tree and post-merge main evidence all pass.
 
 Mandatory release gates:
 
-- [x] Public GitHub client reads bounded recent workflow-run status metadata without credentials or writes.
-- [x] Any non-`completed` observed run, including `queued`, `in_progress`, `waiting`, `requested` and `pending`, blocks restart.
-- [x] Active work refreshes repository activity and `active -> none` starts a fresh N-minute idle window.
-- [x] Permission/network/403/404/rate-limit/malformed responses remain error-only and cannot trigger restart.
-- [x] New workflow run resets inactivity episode and one activity marker still produces at most one restart.
-- [x] Control Center shows `owner/repo`, example `MishkaStrategy/ChatPulse`, and warns against GitHub URLs or `/actions` URLs.
-- [x] Loaded Chromium/MV3 E2E proves active-work blocking, active-to-idle reset, eventual restart and duplicate-send protection.
-- [x] Five independent deterministic audit cycles pass on branch, PR merge-tree and main.
-- [x] Reproducible 0.7.1 beta package/provenance passes with equal canonical hashes on branch, PR merge-tree and main.
-- [x] Canonical PR merge-tree and post-merge main reproduce all release gates.
+- [ ] Fine-grained PAT with repository access + `Actions: Read-only` can authenticate `GET /repos/{owner}/{repo}/actions/runs` for private repositories.
+- [ ] Public repositories remain token-optional and unauthenticated by default.
+- [ ] Token verification button checks the exact repository Actions read path and gives actionable 401/403/404/rate-limit feedback without logging or echoing the token.
+- [ ] Token is stored only in `chrome.storage.local` under a dedicated credential key and storage access is restricted to trusted extension contexts when supported by Chrome.
+- [ ] Token never enters `chatpulseState`, portable export, logs, ChatGPT content messages, package provenance or UI state returned by the worker.
+- [ ] Background watchdog automatically uses the stored token for the matching repository while preserving `credentials: omit`, bounded read-only GETs and no GitHub writes/dispatch.
+- [ ] Existing unfinished-run blocking, active->idle fresh baseline, API fail-closed and one-restart-per-marker semantics remain green.
+- [ ] UI documents the least-privilege fine-grained token requirement and that classic PAT `repo` scope is broader and not recommended.
+- [ ] Five deterministic audit cycles, Chromium E2E, dependency policy and reproducible package/provenance pass on branch, PR merge-tree and main.
 
-Required release evidence: exact SHAs, workflow/job IDs, browser E2E assertions, 5x test counts, dependency-policy results, package/source-manifest SHA-256.
+Required release evidence: exact branch/PR/main SHAs, workflow IDs, test counts, token-auth protocol assertions, secret-leak/export assertions, browser E2E result, dependency-policy result, package/source-manifest SHA-256.
 
-Known explicit exclusions: private GitHub repositories/tokens; GitHub writes or workflow dispatch; authenticated live ChatGPT automation; broad UI redesign; unrelated draft PR #17.
+Known explicit exclusions: GitHub write permissions; workflow dispatch; storing GitHub credentials in cloud/backend/sync storage; OAuth device flow; GitHub App installation flow; private repository support without a user-provided credential; unrelated draft PR #17.
 
 ## 2. Repository Basis
 
 Default branch: main.
-Validated product main commit: `eb009837505c570cc1646485244b8fbc4563a6ea`.
+Default branch observed SHA before this revision: `5593bc3894ba2404adad87a97fc103d0a61f1e6a`.
+Validated previous product commit: `eb009837505c570cc1646485244b8fbc4563a6ea` (0.7.1 beta).
 Critical-path basis ref: main.
-Critical-path basis SHA: `eb009837505c570cc1646485244b8fbc4563a6ea`.
-Canonical integration branch: `release/0.7.1-active-actions-watchdog`.
-Frozen final branch head: `2e901fd43f8669bfae2b9865163ab8bf4fad1e6d`.
-Canonical PR: #24.
-Final PR merge-tree SHA: `501c9d70f1ba6b624aecb230bb7fde2247523b89`.
-Relevant open PRs after release: #17 draft remains separate/excluded.
-Relevant Issues: none required for this owner-direct patch.
+Critical-path basis SHA: `5593bc3894ba2404adad87a97fc103d0a61f1e6a`.
+Canonical integration branch: `release/0.7.2-private-github-token` (to create from the state commit produced by this revision).
+Canonical PR / RC: pending.
+Relevant open PRs: #17 draft remains separate/excluded.
+Relevant Issues: none required for this owner-direct scope.
 Relevant CI / workflows: `.github/workflows/extension-ci.yml`, `.github/workflows/docker-runner-policy.yml`.
-Relevant release/deployment state: 0.7.1 beta merged to main and exact main release evidence is green; no Chrome Web Store publication is required by this release contract.
+Relevant release/deployment state: 0.7.1 beta is released; its explicit exclusion of private repositories/tokens is superseded by the current owner decision.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner.
-Architecture / major components: popup/options UI, MV3 service worker, pure state/model helpers, ChatGPT content script, optional Telegram and public GitHub clients.
-Build / packaging: deterministic Python package script plus Node validation.
-Tests / validation: 84-test deterministic extension suite plus Playwright loaded-Chromium E2E.
-CI: five independent deterministic audit cycles, browser E2E, reproducible package/provenance, dependency runner policy.
-Release / deployment: validated PR merge to main; package artifact generated by main CI.
-Governance: organizational HQ master 1.2 live-read for this wave; this file records the final verified state.
-External release dependencies: public GitHub API for product operation; Chromium download for E2E.
-Material findings: 0.7.0 only tracked workflow-run creation IDs, so long-running Actions could be misclassified as idle. 0.7.1 inspects up to 100 recent runs in one bounded public request and persists only aggregate active-run runtime state. During the first PR E2E, a shared hosted-runner IP exhausted GitHub's unauthenticated API rate limit; the product correctly failed closed. The E2E was then made deterministic by supplying the current `GITHUB_RUN_ID` as the active-run fixture through the production fetch/parser/runtime path, while protocol GET/`credentials: omit`/no-Authorization/rate-limit behavior remains separately tested. Earlier branch run `33959175521` additionally proved the real public API could observe its current CI run as active (`active_run_count=1`).
+Architecture / major components: popup/options UI, MV3 service worker, pure state/model helpers, ChatGPT content script, optional Telegram integration and GitHub Actions watchdog.
+Build / packaging: deterministic Python ZIP/source-manifest packaging plus Node validation.
+Tests / validation: 84 deterministic extension tests plus Playwright loaded-Chromium E2E before this patch.
+CI: five-cycle deterministic audit, Chromium E2E, reproducible package/provenance and dependency runner policy.
+Release / deployment: validated merge to main; no Chrome Web Store publication required by current project policy.
+Governance: organizational HQ master 1.2 live-read for this wave.
+External release dependencies: GitHub REST API and Chromium download for E2E.
+Material findings: `MishkaStrategy/Elza` is private, so 0.7.1 cannot create a baseline because its GitHub client intentionally sends no Authorization header. Current GitHub documentation confirms fine-grained PAT `Actions` repository permission (read) is sufficient for workflow-run reads; classic PATs require the broad `repo` scope for private repositories and are not the preferred least-privilege path. Existing GitHub client already centralizes the exact read-only Actions request, allowing credential use to be added without changing watchdog state-machine semantics.
 
 ## 4. Release Gates
 
-### GATE-1 — Active Actions correctness
-Status: SATISFIED
-Evidence: deterministic tests cover all non-completed statuses, active blocking, repeated active observations, active-to-idle fresh baseline, new-run reset, error fail-closed and one-restart idempotency. Loaded Chromium E2E reproduces active block -> active-to-idle reset -> one restart -> no duplicate.
-Blocking items: NONE.
+### GATE-1 — Secure private-repository authentication
+Status: UNSATISFIED
+Evidence: current client has no token store/header and private Elza cannot be read by the extension.
+Blocking items: credential store, authenticated GET, actionable errors, secret isolation.
 
-### GATE-2 — UI guidance
-Status: SATISFIED
-Evidence: Control Center repository field placeholder is `MishkaStrategy/ChatPulse`; annotation states `owner/repo`, gives that example, and warns not to paste a GitHub URL or `/actions` URL. UI regression test and static validator pass.
-Blocking items: NONE.
+### GATE-2 — Token verification UX
+Status: UNSATISFIED
+Evidence: current Control Center has no GitHub token input or verification button.
+Blocking items: masked token field, verification control/status, least-privilege guidance.
 
-### GATE-3 — Frozen release branch
-Status: SATISFIED
-Evidence: final branch head `2e901fd43f8669bfae2b9865163ab8bf4fad1e6d`; release run `33959533925` SUCCESS; 5/5 deterministic cycles; 84/84 tests per inspected cycle; browser E2E PASS; reproducible package/provenance PASS; artifact ID `9967500127`.
-Blocking items: NONE.
+### GATE-3 — Frozen branch validation
+Status: UNSATISFIED
+Evidence: patch not implemented.
+Blocking items: GATE-1 and GATE-2.
 
 ### GATE-4 — Canonical PR merge-tree
-Status: SATISFIED
-Evidence: PR #24 merge-tree `501c9d70f1ba6b624aecb230bb7fde2247523b89`; release run `33959536211` SUCCESS with 5/5 deterministic cycles, browser E2E PASS and package/provenance equality; dependency-policy run `33959536180` PASS; reviews none; review threads none; PR mergeable before merge.
-Blocking items: NONE.
+Status: UNSATISFIED
+Evidence: no PR yet.
+Blocking items: GATE-3.
 
 ### GATE-5 — Post-merge main
-Status: SATISFIED
-Evidence: product merge commit `eb009837505c570cc1646485244b8fbc4563a6ea`; release run `33959684851` SUCCESS; dependency-policy run `33959684870` SUCCESS; all five audit cycles SUCCESS; inspected cycle 84/84 PASS; browser E2E job `101289266102` SUCCESS at exact main SHA; package/provenance job `101289373572` SUCCESS; main artifact ID `9967538216`.
-Blocking items: NONE.
+Status: UNSATISFIED
+Evidence: not merged.
+Blocking items: GATE-4.
 
 ## 5. Current Critical Path
 
-CP-1 — implement active-run-aware watchdog and repository guidance: DONE.
-CP-2 — validate frozen release branch: DONE.
-CP-3 — validate canonical PR #24 merge tree: DONE.
-CP-4 — merge exact head and validate main: DONE.
-CP-5 — persist verified 0.7.1 release state: DONE by this revision.
+### CP-1 — Implement least-privilege GitHub credential path and verification UI
+Status: ACTIVE
+Release gate: GATE-1, GATE-2
+Why critical: unblocks the owner’s private `MishkaStrategy/Elza` watchdog while protecting the credential boundary.
+Depends on: released 0.7.1 active-run watchdog.
+Blocks: CP-2.
+Execution plane: HQ_DIRECT
+Exact scope: GitHub client credential store/authenticated GET + Control Center masked token/check control + secret-isolation tests/docs/versioning.
+Acceptance condition: deterministic tests prove authenticated and unauthenticated protocol behavior, token verification/error handling, storage isolation and no export/log leakage; existing watchdog behavior stays green.
+Evidence: pending branch SHA/workflow.
+
+### CP-2 — Validate frozen 0.7.2 branch
+Status: PENDING
+Release gate: GATE-3
+Depends on: CP-1
+Blocks: CP-3
+Execution plane: PROJECT_RUNNER
+Exact scope: five deterministic audits, Chromium E2E, dependency policy, reproducible package/provenance.
+Acceptance condition: exact branch head fully green.
+Evidence: pending.
+
+### CP-3 — Validate canonical PR merge-tree
+Status: PENDING
+Release gate: GATE-4
+Depends on: CP-2
+Blocks: CP-4
+Execution plane: PROJECT_RUNNER
+Exact scope: exact GitHub PR merge ref plus review/thread/mergeability checks.
+Acceptance condition: exact merge-tree fully green with no unresolved blocker.
+Evidence: pending.
+
+### CP-4 — Merge exact head and validate main
+Status: PENDING
+Release gate: GATE-5
+Depends on: CP-3
+Blocks: DONE
+Execution plane: HQ_DIRECT + PROJECT_RUNNER
+Exact scope: merge only validated PR head, reproduce release evidence on exact main product commit, persist final state.
+Acceptance condition: all main gates green and 0.7.2 package hashes recorded.
+Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: DONE for 0.7.1 patch wave.
+HQ: CP-1 canonical writer/integrator.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: no active release-critical execution.
+CI/runtime: NONE until branch head is created.
 
 ## 7. Safe Parallel Work
 
-NONE — release wave is complete.
+NONE — credential storage, authenticated client behavior and per-chat UI are a tightly coupled security boundary and should have one canonical writer.
 
 ## 8. Current Blockers
 
@@ -119,66 +152,34 @@ NONE.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — product/release diff is limited to 13 intended files covering GitHub client/model, Control Center copy, deterministic/browser tests, validator, version/package/release workflow and changelog.
+Repository Coverage Audit: PASS — affected GitHub client/UI/security/test/release surfaces identified.
+Evidence Audit: PASS — branch/merge-tree/main and secret-isolation evidence requirements are explicit.
+Release Alignment Audit: PASS — limited to owner-requested private GitHub support and token verification plus necessary security/release hardening.
+Dependency & Ordering Audit: PASS — secure credential/client layer precedes UI and release validation.
+Execution & Parallelism Audit: PASS — one canonical writer avoids split ownership of the credential boundary.
+Adversarial Audit: PASS — design forbids token export/logging/content-script exposure and GitHub writes; errors remain fail-closed.
 
-Evidence Audit: PASS — exact frozen branch, exact PR merge-tree and exact post-merge main have independent green evidence; package hashes match across stages.
+Material findings and resolutions: use a repository-keyed local credential store separate from ChatPulse model state; apply `chrome.storage.local.setAccessLevel({accessLevel: "TRUSTED_CONTEXTS"})` from the GitHub integration module when available; verification uses the same read-only workflow-runs endpoint the watchdog consumes; fine-grained PAT with Actions read is the recommended path.
 
-Release Alignment Audit: PASS — changes are limited to owner-requested active-Action correctness and repository-input guidance plus necessary release/test hardening.
+## 10. Next Action
 
-Dependency & Ordering Audit: PASS — active-run semantics/UI/tests -> branch validation -> PR merge-tree/dependency policy -> exact merge -> main validation -> persistence.
+Exact next action: create `release/0.7.2-private-github-token`, implement CP-1, then validate the exact branch head.
+Executor: HQ_DIRECT.
+Expected evidence: deterministic auth/storage/UI tests plus existing watchdog/Chromium/package gates.
+Acceptance condition: GATE-1 and GATE-2 satisfied and branch gate green.
 
-Execution & Parallelism Audit: PASS — one canonical HQ writer handled tightly coupled client/model/UI/E2E surfaces; project runners provided deterministic exact-ref evidence.
+## 11. Last Material Revision
 
-Adversarial Audit: PASS — one bounded public request inspects at most 100 recent runs; any non-completed status blocks restart; malformed/missing status fails closed; active-to-idle transition cannot inherit stale pre-run idle time; no token, Authorization header, GitHub write, workflow dispatch or permanent GitHub host permission was added; public shared-IP rate-limit does not create a false restart and no longer makes browser E2E flaky; portable export excludes `githubActiveRunCount` and other runtime watcher state.
+What changed: owner promoted private GitHub repository support and a token-permission verification button into immediate release scope after `MishkaStrategy/Elza` remained without a baseline because it is private.
+Why the critical path changed: 0.7.1 explicitly supported only public tokenless GitHub reads.
+Evidence causing the change: live repository metadata shows `MishkaStrategy/Elza` is private; owner requested authenticated support; current GitHub docs confirm least-privilege Actions read permission for workflow-run access.
 
-Material findings and resolutions: first PR E2E failure on GitHub public rate limit was infrastructure evidence of fail-closed correctness, not product failure. Deterministic current-run fixture replaced public-network dependence in the release gate while retaining exact protocol tests and supplemental real-public branch proof.
+## 12. Chat Rotation Checkpoint
 
-## 10. Release Evidence Summary
-
-Final branch head: `2e901fd43f8669bfae2b9865163ab8bf4fad1e6d`.
-Branch release run: `33959533925` — SUCCESS; 5/5 x 84/84; browser E2E PASS; package/provenance PASS; artifact ID `9967500127`.
-Supplemental real-public API branch proof: run `33959175521` observed itself as unfinished work with `active_run_count=1` and passed active-block/active-to-idle/restart semantics before the deterministic E2E hardening.
-
-PR #24 merge-tree SHA: `501c9d70f1ba6b624aecb230bb7fde2247523b89`.
-PR release run: `33959536211` — SUCCESS; exact merge-ref; 5/5 deterministic audit; browser E2E PASS; package/provenance PASS; artifact ID `9967493256`.
-PR dependency policy: `33959536180` — PASS.
-
-Post-merge main commit: `eb009837505c570cc1646485244b8fbc4563a6ea`.
-Main release run: `33959684851` — SUCCESS; exact main SHA; five audit cycles SUCCESS; inspected cycle 84/84 PASS; browser E2E PASS with `CHATPULSE_E2E_RUN_ID=33959684851`, `active_run_count=1`, `active_run_block=PASS`, `active_to_idle_reset=PASS`, restart/idempotency PASS; package/provenance PASS.
-Main dependency policy: `33959684870` — PASS.
-Main artifact ID: `9967538216`; artifact container digest `sha256:694bcb27afe81ca80445d3f25593d720b4ca928bcf36274550f83d944499d1de`; repository retention policy reduces retention to 1 day.
-
-Canonical 0.7.1 beta product ZIP SHA-256:
-`4887a493d6c8a390aa34422f42c7070cb4b13e39a3ce755c915cc00ddfc1f584`
-
-Canonical source-manifest SHA-256:
-`a2444861227cdeb6d3a13e146003db930625f6495f33bb26277fab1cbf8ec396`
-
-Packaged extension file count: 15. Reproducible timestamp: `2020-01-01T00:00:00`.
-
-## 11. Runtime Contract
-
-GitHub watchdog polling remains a distinct Chrome alarm at a 10-minute minimum cadence and is independent of the normal ChatGPT check interval. The public API request is repository-scoped and read-only. Up to 100 recent runs are inspected because the latest run alone is insufficient to detect another still-running workflow. `githubActiveRunCount > 0` yields `actions-active` and blocks restart. Each successful active observation refreshes activity; the first successful observation after active count returns to zero establishes a fresh inactivity start. Restart requires a successful current repository poll, no active runs, elapsed configured idle threshold and all existing ChatGPT live-send safety gates.
-
-## 12. Next Action
-
-Exact next action: await next owner scope or evidence-backed regression.
-Executor: NONE until new scope.
-Expected evidence: N/A.
-Acceptance condition: N/A.
-
-## 13. Last Material Revision
-
-What changed: ChatPulse 0.7.1 beta now treats unfinished GitHub Actions as active project work and documents valid repository input directly in Control Center.
-Why the critical path changed: owner approved active-run awareness after confirming 0.7.0 could restart while a long-running Action was still executing, and requested a concrete repository-format annotation.
-Evidence causing closure: branch `33959533925`, PR `33959536211`, main `33959684851`, dependency-policy runs, exact SHAs, browser E2E assertions and equal reproducible package hashes.
-
-## 14. Chat Rotation Checkpoint
-
-Safe to rotate chat: YES.
-Last completed atomic action: exact main product commit `eb009837505c570cc1646485244b8fbc4563a6ea` passed 5/5 deterministic audit, loaded-browser active-run E2E, dependency policy and reproducible package/provenance equality.
+Safe to rotate chat: NO.
+Last completed atomic action: live-read master/current ChatPulse state and established the 0.7.2 private-repository release contract.
 Active external executions and exact refs: NONE.
-Unpersisted material reasoning: NONE.
-Recovery entrypoint: live-read organizational master prompt, this revision and current main; treat `eb009837...` as the validated 0.7.1 product merge beneath the later HQ-only state commit created by this revision.
-Exact next action after recovery: await owner scope or evidence-backed regression.
-Rotation blockers: NONE.
+Unpersisted material reasoning: implementation pending.
+Recovery entrypoint: live-read organizational master, this revision and current main.
+Exact next action after recovery: create the release branch and implement CP-1.
+Rotation blockers: active product patch wave.
