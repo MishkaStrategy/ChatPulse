@@ -34,7 +34,8 @@ function createHarness() {
   const removedListeners = new Set();
   const data = {};
   const tabs = new Map();
-  const metrics = { reloads: 0, injections: 0, sends: 0, inspections: 0, alarmCreates: 0, creates: 0, windowFocuses: 0 };
+  const alarms = new Map();
+  const metrics = { reloads: 0, injections: 0, sends: 0, inspections: 0, alarmCreates: 0, alarmCreatesByName: {}, creates: 0, windowFocuses: 0 };
   let sendHandler = async (_tabId, message) => {
     if (message.type === 'CHATPULSE_INSPECT') {
       metrics.inspections += 1;
@@ -61,8 +62,17 @@ function createHarness() {
     },
     alarms: {
       onAlarm: { addListener(fn) { alarmListeners.push(fn); } },
-      async clear() { return true; },
-      async create() { metrics.alarmCreates += 1; }
+      async get(name) { return clone(alarms.get(name)); },
+      async clear(name) { return alarms.delete(name); },
+      async create(name, info) {
+        metrics.alarmCreates += 1;
+        metrics.alarmCreatesByName[name] = (metrics.alarmCreatesByName[name] || 0) + 1;
+        alarms.set(name, {
+          name,
+          scheduledTime: Date.now() + Number(info.delayInMinutes || 0) * 60_000,
+          periodInMinutes: info.periodInMinutes
+        });
+      }
     },
     storage: {
       local: {
@@ -142,6 +152,7 @@ function createHarness() {
   return {
     data,
     tabs,
+    alarms,
     metrics,
     runtimeListeners,
     installedListeners,
@@ -352,6 +363,49 @@ assert.ok(result.state.chats[0].lastStoppedAt);
 assert.equal(result.state.chats[1].enabled, true);
 assert.equal(harness.metrics.sends, 1, 'only non-matching chat may continue');
 
+// 9. Scheduler configuration is idempotent: ordinary and GitHub alarms keep their original schedule.
+installState({
+  profile: {
+    ...model.defaultChatProfile(),
+    githubWatchEnabled: true,
+    githubWatchOnly: false,
+    githubRepository: 'MishkaStrategy/ChatPulse',
+    githubIdleMinutes: 30
+  }
+}, { enabled: true, intervalMinutes: 5 });
+harness.alarms.clear();
+harness.metrics.alarmCreatesByName = {};
+result = await harness.invoke({ type: 'UPDATE_SETTINGS', patch: { intervalMinutes: 5 } });
+assert.equal(result.ok, true, result.error);
+const normalAlarmScheduledTime = harness.alarms.get('chatpulse-monitor')?.scheduledTime;
+const githubAlarmScheduledTime = harness.alarms.get('chatpulse-github-actions-watchdog')?.scheduledTime;
+assert.ok(normalAlarmScheduledTime);
+assert.ok(githubAlarmScheduledTime);
+result = await harness.invoke({ type: 'UPDATE_SETTINGS', patch: { intervalMinutes: 5 } });
+assert.equal(result.ok, true, result.error);
+assert.equal(harness.metrics.alarmCreatesByName['chatpulse-monitor'], 1, 'unchanged ordinary alarm must not be recreated');
+assert.equal(harness.metrics.alarmCreatesByName['chatpulse-github-actions-watchdog'], 1, 'unchanged GitHub alarm must not be recreated');
+assert.equal(harness.alarms.get('chatpulse-monitor').scheduledTime, normalAlarmScheduledTime);
+assert.equal(harness.alarms.get('chatpulse-github-actions-watchdog').scheduledTime, githubAlarmScheduledTime);
+
+// 10. A GitHub-only chat schedules only the independent Actions watchdog.
+installState({
+  profile: {
+    ...model.defaultChatProfile(),
+    githubWatchEnabled: true,
+    githubWatchOnly: true,
+    githubRepository: 'MishkaStrategy/ChatPulse',
+    githubIdleMinutes: 30
+  }
+}, { enabled: true, intervalMinutes: 5 });
+harness.alarms.clear();
+harness.metrics.alarmCreatesByName = {};
+result = await harness.invoke({ type: 'UPDATE_SETTINGS', patch: { intervalMinutes: 5 } });
+assert.equal(result.ok, true, result.error);
+assert.equal(harness.alarms.has('chatpulse-monitor'), false, 'GitHub-only chat must not schedule ordinary interval alarm');
+assert.equal(harness.alarms.get('chatpulse-github-actions-watchdog')?.periodInMinutes, 10);
+assert.equal(result.state.nextCheckAt, null);
+
 console.log(JSON.stringify({
   periodic_recovery: 'PASS',
   discarded_recovery: 'PASS',
@@ -361,6 +415,8 @@ console.log(JSON.stringify({
   add_from_options: 'PASS',
   open_without_duplicate: 'PASS',
   stop_phrase_single_chat: 'PASS',
+  independent_alarm_lifecycle: 'PASS',
+  github_only_scheduler: 'PASS',
   reload_count_last_scenario: harness.metrics.reloads,
   tests: 'PASS'
 }, null, 2));

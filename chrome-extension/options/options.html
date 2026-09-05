@@ -294,6 +294,11 @@
                 <small>Пока есть незавершённый GitHub Actions run, restart заблокирован. Когда активных runs больше нет, отсчёт N минут начинается заново.</small>
               </label>
             </div>
+            <label class="toggle-line">
+              <input class="profile-github-watch-only" type="checkbox">
+              <span>Только GitHub Actions</span>
+            </label>
+            <p class="integration-note">Обычный автоматический интервал для этого чата будет отключён. GitHub Actions watchdog продолжит проверять repository независимо примерно каждые 10 минут; «Проверить сейчас» остаётся доступно вручную.</p>
             <div class="field-row">
               <label class="field profile-wide">
                 <span>GitHub token · только для private repository</span>

@@ -10,8 +10,8 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 assert.equal(manifest.manifest_version, 3, "Требуется Manifest V3");
 assert.equal(manifest.name, "ChatPulse");
-assert.equal(manifest.version, "0.7.3");
-assert.equal(manifest.version_name, "0.7.3 beta");
+assert.equal(manifest.version, "0.7.4");
+assert.equal(manifest.version_name, "0.7.4 beta");
 assert.equal(manifest.background?.type, "module");
 assert.equal(manifest.background?.service_worker, "background/service-worker-v2.js");
 assert.equal(manifest.action?.default_popup, "popup/popup.html");
@@ -223,6 +223,11 @@ assert.ok(!background.slice(
   background.indexOf("async function persistSingleRuntimeChat")
 ).includes("startChatRun("), "Watchdog restart must preserve the existing run counter/runtime");
 assert.ok(background.includes("successfulRepositories.has(profile.githubRepository)"), "Current failed GitHub poll must not select a restart");
+assert.ok(model.includes("githubWatchOnly"), "Model must retain the per-chat GitHub-only mode");
+assert.ok(background.includes("syncPeriodicAlarm"), "Scheduler must synchronize alarms independently");
+assert.ok(background.includes("chrome.alarms.get"), "Scheduler must preserve unchanged alarm scheduledTime");
+assert.ok(background.includes('source === "alarm" || source === "start"'), "Automatic ordinary checks must identify scheduler/start sources");
+assert.ok(background.includes("profile.githubWatchOnly"), "Automatic ordinary checks must exclude GitHub-only chats");
 assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
 assert.ok(githubActions.includes('credentials: "omit"'), "GitHub client must omit browser credentials");
 assert.ok(githubActions.includes("RUN_PAGE_SIZE = 100"));
@@ -257,6 +262,7 @@ assert.ok(!content.includes("githubToken"), "GitHub token must never enter ChatG
 
 for (const className of [
   "profile-github-watch-enabled",
+  "profile-github-watch-only",
   "profile-github-repository",
   "profile-github-idle",
   "profile-github-status",
@@ -381,7 +387,7 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
     `В обоих интерфейсах отсутствует цвет превью ${color}`
   );
 }
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.3-beta.zip'));
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.3-source-manifest.txt'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.4-beta.zip'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.4-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, active GitHub Actions fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.3 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, independent GitHub Actions scheduler, Actions-only mode, fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.4 прошли статический аудит.");

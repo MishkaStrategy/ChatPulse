@@ -51,6 +51,7 @@ function createHarness() {
     },
     alarms: {
       onAlarm: { addListener() {} },
+      async get() { return undefined; },
       async clear() { return true; },
       async create() {}
     },

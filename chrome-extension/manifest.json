@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ChatPulse",
-  "version": "0.7.3",
-  "version_name": "0.7.3 beta",
-  "description": "Локально продолжает выбранные чаты ChatGPT, заменяет зависшие фоновые вкладки новыми и fail-closed отслеживает GitHub Actions.",
+  "version": "0.7.4",
+  "version_name": "0.7.4 beta",
+  "description": "Локально продолжает выбранные чаты ChatGPT, независимо отслеживает GitHub Actions и поддерживает Actions-only режим.",
   "minimum_chrome_version": "120",
   "permissions": [
     "alarms",

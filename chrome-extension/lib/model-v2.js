@@ -73,6 +73,7 @@ export function defaultChatProfile() {
     maxRuntimeMinutes: 0,
     telegramNotify: true,
     githubWatchEnabled: false,
+    githubWatchOnly: false,
     githubRepository: null,
     githubIdleMinutes: 30
   };
@@ -98,6 +99,9 @@ export function normalizeChatProfile(raw) {
     maxRuntimeMinutes: boundedInteger(raw?.maxRuntimeMinutes, MAX_RUNTIME_MINUTES),
     telegramNotify: raw?.telegramNotify !== false && fallback.telegramNotify,
     githubWatchEnabled: raw?.githubWatchEnabled === true && Boolean(normalizeGithubRepository(raw?.githubRepository)),
+    githubWatchOnly: raw?.githubWatchEnabled === true
+      && Boolean(normalizeGithubRepository(raw?.githubRepository))
+      && raw?.githubWatchOnly === true,
     githubRepository: normalizeGithubRepository(raw?.githubRepository),
     githubIdleMinutes: clampGithubIdleMinutes(raw?.githubIdleMinutes)
   };
@@ -117,6 +121,7 @@ export function effectiveChatProfile(state, chat) {
     maxRuntimeMinutes: profile.maxRuntimeMinutes,
     telegramNotify: profile.telegramNotify,
     githubWatchEnabled: profile.githubWatchEnabled,
+    githubWatchOnly: profile.githubWatchOnly,
     githubRepository: profile.githubRepository,
     githubIdleMinutes: profile.githubIdleMinutes
   };

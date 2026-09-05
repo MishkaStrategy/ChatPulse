@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.4 beta — independent GitHub Actions scheduling
+
+- fix a scheduler starvation bug where each ordinary interval check recreated/postponed the GitHub 10-minute alarm and each GitHub watchdog check could recreate/postpone a longer ordinary alarm;
+- preserve unchanged Chrome alarms and only recreate the specific scheduler whose desired period actually changed;
+- add per-chat **Только GitHub Actions** mode: no automatic ordinary interval checks for that chat while the Actions watchdog remains active;
+- keep manual **Проверить сейчас** available in Actions-only mode and keep global Stop as the master stop for all automatic sends;
+- preserve active-run blocking, active-to-idle fresh countdown, fail-closed API errors, private-token isolation and one-restart-per-workflow-marker semantics;
+- add a regression proving more than two independent workflow-run inactivity episodes can restart normally;
+- move deterministic beta package/provenance output to ChatPulse 0.7.4.
+
 ## 0.7.3 beta — replace hung background tabs
 
 - replace hard-hung managed background ChatGPT tabs with a fresh inactive tab for the exact same conversation URL instead of reloading the broken tab;

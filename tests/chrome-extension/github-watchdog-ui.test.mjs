@@ -45,6 +45,9 @@ test("Control Center shows concrete owner/repo guidance and active-run restart r
   assert.ok(optionsHtml.includes("/actions"));
   assert.ok(optionsHtml.includes("Пока есть незавершённый GitHub Actions run, restart заблокирован"));
   assert.ok(optionsHtml.includes("отсчёт N минут начинается заново"));
+  assert.ok(optionsHtml.includes("profile-github-watch-only"));
+  assert.ok(optionsHtml.includes("Только GitHub Actions"));
+  assert.ok(optionsHtml.includes("Обычный автоматический интервал для этого чата будет отключён"));
 });
 
 test("Control Center exposes a masked private-repository token field and explicit permission check", () => {
@@ -67,6 +70,7 @@ test("portable config includes watcher configuration but excludes all watcher ru
     profile: {
       ...createChat({ title: "x", url: "https://chatgpt.com/c/x" }).profile,
       githubWatchEnabled: true,
+      githubWatchOnly: true,
       githubRepository: "MishkaStrategy/ChatPulse",
       githubIdleMinutes: 45
     },
@@ -82,6 +86,7 @@ test("portable config includes watcher configuration but excludes all watcher ru
   };
   const config = createPortableConfig({ ...defaultState(), chats: [chat] }, "2026-09-02T07:10:00.000Z");
   assert.equal(config.chats[0].profile.githubWatchEnabled, true);
+  assert.equal(config.chats[0].profile.githubWatchOnly, true);
   assert.equal(config.chats[0].profile.githubRepository, "MishkaStrategy/ChatPulse");
   assert.equal(config.chats[0].profile.githubIdleMinutes, 45);
   const serialized = JSON.stringify(config);
