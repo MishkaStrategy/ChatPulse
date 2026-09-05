@@ -28,6 +28,16 @@ jobs:
       - name: Apply exact auth-grace patch
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("CHANGELOG.md")
+          text = p.read_text(encoding="utf-8")
+          old = "- serialize simultaneous ordinary and GitHub scheduler triggers so a watchdog check is never discarded merely because another ChatPulse check is already running;\n"
+          new = "- serialize simultaneous ordinary and GitHub scheduler triggers so a later trigger is queued with its own source/parameters instead of being dropped behind an active check;\n"
+          if text.count(old) != 1:
+              raise SystemExit("unexpected current 0.7.4 serialization changelog wording")
+          p.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
           python3 scripts/patch_074_auth_grace.py
           git diff --check
       - name: Validate patched candidate
