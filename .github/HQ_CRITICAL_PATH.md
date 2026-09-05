@@ -35,7 +35,6 @@ Required release evidence: exact final branch/PR/main SHAs, workflow IDs, alarm-
 Known explicit exclusions: changing the GitHub 10-minute poll cadence; changing inactivity-N semantics; changing the 20-minute stuck-generation threshold; closing active tabs; weakening fail-closed GitHub/token behavior; unrelated draft PR #17.
 
 ## 2. Repository Basis
-
 Default branch: main.
 Default branch validated-but-superseded 0.7.4 candidate SHA: `32152d9b99c94f8137adda85cda8cb23c5549e45`.
 Critical-path basis ref: main.
@@ -48,7 +47,6 @@ Relevant CI / workflows: `.github/workflows/extension-ci.yml`, `.github/workflow
 Relevant release/deployment state: PR #27 was merged but 0.7.4 is NOT DONE because final adversarial audit found a shared `runCheck()` trigger-loss defect before release closure.
 
 ## 3. Repository Scan Summary
-
 Project purpose: local Chrome MV3 ChatGPT task runner.
 Architecture / major components: popup/options UI, MV3 service worker, pure state/model helpers, ChatGPT content script, optional Telegram and GitHub Actions integrations.
 Build / packaging: deterministic Python ZIP/source-manifest packaging plus Node validation.
@@ -57,7 +55,6 @@ CI: five deterministic audit cycles, Chromium E2E, reproducible package/provenan
 Material findings: the original starvation bug was fixed by independent alarm synchronization and GitHub-only mode is implemented. Final adversarial inspection found a second starvation path: `runCheck()` returns the current `activeCheck` whenever any check is active, so a second alarm trigger is silently discarded rather than executed after the first. Since independent 10-minute alarms can remain phase-aligned, a simultaneous ordinary alarm can repeatedly suppress the GitHub watchdog.
 
 ## 4. Release Gates
-
 ### GATE-1 — Independent alarm lifecycle and GitHub-only mode
 Status: SATISFIED
 Evidence: frozen branch `9003a273...` and PR #27 merge-tree `4a51ce7f...` passed 5x104/104; tests report `independent_alarm_lifecycle: PASS`, `github_only_scheduler: PASS`, and >2 watchdog episodes PASS.
@@ -84,7 +81,6 @@ Evidence: current main candidate is known incomplete despite partial green CI.
 Blocking items: GATE-4.
 
 ## 5. Current Critical Path
-
 ### CP-1 — Serialize concurrent scheduler triggers without dropping source semantics
 Status: ACTIVE
 Release gate: GATE-2
