@@ -21,7 +21,11 @@ jobs:
         with:
           node-version: 22
       - name: Apply exact product patch
-        run: python3 scripts/patch_074.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/patch_074.py
+          python3 scripts/patch_074_extra.py
       - name: Validate product patch
         shell: bash
         run: |
@@ -43,6 +47,8 @@ jobs:
             tests/chrome-extension/service-worker.test.mjs \
             tests/chrome-extension/github-watchdog.test.mjs \
             tests/chrome-extension/github-watchdog-ui.test.mjs \
+            tests/chrome-extension/profile-task.test.mjs \
+            tests/chrome-extension/task-service-worker.test.mjs \
             package.json \
             scripts/package_extension.py \
             scripts/validate_extension.mjs \
