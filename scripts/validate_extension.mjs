@@ -10,8 +10,8 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 assert.equal(manifest.manifest_version, 3, "Требуется Manifest V3");
 assert.equal(manifest.name, "ChatPulse");
-assert.equal(manifest.version, "0.7.0");
-assert.equal(manifest.version_name, "0.7.0 beta");
+assert.equal(manifest.version, "0.7.1");
+assert.equal(manifest.version_name, "0.7.1 beta");
 assert.equal(manifest.background?.type, "module");
 assert.equal(manifest.background?.service_worker, "background/service-worker-v2.js");
 assert.equal(manifest.action?.default_popup, "popup/popup.html");
@@ -119,7 +119,7 @@ assert.ok(content.includes("MutationObserver"));
 assert.ok(content.includes("hasDraft"));
 assert.ok(content.includes("document.wasDiscarded"));
 
-// 0.6.0 state/profile/task/configuration boundaries retained in 0.7.0.
+// 0.6.0 state/profile/task/configuration boundaries retained in 0.7.1.
 for (const token of [
   "schemaVersion: 5",
   "taskOnly: false",
@@ -178,8 +178,7 @@ assert.ok(background.includes("if (observedState.taskOnly && !chat.taskActive &&
 assert.ok(background.includes("latestState.sessionId === observedState.sessionId"));
 assert.ok(background.includes('stopTaskMode(chat, "global-stop")'), "Top Stop must terminate active task mode");
 
-
-// 0.7.0 GitHub Actions watchdog boundary.
+// 0.7.1 GitHub Actions watchdog boundary.
 for (const token of [
   "MIN_GITHUB_IDLE_MINUTES = 10",
   "GITHUB_POLL_INTERVAL_MINUTES = 10",
@@ -188,7 +187,9 @@ for (const token of [
   "recordGithubActionsObservation",
   "githubWatchdogDecision",
   "recordGithubRestart",
-  "resetGithubWatchRuntime"
+  "resetGithubWatchRuntime",
+  "githubActiveRunCount",
+  'decision: "actions-active"'
 ]) {
   assert.ok(model.includes(token), `Model missing GitHub watchdog invariant: ${token}`);
 }
@@ -212,9 +213,12 @@ assert.ok(!background.slice(
 assert.ok(background.includes("successfulRepositories.has(profile.githubRepository)"), "Current failed GitHub poll must not select a restart");
 assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
 assert.ok(githubActions.includes('credentials: "omit"'), "GitHub client must omit browser credentials");
-assert.ok(!githubActions.includes("Authorization"), "0.7.0 public GitHub client must not send an Authorization header");
+assert.ok(!githubActions.includes("Authorization"), "Public GitHub client must not send an Authorization header");
 assert.ok(!githubActions.includes("github_pat_"), "GitHub PAT material is forbidden");
-assert.ok(githubActions.includes("actions/runs?per_page=1"));
+assert.ok(githubActions.includes("RUN_PAGE_SIZE = 100"));
+assert.ok(githubActions.includes("actions/runs?per_page=${RUN_PAGE_SIZE}"));
+assert.ok(githubActions.includes('candidate.status !== "completed"'), "Unfinished workflow runs must count as active work");
+assert.ok(githubActions.includes("activeRunCount"));
 assert.ok(githubActions.includes("x-ratelimit-remaining"));
 for (const className of [
   "profile-github-watch-enabled",
@@ -227,7 +231,13 @@ for (const className of [
 assert.ok(optionsJS.includes('const GITHUB_ORIGIN = "https://api.github.com/*"'));
 assert.ok(optionsJS.includes("chrome.permissions.request({ origins: [GITHUB_ORIGIN] })"));
 assert.ok(optionsJS.includes("if (draft.githubWatchEnabled)"));
-assert.ok(optionsHTML.includes("не использует GitHub token"));
+assert.ok(optionsHTML.includes('placeholder="MishkaStrategy/ChatPulse"'));
+assert.ok(optionsHTML.includes("Формат: <code>owner/repo</code>"));
+assert.ok(optionsHTML.includes("Не вставляйте URL GitHub"));
+assert.ok(optionsHTML.includes("/actions"));
+assert.ok(optionsHTML.includes("незавершённый GitHub Actions run"));
+assert.ok(optionsHTML.includes("отсчёт N минут начинается заново"));
+assert.ok(optionsHTML.includes("GitHub token не используется"));
 
 // Telegram stays optional, generic, post-state and privacy-safe.
 for (const token of [
@@ -314,7 +324,7 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
     `В обоих интерфейсах отсутствует цвет превью ${color}`
   );
 }
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.0-beta.zip'));
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.0-source-manifest.txt'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.1-beta.zip'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.1-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, GitHub Actions watchdog fail-closed boundary, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.0 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, active GitHub Actions fail-closed watchdog, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.1 прошли статический аудит.");
