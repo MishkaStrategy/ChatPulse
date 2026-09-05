@@ -12,16 +12,18 @@ import {
 const manifestPath = fileURLToPath(new URL("../../chrome-extension/manifest.json", import.meta.url));
 const optionsPath = fileURLToPath(new URL("../../chrome-extension/options/options.js", import.meta.url));
 const optionsHtmlPath = fileURLToPath(new URL("../../chrome-extension/options/options.html", import.meta.url));
+const tokenUiPath = fileURLToPath(new URL("../../chrome-extension/options/github-token-ui.js", import.meta.url));
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const options = await readFile(optionsPath, "utf8");
 const optionsHtml = await readFile(optionsHtmlPath, "utf8");
+const tokenUi = await readFile(tokenUiPath, "utf8");
 
 test("GitHub API permission is optional and never an install-time host permission", () => {
   assert.ok(manifest.optional_host_permissions.includes("https://api.github.com/*"));
   assert.equal(manifest.host_permissions.includes("https://api.github.com/*"), false);
 });
 
-test("Control Center requests GitHub permission only when saving an enabled watcher", () => {
+test("Control Center requests GitHub permission only from direct user GitHub actions", () => {
   assert.ok(options.includes('const GITHUB_ORIGIN = "https://api.github.com/*"'));
   assert.ok(options.includes("chrome.permissions.request({ origins: [GITHUB_ORIGIN] })"));
   const permissionStart = options.indexOf("async function ensureGithubPermission()");
@@ -30,12 +32,13 @@ test("Control Center requests GitHub permission only when saving an enabled watc
   assert.equal(permissionBlock.includes("permissions.contains"), false, "permission request must stay in the direct Save/Start user gesture");
   assert.ok(options.includes("if (draft.githubWatchEnabled)"));
   assert.ok(options.includes("await ensureGithubPermission()"));
+  assert.ok(tokenUi.includes("chrome.permissions.request({ origins: [GITHUB_API_ORIGIN] })"));
   assert.ok(optionsHtml.includes("profile-github-watch-enabled"));
   assert.ok(optionsHtml.includes("profile-github-repository"));
   assert.ok(optionsHtml.includes("profile-github-idle"));
 });
 
-test("Control Center shows a concrete owner/repo example and active-run restart rule", () => {
+test("Control Center shows concrete owner/repo guidance and active-run restart rule", () => {
   assert.ok(optionsHtml.includes('placeholder="MishkaStrategy/ChatPulse"'));
   assert.ok(optionsHtml.includes("Формат: <code>owner/repo</code>"));
   assert.ok(optionsHtml.includes("Не вставляйте URL GitHub"));
@@ -44,7 +47,21 @@ test("Control Center shows a concrete owner/repo example and active-run restart 
   assert.ok(optionsHtml.includes("отсчёт N минут начинается заново"));
 });
 
-test("portable config includes watcher configuration but excludes all watcher runtime state", () => {
+test("Control Center exposes a masked private-repository token field and explicit permission check", () => {
+  assert.ok(optionsHtml.includes('class="profile-github-token" type="password"'));
+  assert.ok(optionsHtml.includes('class="test-github-token secondary-button"'));
+  assert.ok(optionsHtml.includes("Проверить токен"));
+  assert.ok(optionsHtml.includes("Actions: Read-only"));
+  assert.ok(optionsHtml.includes("Classic PAT"));
+  assert.ok(optionsHtml.includes("не рекомендуется"));
+  assert.ok(optionsHtml.includes("GitHub tokens"));
+  assert.ok(tokenUi.includes("verifyGithubTokenAccess"));
+  assert.ok(tokenUi.includes("saveGithubToken"));
+  assert.ok(tokenUi.includes("clearGithubToken"));
+  assert.ok(tokenUi.includes("githubTokenBypass"));
+});
+
+test("portable config includes watcher configuration but excludes all watcher runtime state and credentials", () => {
   const chat = {
     ...createChat({ title: "Project", url: "https://chatgpt.com/c/project" }),
     profile: {
@@ -71,7 +88,7 @@ test("portable config includes watcher configuration but excludes all watcher ru
   for (const forbidden of [
     "githubLastRunId", "githubLastActivityAt", "githubLastAttemptAt", "githubLastCheckedAt",
     "githubActiveRunCount", "githubLastRestartAt", "githubLastRestartKey", "githubRestartCount", "githubLastError",
-    "secret-ish runtime diagnostic", "run:999"
+    "githubToken", "github_pat_", "secret-ish runtime diagnostic", "run:999"
   ]) {
     assert.equal(serialized.includes(forbidden), false, forbidden);
   }

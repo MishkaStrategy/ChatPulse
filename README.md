@@ -4,7 +4,7 @@
   <p><strong>Локальный task runner для безопасного продолжения выбранных чатов ChatGPT в Chrome.</strong></p>
 
   ![Chrome](https://img.shields.io/badge/Google_Chrome-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)
-  ![Version](https://img.shields.io/badge/version-0.7.0_beta-7C5CFC)
+  ![Version](https://img.shields.io/badge/version-0.7.2_beta-7C5CFC)
   ![Tests](https://img.shields.io/badge/CI-5%2F5_release_gate-2EA44F)
   ![License](https://img.shields.io/badge/license-MIT-blue)
 </div>
@@ -17,7 +17,7 @@ ChatPulse работает внутри уже авторизованного п
 продолжай и не останавливайся до технического лимита
 ```
 
-В 0.7.0 к per-chat профилям и guarded task mode добавлен GitHub Actions watchdog для project-чатов.
+В 0.7.x к per-chat профилям и guarded task mode добавлен GitHub Actions watchdog для project-чатов. В 0.7.2 он поддерживает private repositories через локальный read-only GitHub token.
 
 ## Возможности
 
@@ -36,7 +36,9 @@ ChatPulse работает внутри уже авторизованного п
 - защита активной вкладки, текущей генерации и пользовательского черновика;
 - опциональные Telegram-события после продолжения, при старте задачи, остановке по guard и при общей ошибке автоматики;
 - безопасный экспорт/импорт портативной конфигурации JSON без секретов и runtime history;
-- опциональный per-chat GitHub Actions watchdog: `owner/repo` + `N` минут простоя → один controlled restart-send до следующей новой workflow activity;
+- опциональный per-chat GitHub Actions watchdog: `owner/repo` + `N` минут настоящего простоя → один controlled restart-send до следующей activity;
+- поддержка public GitHub repositories без token и private repositories через локальный read-only token;
+- проверка GitHub token прямо в Control Center до сохранения;
 - локальный журнал событий;
 - скины **macOS** и **ChatPulse Preview**;
 - версия интерфейса автоматически берётся из Manifest.
@@ -69,13 +71,31 @@ ChatPulse работает внутри уже авторизованного п
 
 ## GitHub Actions watchdog
 
-Для project-чата в его профиле можно включить **GitHub Actions** и указать публичный repository в формате `owner/repo`. Chrome отдельно запросит optional access к `https://api.github.com/*`. ChatPulse читает только последний публичный workflow run и считает новой activity появление нового run ID.
+Для project-чата в профиле включите **GitHub Actions** и укажите repository строго в формате `owner/repo`, например `MishkaStrategy/ChatPulse`. Не вставляйте URL GitHub или ссылку `/actions`. Chrome отдельно запросит optional access к `https://api.github.com/*`.
 
-Первая успешная проверка только создаёт baseline. Затем, если новый workflow run не появился за `N` минут (минимум 10 минут), ChatPulse может один раз отправить обычную эффективную команду продолжения в тот же ChatGPT-чат. Следующий restart для этого repository episode станет возможен только после появления новой Actions activity.
+Watchdog работает отдельным 10-минутным polling alarm и не зависит от общего интервала ChatGPT. За один polling ChatPulse читает до 100 последних workflow runs, потому что последний созданный run может уже завершиться, пока другой более старый run всё ещё выполняется.
+
+Любой наблюдаемый run со `status != completed` считается активной работой и блокирует restart. Пока активные runs существуют, activity обновляется. Когда активных runs больше нет, `N`-минутный idle window начинается заново; старый простой до запуска workflow не наследуется.
+
+Первая успешная проверка только создаёт baseline. После этого, если `N` минут нет новой workflow activity **и одновременно нет незавершённых runs**, ChatPulse может один раз отправить обычную эффективную команду продолжения в тот же ChatGPT-чат. Следующий restart для этого activity marker возможен только после новой GitHub activity.
+
+### Private repositories и GitHub token
+
+Public repository работает без token. Для private repository вставьте GitHub token в соответствующее поле профиля. Рекомендуемый вариант — **fine-grained personal access token**:
+
+1. дать token доступ только к нужному repository;
+2. в repository permissions выбрать **Actions: Read-only**;
+3. вставить token в ChatPulse;
+4. нажать **Проверить токен**;
+5. после успешной проверки нажать **Сохранить профиль**.
+
+Проверка выполняет тот же read-only запрос workflow runs для указанного `owner/repo`. Простое нажатие **Проверить токен** не сохраняет новый token. При сохранении нового token ChatPulse сначала повторно подтверждает read-доступ и только затем сохраняет его локально. Classic PAT с `repo` scope значительно шире и не рекомендуется.
+
+GitHub token хранится отдельно от `chatpulseState`, не показывается после сохранения, не попадает в экспорт, журнал или сообщения content script. В поддерживаемом Chrome локальное storage ограничивается `TRUSTED_CONTEXTS`. GitHub-клиент выполняет только repository-scoped `GET` workflow-runs requests; workflows не запускаются и repository не изменяется.
 
 Watchdog не является обходом safety-модели: он не сбрасывает `runStartedAt` или `continuationCount`, учитывает stop phrase и лимиты, проверяет актуальные `controlRevision`/session, не трогает активную генерацию или пользовательский черновик и выключается master-stop кнопкой. Отправка watchdog считается полноценным dispatch и записывается до любых внешних уведомлений.
 
-GitHub API/network/permission/rate-limit/404 ошибки **никогда** не трактуются как простой. В 0.7.0 поддерживаются только публичные repositories без GitHub token; расширение не запускает workflows и ничего не пишет в GitHub.
+GitHub API/network/permission/401/403/404/rate-limit/invalid-response ошибки **никогда** не трактуются как простой.
 
 ## Стоп-фраза
 
@@ -108,9 +128,9 @@ Telegram может получить:
 - URL/названия отслеживаемых чатов;
 - enabled-флаг и per-chat профили.
 
-В JSON **не входят** Telegram bot token, tab/session IDs, fingerprints, `at-most-once` history, логи, ошибки, счётчики и runtime текущих задач.
+В JSON **не входят** Telegram bot token, GitHub tokens, tab/session IDs, fingerprints, `at-most-once` history, логи, ошибки, счётчики и runtime текущих задач или GitHub watchdog.
 
-Импорт заменяет список чатов и общие настройки, но оставляет локальные Telegram credentials нетронутыми. После импорта глобальный мониторинг остаётся остановленным, а chat IDs, runtime identity и baseline создаются заново, чтобы старый файл не мог повторить прошлую отправку.
+Импорт заменяет список чатов и общие настройки, но оставляет локальные Telegram/GitHub credentials нетронутыми. После импорта глобальный мониторинг остаётся остановленным, а chat IDs, runtime identity и baseline создаются заново, чтобы старый файл не мог повторить прошлую отправку.
 
 ## Установка
 
@@ -146,7 +166,7 @@ Telegram может получить:
 Постоянные разрешения:
 
 - `alarms` — плановые проверки;
-- `storage` — локальные настройки/state/журнал;
+- `storage` — локальные настройки/state/журнал и opt-in credentials;
 - `tabs` — поиск, открытие и восстановление сохранённых чатов;
 - `scripting` — восстановление content script после обновления вкладки.
 
@@ -163,13 +183,13 @@ npm run audit:extension
 npm run package:beta
 ```
 
-`audit:extension` проверяет синтаксис, старые stop/controlRevision/recovery/at-most-once гарантии, schema-v5 migration, per-chat profiles, limits/task guards, GitHub Actions watchdog fail-closed/idempotency boundary, portable-config isolation, Telegram privacy/permission boundary, сервис-воркер и Manifest V3. GitHub Actions повторяет полный аудит в пяти независимых циклах.
+`audit:extension` проверяет синтаксис, старые stop/controlRevision/recovery/at-most-once гарантии, schema-v5 migration, per-chat profiles, limits/task guards, GitHub Actions watchdog active-run/fail-closed/idempotency boundary, private-token isolation/read-only protocol, portable-config isolation, Telegram privacy/permission boundary, сервис-воркер и Manifest V3. GitHub Actions повторяет полный аудит в пяти независимых циклах.
 
-`package:beta` создаёт воспроизводимый `ChatPulse-Chrome-v0.7.0-beta.zip`, его SHA-256 и `ChatPulse-Chrome-v0.7.0-source-manifest.txt` с отдельным SHA-256.
+`package:beta` создаёт воспроизводимый `ChatPulse-Chrome-v0.7.2-beta.zip`, его SHA-256 и `ChatPulse-Chrome-v0.7.2-source-manifest.txt` с отдельным SHA-256.
 
 ## Статус
 
-Текущая разрабатываемая версия — **0.7.0 beta**. Она расширяет выпущенный 0.6.0 fail-closed GitHub Actions inactivity watchdog для project-чатов, сохраняя прежние task/profile/Telegram/at-most-once boundaries.
+Текущая версия — **0.7.2 beta**. Она добавляет least-privilege private GitHub Actions access и проверку token, сохраняя 0.7.1 active-run и прежние task/profile/Telegram/at-most-once boundaries.
 
 `main` остаётся Chrome-extension-only; отдельное macOS/WebKit-приложение не используется.
 

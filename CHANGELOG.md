@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.2 beta — private GitHub Actions access
+
+- add private-repository GitHub Actions watchdog support through a repository-keyed GitHub token stored only in local extension storage;
+- recommend a fine-grained PAT restricted to the exact repository with `Actions: Read-only`; classic PAT `repo` scope remains compatible but is broader and not recommended;
+- add a masked GitHub token field, **Проверить токен** control and explicit access status to each per-chat GitHub watchdog profile;
+- verify a pasted token against the exact configured `owner/repo` workflow-runs read endpoint before saving a new credential;
+- keep public repositories token-optional and unauthenticated by default;
+- restrict `chrome.storage.local` to `TRUSTED_CONTEXTS` when supported so content scripts cannot directly read locally stored credentials;
+- keep GitHub tokens outside `chatpulseState`, portable export, logs, runtime messages and ChatGPT content-script traffic;
+- keep the GitHub client read-only: bounded `GET` workflow-run reads only, no workflow dispatch or repository writes;
+- preserve 0.7.1 unfinished-run blocking, active-to-idle fresh baseline, fail-closed API handling and one-restart-per-marker semantics;
+- move deterministic beta package/provenance output to ChatPulse 0.7.2.
+
 ## 0.7.1 beta — active GitHub Actions awareness
 
 - treat every observed non-`completed` GitHub Actions workflow run as active project work that blocks watchdog restart;

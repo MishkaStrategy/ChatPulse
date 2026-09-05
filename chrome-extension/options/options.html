@@ -137,7 +137,7 @@
             <button id="importButton" class="secondary-button" type="button">Импортировать JSON</button>
             <input id="importFile" class="visually-hidden" type="file" accept="application/json,.json">
           </div>
-          <p class="integration-note">Экспорт содержит только общие настройки, список чатов и их профили. Bot token, вкладки, fingerprints, журнал, task runtime и история отправок исключены. Импорт останавливает глобальный мониторинг и создаёт новые безопасные baseline.</p>
+          <p class="integration-note">Экспорт содержит только общие настройки, список чатов и их профили. Telegram bot token и GitHub tokens, вкладки, fingerprints, журнал, task runtime и история отправок исключены. Импорт останавливает глобальный мониторинг и создаёт новые безопасные baseline.</p>
         </section>
 
         <div class="button-row">
@@ -162,7 +162,7 @@
           <li><span>4</span><p>При выполнении guard ChatPulse отключит только этот чат и запишет точную причину.</p></li>
         </ol>
         <div class="privacy-note">
-          Per-chat профили не создают отдельный scheduler: они используют тот же локальный state, `controlRevision`, freshness-preflight и `at-most-once`. Telegram остаётся только опциональным доступом к <code>api.telegram.org</code>.
+          Per-chat профили не создают отдельный scheduler: они используют тот же локальный state, <code>controlRevision</code>, freshness-preflight и <code>at-most-once</code>. Telegram и GitHub API остаются только optional origins; GitHub token для private repository хранится локально и используется только для read-only Actions API.
         </div>
       </article>
     </section>
@@ -294,8 +294,20 @@
                 <small>Пока есть незавершённый GitHub Actions run, restart заблокирован. Когда активных runs больше нет, отсчёт N минут начинается заново.</small>
               </label>
             </div>
+            <div class="field-row">
+              <label class="field profile-wide">
+                <span>GitHub token · только для private repository</span>
+                <input class="profile-github-token" type="password" autocomplete="new-password" spellcheck="false" placeholder="Fine-grained PAT">
+                <small>Рекомендуется fine-grained PAT с доступом только к нужному repository и <strong>Actions: Read-only</strong>. Classic PAT требует широкого <code>repo</code> scope и не рекомендуется. Token хранится только локально и никогда не попадает в экспорт.</small>
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="test-github-token secondary-button" type="button">Проверить токен</button>
+              <button class="clear-github-token secondary-button danger-soft" type="button" hidden>Удалить сохранённый токен</button>
+              <small class="profile-github-token-status">Для public repository token не нужен.</small>
+            </div>
             <small class="profile-github-status">Watchdog выключен.</small>
-            <p class="integration-note">Доступ к <code>api.github.com</code> запрашивается Chrome только при включении. ChatPulse одним публичным read-only запросом проверяет последние workflow runs, чтобы видеть новые и незавершённые Actions; GitHub token не используется, workflows не запускаются и repository не изменяется.</p>
+            <p class="integration-note">Доступ к <code>api.github.com</code> запрашивается Chrome только при использовании GitHub integration. Public repository проверяется без credentials; для private repository ChatPulse добавляет только сохранённый token к тому же read-only запросу последних workflow runs. Workflows не запускаются и repository не изменяется.</p>
           </section>
 
           <label class="toggle-line profile-telegram">
@@ -321,5 +333,6 @@
   </template>
 
   <script type="module" src="options.js"></script>
+  <script type="module" src="github-token-ui.js"></script>
 </body>
 </html>

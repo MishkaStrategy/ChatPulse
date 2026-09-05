@@ -10,8 +10,8 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 assert.equal(manifest.manifest_version, 3, "Требуется Manifest V3");
 assert.equal(manifest.name, "ChatPulse");
-assert.equal(manifest.version, "0.7.1");
-assert.equal(manifest.version_name, "0.7.1 beta");
+assert.equal(manifest.version, "0.7.2");
+assert.equal(manifest.version_name, "0.7.2 beta");
 assert.equal(manifest.background?.type, "module");
 assert.equal(manifest.background?.service_worker, "background/service-worker-v2.js");
 assert.equal(manifest.action?.default_popup, "popup/popup.html");
@@ -56,7 +56,8 @@ const requiredFiles = [
   "options/options.html",
   "options/options.css",
   "options/control-center.css",
-  "options/options.js"
+  "options/options.js",
+  "options/github-token-ui.js"
 ];
 for (const relativePath of requiredFiles) {
   const file = path.join(extensionRoot, relativePath);
@@ -73,6 +74,7 @@ for (const testFile of [
   "configuration-safety.test.mjs",
   "github-watchdog.test.mjs",
   "github-actions-client.test.mjs",
+  "github-token-security.test.mjs",
   "github-watchdog-runtime.test.mjs",
   "github-watchdog-ui.test.mjs"
 ]) {
@@ -90,6 +92,7 @@ const popupJS = await readFile(path.join(extensionRoot, "popup/popup.js"), "utf8
 const popupCSS = await readFile(path.join(extensionRoot, "popup/popup.css"), "utf8");
 const optionsHTML = await readFile(path.join(extensionRoot, "options/options.html"), "utf8");
 const optionsJS = await readFile(path.join(extensionRoot, "options/options.js"), "utf8");
+const githubTokenUI = await readFile(path.join(extensionRoot, "options/github-token-ui.js"), "utf8");
 const optionsCSS = await readFile(path.join(extensionRoot, "options/options.css"), "utf8");
 const controlCSS = await readFile(path.join(extensionRoot, "options/control-center.css"), "utf8");
 const packageScript = await readFile(path.join(root, "scripts/package_extension.py"), "utf8");
@@ -119,7 +122,7 @@ assert.ok(content.includes("MutationObserver"));
 assert.ok(content.includes("hasDraft"));
 assert.ok(content.includes("document.wasDiscarded"));
 
-// 0.6.0 state/profile/task/configuration boundaries retained in 0.7.1.
+// 0.6.0 state/profile/task/configuration boundaries retained.
 for (const token of [
   "schemaVersion: 5",
   "taskOnly: false",
@@ -178,7 +181,7 @@ assert.ok(background.includes("if (observedState.taskOnly && !chat.taskActive &&
 assert.ok(background.includes("latestState.sessionId === observedState.sessionId"));
 assert.ok(background.includes('stopTaskMode(chat, "global-stop")'), "Top Stop must terminate active task mode");
 
-// 0.7.1 GitHub Actions watchdog boundary.
+// 0.7.1 active GitHub Actions watchdog invariants remain intact.
 for (const token of [
   "MIN_GITHUB_IDLE_MINUTES = 10",
   "GITHUB_POLL_INTERVAL_MINUTES = 10",
@@ -213,20 +216,47 @@ assert.ok(!background.slice(
 assert.ok(background.includes("successfulRepositories.has(profile.githubRepository)"), "Current failed GitHub poll must not select a restart");
 assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
 assert.ok(githubActions.includes('credentials: "omit"'), "GitHub client must omit browser credentials");
-assert.ok(!githubActions.includes("Authorization"), "Public GitHub client must not send an Authorization header");
-assert.ok(!githubActions.includes("github_pat_"), "GitHub PAT material is forbidden");
 assert.ok(githubActions.includes("RUN_PAGE_SIZE = 100"));
 assert.ok(githubActions.includes("actions/runs?per_page=${RUN_PAGE_SIZE}"));
 assert.ok(githubActions.includes('candidate.status !== "completed"'), "Unfinished workflow runs must count as active work");
 assert.ok(githubActions.includes("activeRunCount"));
 assert.ok(githubActions.includes("x-ratelimit-remaining"));
+
+// 0.7.2 private-repository credential boundary.
+for (const token of [
+  'GITHUB_CREDENTIALS_KEY = "chatpulseGithubCredentialsV1"',
+  "protectGithubCredentialStorage",
+  'accessLevel: "TRUSTED_CONTEXTS"',
+  "saveGithubToken",
+  "clearGithubToken",
+  "listGithubTokenRepositories",
+  "verifyGithubTokenAccess",
+  "normalizeGithubToken",
+  "githubCredentialKey",
+  'headers.Authorization = `Bearer ${token}`',
+  'permission: "actions:read"'
+]) {
+  assert.ok(githubActions.includes(token), `GitHub credential boundary missing ${token}`);
+}
+assert.ok(githubActions.includes("if (token) headers.Authorization"), "Authorization must be conditional on a configured token");
+for (const forbidden of ['method: "POST"', 'method: "PUT"', 'method: "PATCH"', 'method: "DELETE"', "/dispatches", "workflow_dispatch"]) {
+  assert.ok(!githubActions.includes(forbidden), `GitHub client must remain read-only: ${forbidden}`);
+}
+assert.ok(!background.includes("GITHUB_CREDENTIALS_KEY"), "Credential store must not enter service-worker runtime state logic");
+assert.ok(!model.includes("githubToken"), "GitHub token must never enter model/chatpulseState");
+assert.ok(!content.includes("githubToken"), "GitHub token must never enter ChatGPT content script");
+
 for (const className of [
   "profile-github-watch-enabled",
   "profile-github-repository",
   "profile-github-idle",
-  "profile-github-status"
+  "profile-github-status",
+  "profile-github-token",
+  "profile-github-token-status",
+  "test-github-token",
+  "clear-github-token"
 ]) {
-  assert.ok(optionsHTML.includes(className), `Control Center missing GitHub watchdog control ${className}`);
+  assert.ok(optionsHTML.includes(className), `Control Center missing GitHub control ${className}`);
 }
 assert.ok(optionsJS.includes('const GITHUB_ORIGIN = "https://api.github.com/*"'));
 assert.ok(optionsJS.includes("chrome.permissions.request({ origins: [GITHUB_ORIGIN] })"));
@@ -237,7 +267,24 @@ assert.ok(optionsHTML.includes("Не вставляйте URL GitHub"));
 assert.ok(optionsHTML.includes("/actions"));
 assert.ok(optionsHTML.includes("незавершённый GitHub Actions run"));
 assert.ok(optionsHTML.includes("отсчёт N минут начинается заново"));
-assert.ok(optionsHTML.includes("GitHub token не используется"));
+assert.ok(optionsHTML.includes('class="profile-github-token" type="password"'));
+assert.ok(optionsHTML.includes("Проверить токен"));
+assert.ok(optionsHTML.includes("Actions: Read-only"));
+assert.ok(optionsHTML.includes("Classic PAT"));
+assert.ok(optionsHTML.includes("не рекомендуется"));
+assert.ok(optionsHTML.includes("GitHub tokens"));
+for (const token of [
+  "verifyGithubTokenAccess",
+  "saveGithubToken",
+  "clearGithubToken",
+  "listGithubTokenRepositories",
+  "githubTokenBypass",
+  "stopImmediatePropagation",
+  "Token сохранён локально"
+]) {
+  assert.ok(githubTokenUI.includes(token), `GitHub token UI missing ${token}`);
+}
+assert.ok(!githubTokenUI.includes("chrome.runtime.sendMessage"), "Token UI must not send credentials through runtime messages");
 
 // Telegram stays optional, generic, post-state and privacy-safe.
 for (const token of [
@@ -308,6 +355,7 @@ assert.ok(optionsJS.includes("START_TASK"));
 assert.ok(optionsJS.includes("chrome.permissions.request({ origins: [TELEGRAM_ORIGIN] })"));
 assert.ok(optionsJS.includes("Bot token") || optionsHTML.includes("Bot token"));
 assert.ok(optionsHTML.includes("никогда не попадает в экспорт"));
+assert.ok(optionsHTML.includes("GitHub tokens"));
 assert.ok(optionsHTML.includes("создаёт новые безопасные baseline"));
 assert.ok(optionsCSS.includes(".integration-box"));
 assert.ok(controlCSS.includes(".control-chat-row"));
@@ -324,7 +372,7 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
     `В обоих интерфейсах отсутствует цвет превью ${color}`
   );
 }
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.1-beta.zip'));
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.1-source-manifest.txt'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.2-beta.zip'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.2-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, active GitHub Actions fail-closed watchdog, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.1 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, active GitHub Actions fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.2 прошли статический аудит.");
