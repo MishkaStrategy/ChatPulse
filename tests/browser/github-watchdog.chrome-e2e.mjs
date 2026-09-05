@@ -21,10 +21,14 @@ try {
   let serviceWorker = await extensionServiceWorker(context);
   const extensionId = new URL(serviceWorker.url()).host;
 
-  const permissionInitiallyGranted = await serviceWorker.evaluate(
-    async (origin) => chrome.permissions.contains({ origins: [origin] }),
-    GITHUB_ORIGIN
-  );
+  // Query extension APIs from a real extension document rather than Playwright's
+  // service-worker utility world. This is the same execution surface used by
+  // the production Control Center.
+  const initialOptionsPage = await context.newPage();
+  await initialOptionsPage.goto(`chrome-extension://${extensionId}/options/options.html`, {
+    waitUntil: "domcontentloaded"
+  });
+  const permissionInitiallyGranted = await hasGithubPermission(initialOptionsPage);
   assert.equal(
     permissionInitiallyGranted,
     false,
@@ -43,12 +47,6 @@ try {
   context = await launchExtension(userDataDir);
   serviceWorker = await extensionServiceWorker(context);
   assert.equal(new URL(serviceWorker.url()).host, extensionId, "extension id changed across profile restart");
-
-  const permissionGranted = await serviceWorker.evaluate(
-    async (origin) => chrome.permissions.contains({ origins: [origin] }),
-    GITHUB_ORIGIN
-  );
-  assert.equal(permissionGranted, true, "seeded optional GitHub permission is not active in Chromium");
 
   const githubRequests = [];
   context.on("request", (request) => {
@@ -76,6 +74,11 @@ try {
   await optionsPage.goto(`chrome-extension://${extensionId}/options/options.html`, {
     waitUntil: "domcontentloaded"
   });
+  assert.equal(
+    await hasGithubPermission(optionsPage),
+    true,
+    "seeded optional GitHub permission is not active in Chromium"
+  );
 
   await optionsPage.locator("#addCurrentTopButton").click();
   const row = optionsPage.locator(".chat-row").first();
@@ -100,10 +103,7 @@ try {
   // user gesture. Because this Chromium profile already represents user acceptance,
   // request() must resolve true without weakening the production manifest.
   assert.equal(
-    await optionsPage.evaluate(
-      async (origin) => chrome.permissions.contains({ origins: [origin] }),
-      GITHUB_ORIGIN
-    ),
+    await hasGithubPermission(optionsPage),
     true,
     "GitHub optional permission disappeared after profile save"
   );
@@ -207,6 +207,13 @@ async function extensionServiceWorker(browserContext) {
   const existing = browserContext.serviceWorkers()[0];
   if (existing) return existing;
   return browserContext.waitForEvent("serviceworker", { timeout: WAIT_MS });
+}
+
+async function hasGithubPermission(extensionPage) {
+  return extensionPage.evaluate(
+    async (origin) => chrome.permissions.contains({ origins: [origin] }),
+    GITHUB_ORIGIN
+  );
 }
 
 async function waitForContentScript(serviceWorker, url) {
