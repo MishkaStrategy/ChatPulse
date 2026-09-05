@@ -1,0 +1,52 @@
+name: ChatPulse 0.7.4 exact patch executor
+
+on:
+  push:
+    branches:
+      - release/0.7.4-independent-actions-watchdog
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, fast]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact product patch
+        run: python3 scripts/patch_074.py
+      - name: Validate product patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run audit:extension
+          npm run package:beta
+      - name: Commit product/test/docs only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            chrome-extension/lib/model-v2.js \
+            chrome-extension/background/service-worker-v2.js \
+            chrome-extension/options/options.html \
+            chrome-extension/options/options.js \
+            chrome-extension/manifest.json \
+            tests/chrome-extension/service-worker.test.mjs \
+            tests/chrome-extension/github-watchdog.test.mjs \
+            tests/chrome-extension/github-watchdog-ui.test.mjs \
+            package.json \
+            scripts/package_extension.py \
+            scripts/validate_extension.mjs \
+            CHANGELOG.md
+          test -n "$(git status --porcelain)"
+          git commit -m "fix: make GitHub watchdog scheduler independent"
+          git push origin HEAD:release/0.7.4-independent-actions-watchdog
