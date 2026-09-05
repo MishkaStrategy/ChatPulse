@@ -1,11 +1,11 @@
-name: ChatPulse 0.7.2 beta release gate
+name: ChatPulse 0.7.3 beta release gate
 # workflow_dispatch is retained so a frozen RC can be revalidated without modifying product code.
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - release/0.7.2-private-github-token
+      - release/0.7.3-replace-stuck-tab
       - main
     paths:
       - ".github/workflows/extension-ci.yml"
@@ -37,7 +37,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: chatpulse-0.7.2-${{ github.event.pull_request.number || github.ref }}
+  group: chatpulse-0.7.3-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -141,11 +141,11 @@ jobs:
         run: |
           set -euo pipefail
           npm run package:beta
-          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.2-beta.zip.sha256)"
-          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.2-source-manifest.txt.sha256)"
+          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.3-beta.zip.sha256)"
+          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.3-source-manifest.txt.sha256)"
           npm run package:beta
-          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.2-beta.zip.sha256)"
-          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.2-source-manifest.txt.sha256)"
+          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.3-beta.zip.sha256)"
+          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.7.3-source-manifest.txt.sha256)"
           test "$first_zip" = "$second_zip"
           test "$first_manifest" = "$second_manifest"
           echo "artifact_sha256=$second_zip"
@@ -164,8 +164,8 @@ jobs:
           import hashlib
           from pathlib import Path
           for name in [
-              'ChatPulse-Chrome-v0.7.2-beta.zip',
-              'ChatPulse-Chrome-v0.7.2-source-manifest.txt',
+              'ChatPulse-Chrome-v0.7.3-beta.zip',
+              'ChatPulse-Chrome-v0.7.3-source-manifest.txt',
           ]:
               path = Path('dist') / name
               actual = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -175,14 +175,14 @@ jobs:
               print(f'{name} sha256={actual}')
           PY
 
-      - name: Upload ChatPulse 0.7.2 beta provenance
+      - name: Upload ChatPulse 0.7.3 beta provenance
         uses: actions/upload-artifact@v4
         with:
-          name: ChatPulse-Chrome-v0.7.2-beta
+          name: ChatPulse-Chrome-v0.7.3-beta
           path: |
-            dist/ChatPulse-Chrome-v0.7.2-beta.zip
-            dist/ChatPulse-Chrome-v0.7.2-beta.zip.sha256
-            dist/ChatPulse-Chrome-v0.7.2-source-manifest.txt
-            dist/ChatPulse-Chrome-v0.7.2-source-manifest.txt.sha256
+            dist/ChatPulse-Chrome-v0.7.3-beta.zip
+            dist/ChatPulse-Chrome-v0.7.3-beta.zip.sha256
+            dist/ChatPulse-Chrome-v0.7.3-source-manifest.txt
+            dist/ChatPulse-Chrome-v0.7.3-source-manifest.txt.sha256
           if-no-files-found: error
           retention-days: 30
