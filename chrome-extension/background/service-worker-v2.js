@@ -48,6 +48,11 @@ import {
   hasGithubApiPermission
 } from "./github-actions.js";
 import {
+  chatIdFromGithubRestartGraceAlarm,
+  githubRestartGraceAlarmName,
+  planGithubRestartAuthGrace
+} from "./github-restart-grace.js";
+import {
   replaceBackgroundTab,
   tabRecoveryMode
 } from "./tab-recovery.js";
@@ -73,6 +78,8 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) void runCheck("alarm");
   if (alarm.name === GITHUB_ALARM_NAME) void runCheck("github-watchdog");
+  const graceChatId = chatIdFromGithubRestartGraceAlarm(alarm.name);
+  if (graceChatId) void handleGithubRestartGraceAlarm(graceChatId);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -410,7 +417,7 @@ function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
 
 async function performCheck(source, allowWhenStopped, onlyChatId = null) {
   if (source.startsWith("github-watchdog")) {
-    return performGithubWatchdog(source);
+    return performGithubWatchdog(source, onlyChatId);
   }
   let observedState = await loadState();
   if (!observedState.enabled && !allowWhenStopped) return;
@@ -638,11 +645,12 @@ async function performCheck(source, allowWhenStopped, onlyChatId = null) {
   await persistAndPublish(merged);
 }
 
-async function performGithubWatchdog(source) {
+async function performGithubWatchdog(source, onlyChatId = null) {
   let observedState = await loadState();
   if (!observedState.enabled) return;
 
   const eligible = observedState.chats.filter((chat) => {
+    if (onlyChatId && chat.id !== onlyChatId) return false;
     if (!chat.enabled) return false;
     if (observedState.taskOnly && !chat.taskActive) return false;
     const profile = effectiveChatProfile(observedState, chat);
@@ -665,7 +673,7 @@ async function performGithubWatchdog(source) {
     return;
   }
 
-  const forcePoll = source === "github-watchdog-manual";
+  const forcePoll = source === "github-watchdog-manual" || source === "github-watchdog-grace";
   const permissionGranted = await hasGithubApiPermission();
   const now = new Date().toISOString();
   let touched = false;
@@ -777,6 +785,16 @@ async function attemptGithubWatchdogRestart(chatId) {
     const firstDecision = decide(runtimeChat, freshness.snapshot, sessionId);
     runtimeChat = firstDecision.chat;
 
+    if (firstDecision.decision === "not-authenticated") {
+      const deferred = await deferGithubRestartForAuthWarmup({
+        chat: runtimeChat,
+        snapshot: freshness.snapshot,
+        restartKey: stall.restartKey,
+        sessionId
+      });
+      if (deferred) return;
+    }
+
     if (firstDecision.decision === "stop-phrase-matched") {
       if (await persistSingleRuntimeChat(runtimeChat, sessionId)) {
         const stopped = await loadState();
@@ -836,6 +854,15 @@ async function attemptGithubWatchdogRestart(chatId) {
       return;
     }
     const preflightDecision = decide(chat, preflight.snapshot, sessionId);
+    if (preflightDecision.decision === "not-authenticated") {
+      const deferred = await deferGithubRestartForAuthWarmup({
+        chat: preflightDecision.chat,
+        snapshot: preflight.snapshot,
+        restartKey: stall.restartKey,
+        sessionId
+      });
+      if (deferred) return;
+    }
     if (preflightDecision.decision === "stop-phrase-matched") {
       if (await persistSingleRuntimeChat(preflightDecision.chat, sessionId)) {
         const stopped = await loadState();
@@ -883,6 +910,57 @@ async function attemptGithubWatchdogRestart(chatId) {
     const message = error instanceof Error ? error.message : String(error);
     await appendGithubRestartLog(chatId, `GitHub Actions stall restart не выполнен: ${message}`, "warning");
   }
+}
+
+async function deferGithubRestartForAuthWarmup({ chat, snapshot, restartKey, sessionId }) {
+  const plan = planGithubRestartAuthGrace({
+    snapshot,
+    restartKey,
+    existingKey: chat.githubRestartGraceKey,
+    existingUntil: chat.githubRestartGraceUntil
+  });
+  if (!plan.defer) return false;
+
+  const deferredChat = {
+    ...chat,
+    githubRestartGraceKey: String(restartKey),
+    githubRestartGraceUntil: plan.until,
+    lastDecision: "github-restart-warmup"
+  };
+  const persisted = await persistSingleRuntimeChat(deferredChat, sessionId);
+  if (!persisted) return true;
+
+  await chrome.alarms.create(githubRestartGraceAlarmName(chat.id), {
+    when: Date.parse(plan.until)
+  });
+  await appendGithubRestartLog(
+    chat.id,
+    "restart отложен: новая вкладка прогревается до 60 секунд перед проверкой входа",
+    "info"
+  );
+  return true;
+}
+
+async function handleGithubRestartGraceAlarm(chatId) {
+  const state = await loadState();
+  if (!state.enabled) return;
+  const chat = state.chats.find((candidate) => candidate.id === chatId);
+  if (!chat?.enabled || !chat.githubRestartGraceKey || !chat.githubRestartGraceUntil) return;
+
+  const untilMs = Date.parse(chat.githubRestartGraceUntil);
+  if (!Number.isFinite(untilMs)) return;
+  if (Date.now() < untilMs) {
+    await chrome.alarms.create(githubRestartGraceAlarmName(chatId), { when: untilMs });
+    return;
+  }
+  await runCheck("github-watchdog-grace", false, chatId);
+}
+
+async function clearGithubRestartGraceAlarms(chats) {
+  const candidates = Array.isArray(chats) ? chats : [];
+  await Promise.all(candidates.map((chat) =>
+    chrome.alarms.clear(githubRestartGraceAlarmName(chat.id)).catch(() => false)
+  ));
 }
 
 async function persistSingleRuntimeChat(runtimeChat, expectedSessionId) {
@@ -1213,6 +1291,7 @@ async function configureAlarm(state) {
   if (!state.enabled) {
     await syncPeriodicAlarm(ALARM_NAME, null);
     await syncPeriodicAlarm(GITHUB_ALARM_NAME, null);
+    await clearGithubRestartGraceAlarms(state.chats);
     return { ...state, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
   }
 
@@ -1220,6 +1299,7 @@ async function configureAlarm(state) {
   if (state.taskOnly && eligibleChats.length === 0) {
     await syncPeriodicAlarm(ALARM_NAME, null);
     await syncPeriodicAlarm(GITHUB_ALARM_NAME, null);
+    await clearGithubRestartGraceAlarms(state.chats);
     return { ...state, enabled: false, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
   }
 

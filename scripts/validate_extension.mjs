@@ -47,6 +47,7 @@ const requiredFiles = [
   "assets/logo.svg",
   "lib/model-v2.js",
   "background/service-worker-v2.js",
+  "background/github-restart-grace.js",
   "background/tab-recovery.js",
   "background/github-actions.js",
   "background/telegram.js",
@@ -75,6 +76,7 @@ for (const testFile of [
   "dispatch-checkpoint.test.mjs",
   "configuration-safety.test.mjs",
   "github-watchdog.test.mjs",
+  "github-restart-grace.test.mjs",
   "github-actions-client.test.mjs",
   "github-token-security.test.mjs",
   "github-watchdog-runtime.test.mjs",
@@ -86,6 +88,7 @@ await stat(path.join(root, "scripts/package_extension.py"));
 
 const model = await readFile(path.join(extensionRoot, "lib/model-v2.js"), "utf8");
 const background = await readFile(path.join(extensionRoot, "background/service-worker-v2.js"), "utf8");
+const githubRestartGrace = await readFile(path.join(extensionRoot, "background/github-restart-grace.js"), "utf8");
 const tabRecovery = await readFile(path.join(extensionRoot, "background/tab-recovery.js"), "utf8");
 const githubActions = await readFile(path.join(extensionRoot, "background/github-actions.js"), "utf8");
 const telegram = await readFile(path.join(extensionRoot, "background/telegram.js"), "utf8");
@@ -238,6 +241,28 @@ assert.ok(githubActions.includes("actions/runs?per_page=${RUN_PAGE_SIZE}"));
 assert.ok(githubActions.includes('candidate.status !== "completed"'), "Unfinished workflow runs must count as active work");
 assert.ok(githubActions.includes("activeRunCount"));
 assert.ok(githubActions.includes("x-ratelimit-remaining"));
+
+// 0.7.4 post-open authentication grace remains bounded and fail-closed.
+for (const token of [
+  "GITHUB_RESTART_GRACE_MS = 60_000",
+  "GITHUB_RESTART_GRACE_ALARM_PREFIX",
+  "planGithubRestartAuthGrace",
+  "grace-expired"
+]) {
+  assert.ok(githubRestartGrace.includes(token), `GitHub auth-grace module missing ${token}`);
+}
+for (const token of [
+  "handleGithubRestartGraceAlarm",
+  "deferGithubRestartForAuthWarmup",
+  'source === "github-watchdog-grace"',
+  "performGithubWatchdog(source, onlyChatId)",
+  "githubRestartGraceKey",
+  "githubRestartGraceUntil"
+]) {
+  assert.ok(background.includes(token), `Service worker missing auth-grace invariant: ${token}`);
+}
+assert.ok(background.includes("if (onlyChatId && chat.id !== onlyChatId) return false"));
+assert.ok(background.includes("when: Date.parse(plan.until)"));
 
 // 0.7.2 private-repository credential boundary.
 for (const token of [
@@ -393,4 +418,4 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
 assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.4-beta.zip'));
 assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.4-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, independent GitHub Actions scheduler, Actions-only mode, fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.4 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, independent GitHub Actions scheduler, Actions-only mode, 60-second post-open auth grace, fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.4 прошли статический аудит.");

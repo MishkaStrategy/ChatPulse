@@ -83,9 +83,12 @@ function createHarness() {
       async create(name, info) {
         metrics.alarmCreates += 1;
         metrics.alarmCreatesByName[name] = (metrics.alarmCreatesByName[name] || 0) + 1;
+        const absoluteWhen = Number(info.when);
         alarms.set(name, {
           name,
-          scheduledTime: Date.now() + Number(info.delayInMinutes || 0) * 60_000,
+          scheduledTime: Number.isFinite(absoluteWhen)
+            ? absoluteWhen
+            : Date.now() + Number(info.delayInMinutes || 0) * 60_000,
           periodInMinutes: info.periodInMinutes
         });
       }
@@ -175,7 +178,9 @@ function createHarness() {
     setSendHandler(fn) { sendHandler = fn; },
   setGithubFetchHandler(fn) { githubFetchHandler = fn; },
   fireAlarm(name) {
-    for (const listener of alarmListeners) listener({ name });
+    const alarm = alarms.get(name);
+    if (alarm && !alarm.periodInMinutes) alarms.delete(name);
+    for (const listener of alarmListeners) listener({ name, scheduledTime: alarm?.scheduledTime });
   },
     async invoke(message) {
       assert.equal(runtimeListeners.length, 1, 'service worker runtime listener');
@@ -466,6 +471,100 @@ assert.equal(harness.alarms.has('chatpulse-monitor'), false, 'GitHub-only chat m
 assert.equal(harness.alarms.get('chatpulse-github-actions-watchdog')?.periodInMinutes, 10);
 assert.equal(result.state.nextCheckAt, null);
 
+// 12. A newly created ChatGPT document gets one 60-second auth warm-up before watchdog retry.
+const graceNow = Date.now();
+const graceActivityAt = new Date(graceNow - 31 * 60_000).toISOString();
+const graceAttemptAt = new Date(graceNow - 11 * 60_000).toISOString();
+installState({
+  profile: {
+    ...model.defaultChatProfile(),
+    githubWatchEnabled: true,
+    githubWatchOnly: true,
+    githubRepository: 'MishkaStrategy/ChatPulse',
+    githubIdleMinutes: 30
+  },
+  githubWatchStartedAt: new Date(graceNow - 2 * 60 * 60_000).toISOString(),
+  githubLastRunId: '9001',
+  githubLastRunCreatedAt: new Date(graceNow - 2 * 60 * 60_000).toISOString(),
+  githubLastActivityAt: graceActivityAt,
+  githubLastAttemptAt: graceAttemptAt,
+  githubLastCheckedAt: graceAttemptAt,
+  githubActiveRunCount: 0,
+  githubLastRestartKey: null,
+  lastHardRefreshAt: new Date().toISOString()
+}, { enabled: true, intervalMinutes: 5 });
+const graceChatId = harness.data.chatpulseState.chats[0].id;
+harness.tabs.clear();
+harness.metrics.creates = 0;
+harness.metrics.sends = 0;
+harness.metrics.alarmCreatesByName = {};
+let graceAuthReady = false;
+const graceDocumentStartedAt = new Date().toISOString();
+harness.setSendHandler(async (_id, message) => {
+  if (message.type === 'CHATPULSE_INSPECT') {
+    return {
+      ok: true,
+      snapshot: makeSnapshot({
+        authenticated: graceAuthReady,
+        hasComposer: graceAuthReady,
+        messageCount: graceAuthReady ? 1 : 0,
+        documentStartedAt: graceDocumentStartedAt
+      })
+    };
+  }
+  if (message.type === 'CHATPULSE_SEND') {
+    harness.metrics.sends += 1;
+    return { ok: true, outcome: 'confirmed' };
+  }
+  return { ok: true };
+});
+githubFetches = 0;
+harness.setGithubFetchHandler(async () => {
+  githubFetches += 1;
+  return {
+    ok: true,
+    status: 200,
+    headers: { get() { return null; } },
+    async json() {
+      return { workflow_runs: [{ id: 9001, created_at: new Date(graceNow - 2 * 60 * 60_000).toISOString(), status: 'completed' }] };
+    }
+  };
+});
+harness.fireAlarm('chatpulse-github-actions-watchdog');
+const graceScheduleDeadline = Date.now() + 5_000;
+while (!harness.data.chatpulseState?.chats?.[0]?.githubRestartGraceUntil && Date.now() < graceScheduleDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+assert.equal(harness.metrics.creates, 1, 'watchdog must create the missing background chat tab');
+assert.equal(harness.metrics.sends, 0, 'fresh unauthenticated document must not receive a command');
+assert.equal(githubFetches, 1);
+const graceAlarmName = `chatpulse-github-restart-grace:${graceChatId}`;
+const graceAlarm = harness.alarms.get(graceAlarmName);
+assert.ok(graceAlarm, 'one-shot auth grace alarm must be scheduled');
+const graceDelayFromDocumentStart = graceAlarm.scheduledTime - Date.parse(graceDocumentStartedAt);
+assert.ok(graceDelayFromDocumentStart >= 59_000 && graceDelayFromDocumentStart <= 60_000, graceDelayFromDocumentStart);
+
+harness.fireAlarm(graceAlarmName);
+const earlyRescheduleDeadline = Date.now() + 2_000;
+while ((harness.metrics.alarmCreatesByName[graceAlarmName] || 0) < 2 && Date.now() < earlyRescheduleDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+assert.equal(githubFetches, 1, 'early grace alarm must not force a GitHub read');
+assert.equal(harness.metrics.sends, 0);
+
+harness.data.chatpulseState.chats[0].githubRestartGraceUntil = new Date(Date.now() - 1).toISOString();
+graceAuthReady = true;
+harness.fireAlarm(graceAlarmName);
+const graceSendDeadline = Date.now() + 5_000;
+while (harness.metrics.sends < 1 && Date.now() < graceSendDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+assert.equal(githubFetches, 2, 'expired grace retry must revalidate GitHub Actions before sending');
+assert.equal(harness.metrics.sends, 1);
+assert.equal(harness.data.chatpulseState.chats[0].githubLastRestartKey, 'run:9001');
+assert.equal(harness.data.chatpulseState.chats[0].githubRestartGraceKey, null);
+assert.equal(harness.data.chatpulseState.chats[0].githubRestartGraceUntil, null);
+
 console.log(JSON.stringify({
   periodic_recovery: 'PASS',
   discarded_recovery: 'PASS',
@@ -478,6 +577,7 @@ console.log(JSON.stringify({
   independent_alarm_lifecycle: 'PASS',
   github_only_scheduler: 'PASS',
   simultaneous_alarm_serialization: 'PASS',
+  github_post_open_auth_grace: 'PASS',
   reload_count_last_scenario: harness.metrics.reloads,
   tests: 'PASS'
 }, null, 2));

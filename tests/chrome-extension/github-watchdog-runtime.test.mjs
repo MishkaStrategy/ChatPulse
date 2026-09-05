@@ -16,6 +16,18 @@ test("GitHub watchdog uses a distinct alarm and lossless shared serialization", 
   assert.doesNotMatch(worker, /if \(activeCheck\) return activeCheck/);
 });
 
+test("post-open auth grace is a one-shot alarm with targeted forced GitHub revalidation", () => {
+  assert.match(worker, /chatIdFromGithubRestartGraceAlarm/);
+  assert.match(worker, /handleGithubRestartGraceAlarm/);
+  assert.match(worker, /deferGithubRestartForAuthWarmup/);
+  assert.match(worker, /performGithubWatchdog\(source, onlyChatId\)/);
+  assert.match(worker, /if \(onlyChatId && chat\.id !== onlyChatId\) return false/);
+  assert.match(worker, /source === "github-watchdog-grace"/);
+  assert.match(worker, /when: Date\.parse\(plan\.until\)/);
+  assert.match(worker, /githubRestartGraceKey/);
+  assert.match(worker, /githubRestartGraceUntil/);
+});
+
 test("GitHub API failures are recorded and never mapped directly to a restart", () => {
   const start = worker.indexOf("async function performGithubWatchdog");
   const end = worker.indexOf("async function attemptGithubWatchdogRestart", start);
