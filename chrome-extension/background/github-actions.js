@@ -2,6 +2,7 @@ import { normalizeGithubRepository } from "../lib/model-v2.js";
 
 export const GITHUB_API_ORIGIN = "https://api.github.com/*";
 const API_VERSION = "2022-11-28";
+const RUN_PAGE_SIZE = 100;
 
 export async function hasGithubApiPermission() {
   return chrome.permissions.contains({ origins: [GITHUB_API_ORIGIN] });
@@ -11,21 +12,31 @@ export function githubActionsRunsURL(repository) {
   const normalized = normalizeGithubRepository(repository);
   if (!normalized) throw new Error("Некорректный GitHub repository: ожидается owner/repo.");
   const [owner, repo] = normalized.split("/");
-  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs?per_page=1`;
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs?per_page=${RUN_PAGE_SIZE}`;
 }
 
 export function parseLatestWorkflowRunPayload(payload) {
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.workflow_runs)) {
     throw new Error("GitHub Actions вернул неожиданный ответ.");
   }
-  const [run] = payload.workflow_runs;
-  if (!run) return { runId: null, createdAt: null };
+  const runs = payload.workflow_runs;
+  if (!runs.length) return { runId: null, createdAt: null, activeRunCount: 0 };
+
+  let activeRunCount = 0;
+  for (const candidate of runs) {
+    if (!candidate || typeof candidate !== "object" || typeof candidate.status !== "string" || !candidate.status) {
+      throw new Error("GitHub Actions вернул неполный workflow run.");
+    }
+    if (candidate.status !== "completed") activeRunCount += 1;
+  }
+
+  const [run] = runs;
   const runId = run.id === null || run.id === undefined ? null : String(run.id);
   const createdAt = typeof run.created_at === "string" && Number.isFinite(Date.parse(run.created_at))
     ? run.created_at
     : null;
   if (!runId || !createdAt) throw new Error("GitHub Actions вернул неполный workflow run.");
-  return { runId, createdAt };
+  return { runId, createdAt, activeRunCount };
 }
 
 export async function fetchLatestGithubWorkflowRun(repository, fetchImpl = fetch) {
