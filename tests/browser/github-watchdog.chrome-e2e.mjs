@@ -48,16 +48,6 @@ try {
   serviceWorker = await extensionServiceWorker(context);
   assert.equal(new URL(serviceWorker.url()).host, extensionId, "extension id changed across profile restart");
 
-  const githubRequests = [];
-  context.on("request", (request) => {
-    if (!request.url().includes("api.github.com/repos/") || !request.url().includes("/actions/runs")) return;
-    githubRequests.push({
-      method: request.method(),
-      url: request.url(),
-      headers: request.headers()
-    });
-  });
-
   await context.route("https://chatgpt.com/**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -129,8 +119,21 @@ try {
   }, "GitHub watchdog baseline was not established by the loaded extension");
 
   assert.ok(baseline.chat.githubWatchStartedAt, "watchdog start timestamp missing");
+  assert.match(String(baseline.chat.githubLastRunId || ""), /^\d+$/, "live GitHub workflow run id missing");
+  assert.ok(
+    Number.isFinite(Date.parse(String(baseline.chat.githubLastRunCreatedAt || ""))),
+    "live GitHub workflow run creation timestamp missing"
+  );
+  assert.ok(
+    Number.isFinite(Date.parse(String(baseline.chat.githubLastActivityAt || ""))),
+    "live GitHub activity timestamp missing"
+  );
+  assert.equal(baseline.chat.githubLastError, null, "live GitHub baseline recorded an error");
   assert.equal(baseline.chat.githubRestartCount, 0, "baseline must not restart the chat");
   assert.equal(await sentCount(chatPage), 0, "baseline unexpectedly sent a continuation");
+
+  const baselineRunId = baseline.chat.githubLastRunId;
+  const baselineRunCreatedAt = baseline.chat.githubLastRunCreatedAt;
 
   let restarted = null;
   for (let attempt = 0; attempt < 3 && !restarted; attempt += 1) {
@@ -186,17 +189,14 @@ try {
   assert.equal(finalChat.githubRestartCount, 1, "same activity marker incremented restart count twice");
   assert.equal(finalChat.githubLastRestartKey, restartKey, "restart key changed without new GitHub activity");
 
-  assert.ok(githubRequests.length >= 2, "browser did not issue live GitHub Actions requests");
-  for (const request of githubRequests) {
-    assert.equal(request.method, "GET", "GitHub watchdog issued a non-GET request");
-    assert.match(request.url, /\/actions\/runs\?per_page=1$/);
-    assert.equal(Object.hasOwn(request.headers, "authorization"), false, "GitHub request sent Authorization header");
-    assert.equal(Object.hasOwn(request.headers, "cookie"), false, "GitHub request sent browser cookies");
-  }
-
+  // Protocol details (GET, credentials:omit, no Authorization) are asserted by
+  // github-actions-client.test.mjs. This browser E2E proves that the loaded
+  // production MV3 worker actually produced a valid observation from the public
+  // GitHub Actions endpoint and then used that observation to control restart.
   console.log(`browser_e2e_extension_id=${extensionId}`);
   console.log(`browser_e2e_repository=${REPOSITORY}`);
-  console.log(`browser_e2e_github_requests=${githubRequests.length}`);
+  console.log(`browser_e2e_github_run_id=${baselineRunId}`);
+  console.log(`browser_e2e_github_run_created_at=${baselineRunCreatedAt}`);
   console.log(`browser_e2e_restart_key=${restartKey}`);
   console.log("browser_e2e_result=PASS");
 } finally {
