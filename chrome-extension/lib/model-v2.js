@@ -211,6 +211,7 @@ export function createChat({ title, url, tabId = null, now = new Date().toISOStr
     githubLastActivityAt: null,
     githubLastAttemptAt: null,
     githubLastCheckedAt: null,
+    githubActiveRunCount: 0,
     githubLastRestartAt: null,
     githubLastRestartKey: null,
     githubRestartCount: 0,
@@ -258,6 +259,7 @@ export function normalizeChat(raw) {
     githubLastActivityAt: stringOrNull(raw.githubLastActivityAt),
     githubLastAttemptAt: stringOrNull(raw.githubLastAttemptAt),
     githubLastCheckedAt: stringOrNull(raw.githubLastCheckedAt),
+    githubActiveRunCount: nonNegativeInteger(raw.githubActiveRunCount),
     githubLastRestartAt: stringOrNull(raw.githubLastRestartAt),
     githubLastRestartKey: stringOrNull(raw.githubLastRestartKey),
     githubRestartCount: nonNegativeInteger(raw.githubRestartCount),
@@ -509,6 +511,7 @@ export function resetGithubWatchRuntime(chat) {
     githubLastActivityAt: null,
     githubLastAttemptAt: null,
     githubLastCheckedAt: null,
+    githubActiveRunCount: 0,
     githubLastRestartAt: null,
     githubLastRestartKey: null,
     githubRestartCount: 0,
@@ -526,12 +529,15 @@ export function recordGithubWatchError(chat, message, at = new Date().toISOStrin
 
 export function recordGithubActionsObservation(
   chat,
-  { runId = null, createdAt = null } = {},
+  { runId = null, createdAt = null, activeRunCount = 0 } = {},
   at = new Date().toISOString()
 ) {
   const normalizedRunId = runId === null || runId === undefined ? null : String(runId);
   const normalizedCreatedAt = validTimestampOrNull(createdAt);
+  const normalizedActiveRunCount = nonNegativeInteger(activeRunCount);
   const hadBaseline = Boolean(chat?.githubWatchStartedAt);
+  const hadActiveRuns = nonNegativeInteger(chat?.githubActiveRunCount) > 0;
+  const hasActiveRuns = normalizedActiveRunCount > 0;
   const runChanged = hadBaseline && normalizedRunId !== stringOrNull(chat?.githubLastRunId);
   const observedAtMs = Date.parse(at);
   const createdAtMs = Date.parse(String(normalizedCreatedAt || ""));
@@ -540,9 +546,13 @@ export function recordGithubActionsObservation(
     : at;
   const nextActivityAt = !hadBaseline
     ? at
-    : runChanged
-      ? safeCreatedAt
-      : stringOrNull(chat?.githubLastActivityAt) || at;
+    : hasActiveRuns
+      ? at
+      : hadActiveRuns
+        ? at
+        : runChanged
+          ? safeCreatedAt
+          : stringOrNull(chat?.githubLastActivityAt) || at;
 
   return {
     ...chat,
@@ -552,6 +562,7 @@ export function recordGithubActionsObservation(
     githubLastActivityAt: nextActivityAt,
     githubLastAttemptAt: at,
     githubLastCheckedAt: at,
+    githubActiveRunCount: normalizedActiveRunCount,
     githubLastRestartKey: runChanged ? null : stringOrNull(chat?.githubLastRestartKey),
     githubLastError: null
   };
@@ -561,15 +572,18 @@ export function githubWatchdogDecision(chat, idleMinutes, now = Date.now()) {
   if (!chat?.githubWatchStartedAt || !chat?.githubLastCheckedAt || !chat?.githubLastActivityAt) {
     return { decision: "baseline-required", restartKey: null, idleMs: 0 };
   }
+  const restartKey = chat.githubLastRunId
+    ? `run:${chat.githubLastRunId}`
+    : `empty:${chat.githubWatchStartedAt}`;
+  if (nonNegativeInteger(chat?.githubActiveRunCount) > 0) {
+    return { decision: "actions-active", restartKey, idleMs: 0 };
+  }
   const activityAt = Date.parse(chat.githubLastActivityAt);
   if (!Number.isFinite(activityAt)) {
     return { decision: "baseline-required", restartKey: null, idleMs: 0 };
   }
   const idleMs = Math.max(0, now - activityAt);
   const thresholdMs = clampGithubIdleMinutes(idleMinutes) * 60_000;
-  const restartKey = chat.githubLastRunId
-    ? `run:${chat.githubLastRunId}`
-    : `empty:${chat.githubWatchStartedAt}`;
   if (idleMs < thresholdMs) return { decision: "active", restartKey, idleMs };
   if (chat.githubLastRestartKey === restartKey) {
     return { decision: "already-restarted", restartKey, idleMs };
@@ -689,6 +703,7 @@ export function mergeRuntimeState(observedState, latestState) {
         githubLastActivityAt: observed.githubLastActivityAt,
         githubLastAttemptAt: observed.githubLastAttemptAt,
         githubLastCheckedAt: observed.githubLastCheckedAt,
+        githubActiveRunCount: observed.githubActiveRunCount,
         githubLastRestartAt: observed.githubLastRestartAt,
         githubLastRestartKey: observed.githubLastRestartKey,
         githubRestartCount: observed.githubRestartCount,
