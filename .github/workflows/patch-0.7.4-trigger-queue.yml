@@ -44,7 +44,7 @@ jobs:
               text = p.read_text(encoding="utf-8")
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+                  raise SystemExit(f"{path}: expected exactly one match, got {count} for {old[:80]!r}")
               p.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           replace_once(
@@ -70,32 +70,70 @@ jobs:
           }
           ''')
 
+          handler = '''  let githubFetchHandler = async () => ({
+            ok: true,
+            status: 200,
+            headers: { get() { return null; } },
+            async json() {
+              return {
+                workflow_runs: [{
+                  id: 9001,
+                  created_at: '2026-09-05T00:00:00.000Z',
+                  status: 'completed'
+                }]
+              };
+            }
+          });
+          
+          '''
           replace_once(
               "tests/chrome-extension/service-worker.test.mjs",
-              '''  let sendHandler = async (_tabId, message) => {
-            if (message.type === 'CHATPULSE_INSPECT') {
-              metrics.inspections += 1;
-              return { ok: true, snapshot: makeSnapshot() };
+              "  function clone(value) {\n",
+              handler + "  function clone(value) {\n")
+
+          replace_once(
+              "tests/chrome-extension/service-worker.test.mjs",
+              "  globalThis.chrome = {\n",
+              "  globalThis.fetch = (...args) => githubFetchHandler(...args);\n\n  globalThis.chrome = {\n")
+
+          permissions = '''    permissions: {
+            async contains({ origins } = {}) {
+              return Array.isArray(origins) && origins.includes('https://api.github.com/*');
             }
-            if (message.type === 'CHATPULSE_SEND') {
-              metrics.sends += 1;
-              return { ok: true, outcome: 'confirmed' };
+          },
+          '''
+          replace_once(
+              "tests/chrome-extension/service-worker.test.mjs",
+              "    alarms: {\n",
+              permissions + "    alarms: {\n")
+
+          replace_once(
+              "tests/chrome-extension/service-worker.test.mjs",
+              "    setSendHandler(fn) { sendHandler = fn; },\n",
+              '''    setSendHandler(fn) { sendHandler = fn; },
+            setGithubFetchHandler(fn) { githubFetchHandler = fn; },
+            fireAlarm(name) {
+              for (const listener of alarmListeners) listener({ name });
+            },
+          ''')
+
+          scenario = '''// 11. Simultaneous ordinary and GitHub alarms are serialized instead of dropping the second trigger.
+          installState({
+            lastCommandedFingerprint: 'answer-1',
+            lastHardRefreshAt: new Date().toISOString(),
+            profile: {
+              ...model.defaultChatProfile(),
+              intervalMinutes: 10,
+              githubWatchEnabled: true,
+              githubWatchOnly: false,
+              githubRepository: 'MishkaStrategy/ChatPulse',
+              githubIdleMinutes: 30
             }
-            return { ok: true };
-          };
-          ''',
-              '''  let sendHandler = async (_tabId, message) => {
-            if (message.type === 'CHATPULSE_INSPECT') {
-              metrics.inspections += 1;
-              return { ok: true, snapshot: makeSnapshot() };
-            }
-            if (message.type === 'CHATPULSE_SEND') {
-              metrics.sends += 1;
-              return { ok: true, outcome: 'confirmed' };
-            }
-            return { ok: true };
-          };
-            let githubFetchHandler = async () => ({
+          }, { enabled: true, intervalMinutes: 10 });
+          let githubFetches = 0;
+          harness.setGithubFetchHandler(async () => {
+            githubFetches += 1;
+            return {
               ok: true,
               status: 200,
               headers: { get() { return null; } },
@@ -108,121 +146,37 @@ jobs:
                   }]
                 };
               }
-            });
-          ''')
-
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              '''  globalThis.chrome = {
-            runtime: {
-          ''',
-              '''  globalThis.fetch = (...args) => githubFetchHandler(...args);
+            };
+          });
+          harness.fireAlarm('chatpulse-monitor');
+          harness.fireAlarm('chatpulse-github-actions-watchdog');
+          const collisionDeadline = Date.now() + 5_000;
+          while (!harness.data.chatpulseState?.chats?.[0]?.githubLastCheckedAt && Date.now() < collisionDeadline) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          assert.equal(githubFetches, 1, 'queued GitHub alarm must execute after the ordinary alarm');
+          assert.equal(harness.data.chatpulseState.chats[0].githubLastRunId, '9001');
+          assert.ok(harness.data.chatpulseState.chats[0].githubLastCheckedAt, 'GitHub observation must persist after collision');
           
-            globalThis.chrome = {
-            runtime: {
-          ''')
+          '''
+          replace_once(
+              "tests/chrome-extension/service-worker.test.mjs",
+              "console.log(JSON.stringify({\n",
+              scenario + "console.log(JSON.stringify({\n")
 
           replace_once(
               "tests/chrome-extension/service-worker.test.mjs",
-              '''    alarms: {
-              onAlarm: { addListener(fn) { alarmListeners.push(fn); } },
-          ''',
-              '''    permissions: {
-              async contains({ origins } = {}) {
-                return Array.isArray(origins) && origins.includes('https://api.github.com/*');
-              }
-            },
-            alarms: {
-              onAlarm: { addListener(fn) { alarmListeners.push(fn); } },
-          ''')
-
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              '''    installedListeners,
-              setSendHandler(fn) { sendHandler = fn; },
-              async invoke(message) {
-          ''',
-              '''    installedListeners,
-              setSendHandler(fn) { sendHandler = fn; },
-              setGithubFetchHandler(fn) { githubFetchHandler = fn; },
-              fireAlarm(name) {
-                for (const listener of alarmListeners) listener({ name });
-              },
-              async invoke(message) {
-          ''')
-
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              '''assert.equal(result.state.nextCheckAt, null);
-          
-          console.log(JSON.stringify({
-          ''',
-              '''assert.equal(result.state.nextCheckAt, null);
-          
-            // 11. Simultaneous ordinary and GitHub alarms are serialized instead of dropping the second trigger.
-            installState({
-              lastCommandedFingerprint: 'answer-1',
-              lastHardRefreshAt: new Date().toISOString(),
-              profile: {
-                ...model.defaultChatProfile(),
-                intervalMinutes: 10,
-                githubWatchEnabled: true,
-                githubWatchOnly: false,
-                githubRepository: 'MishkaStrategy/ChatPulse',
-                githubIdleMinutes: 30
-              }
-            }, { enabled: true, intervalMinutes: 10 });
-            let githubFetches = 0;
-            harness.setGithubFetchHandler(async () => {
-              githubFetches += 1;
-              return {
-                ok: true,
-                status: 200,
-                headers: { get() { return null; } },
-                async json() {
-                  return {
-                    workflow_runs: [{
-                      id: 9001,
-                      created_at: '2026-09-05T00:00:00.000Z',
-                      status: 'completed'
-                    }]
-                  };
-                }
-              };
-            });
-            harness.fireAlarm('chatpulse-monitor');
-            harness.fireAlarm('chatpulse-github-actions-watchdog');
-            const collisionDeadline = Date.now() + 5_000;
-            while (!harness.data.chatpulseState?.chats?.[0]?.githubLastCheckedAt && Date.now() < collisionDeadline) {
-              await new Promise((resolve) => setTimeout(resolve, 10));
-            }
-            assert.equal(githubFetches, 1, 'queued GitHub alarm must execute after the ordinary alarm');
-            assert.equal(harness.data.chatpulseState.chats[0].githubLastRunId, '9001');
-            assert.ok(harness.data.chatpulseState.chats[0].githubLastCheckedAt, 'GitHub observation must persist after collision');
-          
-          console.log(JSON.stringify({
-          ''')
-
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              '''  github_only_scheduler: 'PASS',
-            reload_count_last_scenario: harness.metrics.reloads,
-          ''',
-              '''  github_only_scheduler: 'PASS',
-            simultaneous_alarm_serialization: 'PASS',
-            reload_count_last_scenario: harness.metrics.reloads,
-          ''')
+              "  github_only_scheduler: 'PASS',\n",
+              "  github_only_scheduler: 'PASS',\n  simultaneous_alarm_serialization: 'PASS',\n")
 
           replace_once(
               "scripts/validate_extension.mjs",
               '''assert.ok(background.includes("profile.githubWatchOnly"), "Automatic ordinary checks must exclude GitHub-only chats");
-          assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
           ''',
               '''assert.ok(background.includes("profile.githubWatchOnly"), "Automatic ordinary checks must exclude GitHub-only chats");
           assert.ok(!background.includes("if (activeCheck) return activeCheck;"), "Concurrent scheduler triggers must never be dropped");
           assert.ok(background.includes("previous.catch(() => {})"), "Queued scheduler trigger must survive rejection of the previous check");
           assert.ok(background.includes("if (activeCheck === tracked) activeCheck = null;"), "Only the current queue tail may release the shared check guard");
-          assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
           ''')
           PY
           git rm .github/workflows/patch-0.7.4-trigger-queue.yml
