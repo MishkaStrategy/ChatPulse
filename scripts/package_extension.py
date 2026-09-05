@@ -9,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXTENSION_ROOT = ROOT / "chrome-extension"
 DIST = ROOT / "dist"
-ZIP_NAME = "ChatPulse-Chrome-v0.7.2-beta.zip"
-MANIFEST_NAME = "ChatPulse-Chrome-v0.7.2-source-manifest.txt"
+ZIP_NAME = "ChatPulse-Chrome-v0.7.3-beta.zip"
+MANIFEST_NAME = "ChatPulse-Chrome-v0.7.3-source-manifest.txt"
 FIXED_ZIP_TIME = (2020, 1, 1, 0, 0, 0)
 EXCLUDED_PARTS = {"node_modules", "__pycache__"}
 EXCLUDED_NAMES = {".DS_Store"}

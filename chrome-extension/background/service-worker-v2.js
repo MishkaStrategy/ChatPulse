@@ -47,6 +47,10 @@ import {
   fetchLatestGithubWorkflowRun,
   hasGithubApiPermission
 } from "./github-actions.js";
+import {
+  replaceBackgroundTab,
+  tabRecoveryMode
+} from "./tab-recovery.js";
 
 const STORAGE_KEY = "chatpulseState";
 const ALARM_NAME = "chatpulse-monitor";
@@ -55,7 +59,7 @@ const CHATGPT_PATTERNS = ["https://chatgpt.com/*", "https://chat.openai.com/*"];
 const TAB_LOAD_TIMEOUT_MS = 45_000;
 const HYDRATION_TIMEOUT_MS = 20_000;
 const CONTENT_MESSAGE_TIMEOUT_MS = 4_000;
-const POST_RELOAD_SETTLE_MS = 750;
+const POST_RECOVERY_SETTLE_MS = 750;
 let activeCheck = null;
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -1003,7 +1007,7 @@ async function obtainFreshSnapshot({
   let currentTab = await chrome.tabs.get(tab.id);
   if (currentTab.discarded === true || currentTab.frozen === true) {
     const reason = currentTab.discarded === true ? "discarded-tab" : "frozen-tab";
-    return recoverAndInspect(currentTab.id, reason, stopPhrase);
+    return recoverAndInspect(currentTab, chat.url, reason, stopPhrase);
   }
 
   await waitForTabComplete(currentTab.id, TAB_LOAD_TIMEOUT_MS);
@@ -1028,7 +1032,7 @@ async function obtainFreshSnapshot({
     intervalMinutes
   });
 
-  if (plan.refresh) return recoverAndInspect(currentTab.id, plan.reason, stopPhrase);
+  if (plan.refresh) return recoverAndInspect(currentTab, chat.url, plan.reason, stopPhrase);
   if (!snapshot) {
     if (currentTab.active === true) {
       throw new Error("Активная вкладка не ответила; автоматическое обновление отменено для защиты действий пользователя.");
@@ -1038,12 +1042,21 @@ async function obtainFreshSnapshot({
   return { tab: currentTab, snapshot, recoveryReason: null };
 }
 
-async function recoverAndInspect(tabId, reason, stopPhrase = "") {
-  await reloadTabAndWait(tabId, TAB_LOAD_TIMEOUT_MS);
-  await delay(POST_RELOAD_SETTLE_MS);
-  const snapshot = await waitForHydratedSnapshot(tabId, HYDRATION_TIMEOUT_MS, stopPhrase);
+async function recoverAndInspect(tab, chatURL, reason, stopPhrase = "") {
+  let targetTab = tab;
+  if (tabRecoveryMode(reason) === "replace" && typeof chrome.tabs.remove === "function") {
+    targetTab = await replaceBackgroundTab(chrome.tabs, tab, chatURL);
+    await protectManagedTab(targetTab.id);
+    await waitForTabComplete(targetTab.id, TAB_LOAD_TIMEOUT_MS);
+  } else {
+    await reloadTabAndWait(tab.id, TAB_LOAD_TIMEOUT_MS);
+    targetTab = await chrome.tabs.get(tab.id);
+  }
+
+  await delay(POST_RECOVERY_SETTLE_MS);
+  const snapshot = await waitForHydratedSnapshot(targetTab.id, HYDRATION_TIMEOUT_MS, stopPhrase);
   return {
-    tab: await chrome.tabs.get(tabId),
+    tab: await chrome.tabs.get(targetTab.id),
     snapshot,
     recoveryReason: reason
   };
