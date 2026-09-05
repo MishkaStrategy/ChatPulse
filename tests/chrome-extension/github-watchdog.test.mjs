@@ -31,6 +31,7 @@ test("schema v4 migrates to schema v5 with GitHub watcher disabled", () => {
   assert.equal(state.chats[0].profile.githubRepository, null);
   assert.equal(state.chats[0].profile.githubIdleMinutes, 30);
   assert.equal(state.chats[0].githubLastRunId, null);
+  assert.equal(state.chats[0].githubActiveRunCount, 0);
 });
 
 test("GitHub repository identifiers are strict owner/repo values", () => {
@@ -58,6 +59,52 @@ test("first successful Actions observation establishes a fresh baseline and neve
   assert.equal(observed.githubLastRunId, "100");
   assert.equal(observed.githubLastActivityAt, "2026-09-02T07:00:00.000Z");
   assert.equal(githubWatchdogDecision(observed, 10, Date.parse("2026-09-02T07:00:01.000Z")).decision, "active");
+});
+
+test("unfinished Actions block restart even beyond the configured idle threshold", () => {
+  const observed = recordGithubActionsObservation(
+    createChat({ title: "A", url: "https://chatgpt.com/c/a" }),
+    { runId: "100", createdAt: "2026-09-02T07:00:00.000Z", activeRunCount: 2 },
+    "2026-09-02T07:00:00.000Z"
+  );
+  assert.equal(observed.githubActiveRunCount, 2);
+  assert.equal(
+    githubWatchdogDecision(observed, 10, Date.parse("2026-09-03T07:00:00.000Z")).decision,
+    "actions-active"
+  );
+});
+
+test("active to idle transition starts a fresh inactivity window", () => {
+  const active = recordGithubActionsObservation(
+    createChat({ title: "A", url: "https://chatgpt.com/c/a" }),
+    { runId: "100", createdAt: "2026-09-02T06:00:00.000Z", activeRunCount: 1 },
+    "2026-09-02T07:00:00.000Z"
+  );
+  const completed = recordGithubActionsObservation(
+    { ...active, githubLastActivityAt: "2026-09-02T06:00:00.000Z" },
+    { runId: "100", createdAt: "2026-09-02T06:00:00.000Z", activeRunCount: 0 },
+    "2026-09-02T07:30:00.000Z"
+  );
+  assert.equal(completed.githubActiveRunCount, 0);
+  assert.equal(completed.githubLastActivityAt, "2026-09-02T07:30:00.000Z");
+  assert.equal(githubWatchdogDecision(completed, 10, Date.parse("2026-09-02T07:39:59.000Z")).decision, "active");
+  assert.equal(githubWatchdogDecision(completed, 10, Date.parse("2026-09-02T07:40:00.000Z")).decision, "restart");
+});
+
+test("repeated active observations refresh activity without changing the workflow marker", () => {
+  const first = recordGithubActionsObservation(
+    createChat({ title: "A", url: "https://chatgpt.com/c/a" }),
+    { runId: "100", createdAt: "2026-09-02T06:00:00.000Z", activeRunCount: 1 },
+    "2026-09-02T07:00:00.000Z"
+  );
+  const second = recordGithubActionsObservation(
+    first,
+    { runId: "100", createdAt: "2026-09-02T06:00:00.000Z", activeRunCount: 1 },
+    "2026-09-02T07:10:00.000Z"
+  );
+  assert.equal(second.githubLastRunId, "100");
+  assert.equal(second.githubLastActivityAt, "2026-09-02T07:10:00.000Z");
+  assert.equal(githubWatchdogDecision(second, 10, Date.parse("2026-09-02T08:00:00.000Z")).decision, "actions-active");
 });
 
 test("new workflow run resets inactivity episode", () => {
@@ -130,6 +177,7 @@ test("resetting watcher runtime does not reset continuation/runtime safety count
     runStartedAt: "2026-09-02T06:00:00.000Z",
     continuationCount: 7,
     githubLastRunId: "100",
+    githubActiveRunCount: 3,
     githubLastRestartKey: "run:100",
     githubRestartCount: 2
   };
@@ -137,6 +185,7 @@ test("resetting watcher runtime does not reset continuation/runtime safety count
   assert.equal(reset.runStartedAt, original.runStartedAt);
   assert.equal(reset.continuationCount, 7);
   assert.equal(reset.githubLastRunId, null);
+  assert.equal(reset.githubActiveRunCount, 0);
   assert.equal(reset.githubLastRestartKey, null);
   assert.equal(reset.githubRestartCount, 0);
 });
