@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.3 beta — replace hung background tabs
+
+- replace hard-hung managed background ChatGPT tabs with a fresh inactive tab for the exact same conversation URL instead of reloading the broken tab;
+- classify discarded, frozen, content-unreachable, page-error and 20-minute stuck-generation recovery as replacement recovery;
+- keep active tabs and user drafts protected from destructive recovery;
+- keep normal generation untouched until the existing stuck threshold is reached;
+- keep periodic freshness as a soft reload rather than creating a new tab;
+- add rollback if the old tab cannot be removed after replacement creation;
+- preserve GitHub watchdog, private token isolation, continuation guards and at-most-once dispatch semantics;
+- move deterministic beta package/provenance output to ChatPulse 0.7.3.
+
 ## 0.7.2 beta — private GitHub Actions access
 
 - add private-repository GitHub Actions watchdog support through a repository-keyed GitHub token stored only in local extension storage;

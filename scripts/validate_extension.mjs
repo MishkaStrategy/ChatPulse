@@ -10,8 +10,8 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 assert.equal(manifest.manifest_version, 3, "Требуется Manifest V3");
 assert.equal(manifest.name, "ChatPulse");
-assert.equal(manifest.version, "0.7.2");
-assert.equal(manifest.version_name, "0.7.2 beta");
+assert.equal(manifest.version, "0.7.3");
+assert.equal(manifest.version_name, "0.7.3 beta");
 assert.equal(manifest.background?.type, "module");
 assert.equal(manifest.background?.service_worker, "background/service-worker-v2.js");
 assert.equal(manifest.action?.default_popup, "popup/popup.html");
@@ -47,6 +47,7 @@ const requiredFiles = [
   "assets/logo.svg",
   "lib/model-v2.js",
   "background/service-worker-v2.js",
+  "background/tab-recovery.js",
   "background/github-actions.js",
   "background/telegram.js",
   "content/content-script.js",
@@ -66,6 +67,7 @@ for (const relativePath of requiredFiles) {
 }
 for (const testFile of [
   "service-worker.test.mjs",
+  "tab-recovery.test.mjs",
   "control-revision.test.mjs",
   "telegram.test.mjs",
   "profile-task.test.mjs",
@@ -84,6 +86,7 @@ await stat(path.join(root, "scripts/package_extension.py"));
 
 const model = await readFile(path.join(extensionRoot, "lib/model-v2.js"), "utf8");
 const background = await readFile(path.join(extensionRoot, "background/service-worker-v2.js"), "utf8");
+const tabRecovery = await readFile(path.join(extensionRoot, "background/tab-recovery.js"), "utf8");
 const githubActions = await readFile(path.join(extensionRoot, "background/github-actions.js"), "utf8");
 const telegram = await readFile(path.join(extensionRoot, "background/telegram.js"), "utf8");
 const content = await readFile(path.join(extensionRoot, "content/content-script.js"), "utf8");
@@ -113,6 +116,12 @@ assert.ok(background.includes("lastAccessed"));
 assert.ok(background.includes("chrome.windows.update"));
 assert.ok(background.includes("ensureChatTab(chat)"));
 assert.ok(background.includes("chrome.tabs.reload"));
+assert.ok(background.includes("replaceBackgroundTab(chrome.tabs, tab, chatURL)"));
+assert.ok(background.includes("tabRecoveryMode(reason)"));
+assert.ok(tabRecovery.includes("REPLACEMENT_RECOVERY_REASONS"));
+assert.ok(tabRecovery.includes("tabsApi.create"));
+assert.ok(tabRecovery.includes("tabsApi.remove"));
+assert.ok(tabRecovery.includes("active: false"));
 assert.ok(background.includes("autoDiscardable: false"));
 assert.ok(background.includes("waitForHydratedSnapshot"));
 assert.ok(content.includes("stopPhraseMatched"));
@@ -372,7 +381,7 @@ for (const color of ["#071126", "#11183a", "#24123d", "#2c8cff", "#9b5cff"]) {
     `В обоих интерфейсах отсутствует цвет превью ${color}`
   );
 }
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.2-beta.zip'));
-assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.2-source-manifest.txt'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.3-beta.zip'));
+assert.ok(packageScript.includes('ChatPulse-Chrome-v0.7.3-source-manifest.txt'));
 
-console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, active GitHub Actions fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.2 прошли статический аудит.");
+console.log("Manifest V3, legacy safety, schema v5 profiles/tasks, active GitHub Actions fail-closed watchdog, private-repository read-only token isolation, taskOnly master-stop, durable dispatch, Control Center, portable config and Telegram privacy ChatPulse 0.7.3 прошли статический аудит.");

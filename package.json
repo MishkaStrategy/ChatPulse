@@ -1,12 +1,12 @@
 {
   "name": "chatpulse",
-  "version": "0.7.2-beta.1",
+  "version": "0.7.3-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test tests/chrome-extension/*.test.mjs",
     "validate:extension": "node scripts/validate_extension.mjs",
-    "check:syntax": "node --check chrome-extension/lib/model-v2.js && node --check chrome-extension/background/service-worker-v2.js && node --check chrome-extension/background/github-actions.js && node --check chrome-extension/background/telegram.js && node --check chrome-extension/content/content-script.js && node --check chrome-extension/popup/popup.js && node --check chrome-extension/options/options.js && node --check chrome-extension/options/github-token-ui.js",
+    "check:syntax": "node --check chrome-extension/lib/model-v2.js && node --check chrome-extension/background/service-worker-v2.js && node --check chrome-extension/background/tab-recovery.js && node --check chrome-extension/background/github-actions.js && node --check chrome-extension/background/telegram.js && node --check chrome-extension/content/content-script.js && node --check chrome-extension/popup/popup.js && node --check chrome-extension/options/options.js && node --check chrome-extension/options/github-token-ui.js",
     "audit:extension": "npm run check:syntax && npm test && npm run validate:extension",
     "package:beta": "python3 scripts/package_extension.py",
     "audit:ci": "npm run audit:extension && npm run package:beta"

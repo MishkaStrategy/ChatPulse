@@ -1,4 +1,4 @@
-# ChatPulse 0.5.5 beta — расширение Google Chrome
+# ChatPulse 0.7.3 beta — расширение Google Chrome
 
 Эта версия работает внутри обычного Google Chrome и использует уже авторизованный профиль браузера. Отдельный вход, WebKit, Safari Extension, сертификат Apple Developer и подпись приложения не требуются.
 

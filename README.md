@@ -4,7 +4,7 @@
   <p><strong>Локальный task runner для безопасного продолжения выбранных чатов ChatGPT в Chrome.</strong></p>
 
   ![Chrome](https://img.shields.io/badge/Google_Chrome-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)
-  ![Version](https://img.shields.io/badge/version-0.7.2_beta-7C5CFC)
+  ![Version](https://img.shields.io/badge/version-0.7.3_beta-7C5CFC)
   ![Tests](https://img.shields.io/badge/CI-5%2F5_release_gate-2EA44F)
   ![License](https://img.shields.io/badge/license-MIT-blue)
 </div>
@@ -17,7 +17,7 @@ ChatPulse работает внутри уже авторизованного п
 продолжай и не останавливайся до технического лимита
 ```
 
-В 0.7.x к per-chat профилям и guarded task mode добавлен GitHub Actions watchdog для project-чатов. В 0.7.2 он поддерживает private repositories через локальный read-only GitHub token.
+В 0.7.x к per-chat профилям и guarded task mode добавлен GitHub Actions watchdog для project-чатов. В 0.7.2 он получил private-repository read-only token support, а в 0.7.3 зависшая фоновая вкладка заменяется новым экземпляром того же чата вместо reload старой вкладки.
 
 ## Возможности
 
@@ -32,7 +32,7 @@ ChatPulse работает внутри уже авторизованного п
 - стоп-фраза по последнему завершённому ответу ассистента, отключающая только совпавший чат;
 - защита `at-most-once` от повторной отправки одному ответу;
 - `controlRevision`, отменяющий старую in-flight проверку после ручного изменения чата/профиля;
-- автоматическое восстановление discarded, frozen и неотвечающих вкладок;
+- автоматическое восстановление: hard-hang фоновой вкладки закрывает старый экземпляр и открывает новую вкладку того же чата, а periodic freshness остаётся мягким reload;
 - защита активной вкладки, текущей генерации и пользовательского черновика;
 - опциональные Telegram-события после продолжения, при старте задачи, остановке по guard и при общей ошибке автоматики;
 - безопасный экспорт/импорт портативной конфигурации JSON без секретов и runtime history;
