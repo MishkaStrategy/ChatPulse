@@ -82,6 +82,8 @@ test("portable config includes watcher configuration but excludes all watcher ru
     githubLastRestartAt: "2026-09-02T07:02:00.000Z",
     githubLastRestartKey: "run:999",
     githubRestartCount: 3,
+    githubRestartGraceKey: "run:999",
+    githubRestartGraceUntil: "2026-09-02T07:09:00.000Z",
     githubLastError: "secret-ish runtime diagnostic"
   };
   const config = createPortableConfig({ ...defaultState(), chats: [chat] }, "2026-09-02T07:10:00.000Z");
@@ -92,7 +94,8 @@ test("portable config includes watcher configuration but excludes all watcher ru
   const serialized = JSON.stringify(config);
   for (const forbidden of [
     "githubLastRunId", "githubLastActivityAt", "githubLastAttemptAt", "githubLastCheckedAt",
-    "githubActiveRunCount", "githubLastRestartAt", "githubLastRestartKey", "githubRestartCount", "githubLastError",
+    "githubActiveRunCount", "githubLastRestartAt", "githubLastRestartKey", "githubRestartCount",
+    "githubRestartGraceKey", "githubRestartGraceUntil", "githubLastError",
     "githubToken", "github_pat_", "secret-ish runtime diagnostic", "run:999"
   ]) {
     assert.equal(serialized.includes(forbidden), false, forbidden);

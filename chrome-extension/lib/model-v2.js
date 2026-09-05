@@ -221,6 +221,8 @@ export function createChat({ title, url, tabId = null, now = new Date().toISOStr
     githubLastRestartKey: null,
     githubRestartCount: 0,
     githubLastError: null,
+    githubRestartGraceKey: null,
+    githubRestartGraceUntil: null,
     tabId: Number.isInteger(tabId) ? tabId : null,
     lastObservedFingerprint: null,
     lastCommandedFingerprint: null,
@@ -269,6 +271,8 @@ export function normalizeChat(raw) {
     githubLastRestartKey: stringOrNull(raw.githubLastRestartKey),
     githubRestartCount: nonNegativeInteger(raw.githubRestartCount),
     githubLastError: stringOrNull(raw.githubLastError),
+    githubRestartGraceKey: stringOrNull(raw.githubRestartGraceKey),
+    githubRestartGraceUntil: validTimestampOrNull(raw.githubRestartGraceUntil),
     tabId: Number.isInteger(raw.tabId) ? raw.tabId : null,
     lastObservedFingerprint: stringOrNull(raw.lastObservedFingerprint),
     lastCommandedFingerprint: stringOrNull(raw.lastCommandedFingerprint),
@@ -520,7 +524,9 @@ export function resetGithubWatchRuntime(chat) {
     githubLastRestartAt: null,
     githubLastRestartKey: null,
     githubRestartCount: 0,
-    githubLastError: null
+    githubLastError: null,
+    githubRestartGraceKey: null,
+    githubRestartGraceUntil: null
   };
 }
 
@@ -569,6 +575,8 @@ export function recordGithubActionsObservation(
     githubLastCheckedAt: at,
     githubActiveRunCount: normalizedActiveRunCount,
     githubLastRestartKey: runChanged ? null : stringOrNull(chat?.githubLastRestartKey),
+    githubRestartGraceKey: runChanged || hasActiveRuns ? null : stringOrNull(chat?.githubRestartGraceKey),
+    githubRestartGraceUntil: runChanged || hasActiveRuns ? null : validTimestampOrNull(chat?.githubRestartGraceUntil),
     githubLastError: null
   };
 }
@@ -603,6 +611,8 @@ export function recordGithubRestart(chat, restartKey, at = new Date().toISOStrin
     githubLastRestartAt: at,
     githubLastRestartKey: String(restartKey),
     githubRestartCount: nonNegativeInteger(chat?.githubRestartCount) + 1,
+    githubRestartGraceKey: null,
+    githubRestartGraceUntil: null,
     githubLastError: null
   };
 }
@@ -670,6 +680,8 @@ export function mergeDispatchCheckpoint(runtimeChat, latestChat) {
       nonNegativeInteger(latestChat?.githubRestartCount),
       nonNegativeInteger(runtimeChat?.githubRestartCount)
     ),
+    githubRestartGraceKey: runtimeChat.githubRestartGraceKey,
+    githubRestartGraceUntil: runtimeChat.githubRestartGraceUntil,
     lastError: runtimeChat.lastError
   };
   return merged;
@@ -713,6 +725,8 @@ export function mergeRuntimeState(observedState, latestState) {
         githubLastRestartKey: observed.githubLastRestartKey,
         githubRestartCount: observed.githubRestartCount,
         githubLastError: observed.githubLastError,
+        githubRestartGraceKey: observed.githubRestartGraceKey,
+        githubRestartGraceUntil: observed.githubRestartGraceUntil,
         tabId: observed.tabId,
         lastObservedFingerprint: observed.lastObservedFingerprint,
         lastCommandedFingerprint: observed.lastCommandedFingerprint,

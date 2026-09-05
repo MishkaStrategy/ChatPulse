@@ -33,6 +33,8 @@ test("schema v4 migrates to schema v5 with GitHub watcher disabled", () => {
   assert.equal(state.chats[0].profile.githubIdleMinutes, 30);
   assert.equal(state.chats[0].githubLastRunId, null);
   assert.equal(state.chats[0].githubActiveRunCount, 0);
+  assert.equal(state.chats[0].githubRestartGraceKey, null);
+  assert.equal(state.chats[0].githubRestartGraceUntil, null);
 });
 
 test("GitHub repository identifiers are strict owner/repo values", () => {
@@ -164,6 +166,39 @@ test("one inactivity marker can produce at most one successful restart", () => {
   chat = recordGithubRestart(chat, stalled.restartKey, "2026-09-02T07:11:10.000Z");
   assert.equal(chat.githubRestartCount, 1);
   assert.equal(githubWatchdogDecision(chat, 10, Date.parse("2026-09-02T08:00:00.000Z")).decision, "already-restarted");
+});
+
+test("post-open restart grace runtime is preserved locally but cleared by activity, restart and reset", () => {
+  const original = normalizeState({
+    ...defaultState(),
+    chats: [{
+      ...createChat({ title: "A", url: "https://chatgpt.com/c/a" }),
+      githubWatchStartedAt: "2026-09-05T09:00:00.000Z",
+      githubLastRunId: "100",
+      githubLastActivityAt: "2026-09-05T09:00:00.000Z",
+      githubLastCheckedAt: "2026-09-05T09:10:00.000Z",
+      githubRestartGraceKey: "run:100",
+      githubRestartGraceUntil: "2026-09-05T10:01:00.000Z"
+    }]
+  }).chats[0];
+  assert.equal(original.githubRestartGraceKey, "run:100");
+  assert.equal(original.githubRestartGraceUntil, "2026-09-05T10:01:00.000Z");
+
+  const active = recordGithubActionsObservation(original, {
+    runId: "100",
+    createdAt: "2026-09-05T09:00:00.000Z",
+    activeRunCount: 1
+  }, "2026-09-05T10:00:00.000Z");
+  assert.equal(active.githubRestartGraceKey, null);
+  assert.equal(active.githubRestartGraceUntil, null);
+
+  const restarted = recordGithubRestart(original, "run:100", "2026-09-05T10:01:00.000Z");
+  assert.equal(restarted.githubRestartGraceKey, null);
+  assert.equal(restarted.githubRestartGraceUntil, null);
+
+  const reset = resetGithubWatchRuntime(original);
+  assert.equal(reset.githubRestartGraceKey, null);
+  assert.equal(reset.githubRestartGraceUntil, null);
 });
 
 test("successful empty Actions list starts its own baseline", () => {

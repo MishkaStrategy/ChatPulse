@@ -6,10 +6,26 @@ import { fileURLToPath } from "node:url";
 const workerPath = fileURLToPath(new URL("../../chrome-extension/background/service-worker-v2.js", import.meta.url));
 const worker = await readFile(workerPath, "utf8");
 
-test("GitHub watchdog uses a distinct alarm but the shared activeCheck serialization", () => {
+test("GitHub watchdog uses a distinct alarm and lossless shared serialization", () => {
   assert.match(worker, /chatpulse-github-actions-watchdog/);
   assert.match(worker, /if \(source\.startsWith\("github-watchdog"\)\)/);
-  assert.match(worker, /activeCheck = performCheck/);
+  assert.match(worker, /const previous = activeCheck/);
+  assert.match(worker, /previous\.catch\(\(\) => \{\}\)/);
+  assert.match(worker, /then\(\(\) => performCheck\(source, allowWhenStopped, onlyChatId\)\)/);
+  assert.match(worker, /if \(activeCheck === tracked\) activeCheck = null/);
+  assert.doesNotMatch(worker, /if \(activeCheck\) return activeCheck/);
+});
+
+test("post-open auth grace is a one-shot alarm with targeted forced GitHub revalidation", () => {
+  assert.match(worker, /chatIdFromGithubRestartGraceAlarm/);
+  assert.match(worker, /handleGithubRestartGraceAlarm/);
+  assert.match(worker, /deferGithubRestartForAuthWarmup/);
+  assert.match(worker, /performGithubWatchdog\(source, onlyChatId\)/);
+  assert.match(worker, /if \(onlyChatId && chat\.id !== onlyChatId\) return false/);
+  assert.match(worker, /source === "github-watchdog-grace"/);
+  assert.match(worker, /when: Date\.parse\(plan\.until\)/);
+  assert.match(worker, /githubRestartGraceKey/);
+  assert.match(worker, /githubRestartGraceUntil/);
 });
 
 test("GitHub API failures are recorded and never mapped directly to a restart", () => {
