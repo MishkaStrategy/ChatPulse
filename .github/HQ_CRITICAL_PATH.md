@@ -2,160 +2,166 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 25
-updated_at: 2026-09-05T08:40:00Z
-project_state: EXECUTING
+critical_path_revision: 26
+updated_at: 2026-09-05T09:05:00Z
+project_state: DONE
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
-handoff_status: NOT_READY
-basis_ref: release/0.7.0-browser-e2e-hardening
-basis_sha: 6f8f087bc11460a48da94edeeede62735472bddd
+handoff_status: READY
+basis_ref: main
+basis_sha: 7e2e73483eac7c5452ff35a8bff3c2ef2e0410b8
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: strengthen the already released ChatPulse 0.7.0 beta with a real Chromium/MV3 browser E2E release gate for the GitHub Actions watchdog, without changing the released extension behavior unless the E2E exposes a product defect.
+Release target: ChatPulse 0.7.0 beta browser-E2E hardening for the GitHub Actions inactivity watchdog.
 
-Release surface: test harness and release workflow only unless a verified defect requires product repair.
+Release surface: release workflow plus loaded Chromium/MV3 E2E harness. Extension/product source did not change.
 
-Definition of RELEASED: the exact product bits pass existing 5x deterministic audit plus a loaded-extension Chromium E2E that exercises Control Center, per-chat GitHub watcher configuration, real optional host-permission state, public GitHub Actions observation, stale inactivity transition and exactly one same-chat restart dispatch against a deterministic ChatGPT-origin fixture; PR merge-tree and post-merge main evidence must pass.
+Definition of RELEASED: the existing 0.7.0 product bits pass the prior deterministic safety suite plus a loaded-extension Chromium E2E covering Control Center configuration, optional GitHub permission state, real public GitHub Actions observation, stale inactivity transition, one same-chat restart dispatch and no duplicate restart for the same activity marker; exact branch, PR merge-tree and post-merge main evidence all pass.
 
 Mandatory release gates:
 
-- [ ] Existing deterministic audit remains green.
-- [ ] Browser loads the unpacked production MV3 extension and service worker.
-- [ ] GitHub host permission is absent before opt-in and present for the exercised watcher path.
-- [ ] Control Center adds a ChatGPT-origin chat and saves watcher profile through production UI.
-- [ ] Public GitHub Actions observation establishes a baseline without credentials.
-- [ ] Synthetic elapsed inactivity through persisted runtime state triggers exactly one controlled restart against the production content script.
-- [ ] A repeated watchdog check for the same activity marker does not send a second restart.
-- [ ] PR merge-tree and post-merge main reproduce the browser E2E plus existing release checks.
+- [x] Existing deterministic audit remains green.
+- [x] Browser loads the unpacked production MV3 extension and service worker.
+- [x] GitHub host permission is absent at install time and active for the accepted optional-permission profile.
+- [x] Control Center adds a ChatGPT-origin chat and saves watcher profile through production UI.
+- [x] Production service worker establishes a real public GitHub Actions baseline.
+- [x] Synthetic elapsed inactivity triggers exactly one controlled restart through the production content script.
+- [x] A repeated watchdog check for the same activity marker does not send a second restart.
+- [x] PR merge-tree and post-merge main reproduce the browser E2E and existing release checks.
 
-Required release evidence: exact SHAs, workflow/job IDs, browser E2E log assertions, unchanged product package hash if no product files change.
+Required release evidence: exact SHAs, workflow/job IDs, browser E2E assertions and unchanged product package hashes.
 
-Known explicit exclusions: storing ChatGPT or GitHub credentials in CI; automation against an authenticated live ChatGPT account; private GitHub repositories; changing PR #17 runner-policy scope.
+Known explicit exclusions: authenticated live ChatGPT account automation; native Chrome permission confirmation-bubble click automation; private GitHub repositories/tokens; product UI redesign; unrelated draft PR #17.
 
 ## 2. Repository Basis
 
 Default branch: main.
-Default branch observed SHA: 6f8f087bc11460a48da94edeeede62735472bddd.
-Critical-path basis ref: release/0.7.0-browser-e2e-hardening.
-Critical-path basis SHA: 6f8f087bc11460a48da94edeeede62735472bddd.
-Canonical integration branch: release/0.7.0-browser-e2e-hardening.
-Canonical PR / RC: pending.
-Relevant open PRs: #17 draft, explicitly excluded.
-Relevant CI / workflows: .github/workflows/extension-ci.yml and docker-runner-policy.yml.
-Relevant release/deployment state: 0.7.0 product basis remains 408d95ff256eb70e0442ae36f912d4a528fcbe35 beneath later HQ-only main state.
+Validated product/test-hardening main commit: `7e2e73483eac7c5452ff35a8bff3c2ef2e0410b8`.
+Canonical hardening branch: `release/0.7.0-browser-e2e-hardening`.
+Frozen branch head: `271531133543a171a4576375124ad4c8dafb5cbb`.
+Canonical PR: #23.
+PR merge-tree SHA: `5327eaf54e9dd62e9799a9358fcc4a5ffc15397b`.
+Relevant open PRs after release: #17 draft remains separate/excluded.
+Relevant CI: `.github/workflows/extension-ci.yml`, `.github/workflows/docker-runner-policy.yml`.
+Original 0.7.0 product source basis remains `408d95ff256eb70e0442ae36f912d4a528fcbe35`; this wave changed no extension/product file.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner.
-Architecture / major components: popup/options UI, MV3 service worker, ChatGPT content script, pure model helpers, optional Telegram and GitHub clients.
-Build / packaging: deterministic Python package script, Node validation.
-Tests / validation: Node test suite and static validator; no browser E2E existed before this wave.
-CI: 5-cycle audit plus reproducible package on self-hosted fast runner.
-Release / deployment: merge + exact CI evidence; no store publication required.
-Governance: organizational HQ master 1.2 live-read on this wave; this file is project state.
-External release dependencies: public GitHub API and Chromium download for browser E2E only.
-Material findings: the existing watchdog tests are strong unit/static checks but do not prove loaded-extension browser integration; native Chrome permission prompt itself is a browser-owned UI boundary and may require a test-safe grant strategy without weakening production permissions.
+Architecture: popup/options UI, MV3 service worker, ChatGPT content script, pure model helpers, optional Telegram and public GitHub clients.
+Build / packaging: deterministic Python package script plus Node validation.
+Tests / validation: 80-test deterministic extension suite plus new Playwright loaded-Chromium E2E.
+CI: five independent deterministic audit cycles, browser E2E, reproducible package/provenance and dependency runner policy.
+Release / deployment: validated merge to main; no Chrome Web Store publication required by this release contract.
+Governance: organizational HQ master 1.2 live-read for this wave; this file records the verified final state.
+External release dependencies: public GitHub API and Chromium download for E2E only.
+Material finding resolved: previous watchdog coverage was strong unit/static evidence but not loaded-browser integration evidence. The new gate closes that gap without changing product permissions or product code.
 
 ## 4. Release Gates
 
 ### GATE-1 — Existing deterministic release checks
-Status: UNSATISFIED
-Evidence: pending branch run.
-Blocking items: new harness not yet committed.
+Status: SATISFIED
+Evidence: branch run `33956655114`, PR run `33956770498`, main run `33956878784`; five audit cycles green at every stage, 80/80 tests per inspected cycle, static validator PASS.
+Blocking items: NONE.
 
 ### GATE-2 — Loaded-extension Chromium watchdog E2E
-Status: UNSATISFIED
-Evidence: pending.
-Blocking items: implement and run browser harness.
+Status: SATISFIED
+Evidence: browser E2E PASS on branch, PR merge tree and main. Main job `101281689140` ran at exact SHA `7e2e73483eac7c5452ff35a8bff3c2ef2e0410b8`, observed live GitHub workflow run `33956878787` created `2026-09-05T09:02:10Z`, used restart key `run:33956878787`, and completed `browser_e2e_result=PASS`. Temporary Playwright 1.62.1 harness audit found 0 vulnerabilities.
+Blocking items: NONE.
 
-### GATE-3 — Canonical PR merge-tree
-Status: UNSATISFIED
-Evidence: no PR yet.
-Blocking items: GATE-1 and GATE-2.
+### GATE-3 — Canonical PR merge tree
+Status: SATISFIED
+Evidence: PR #23 merge tree `5327eaf54e9dd62e9799a9358fcc4a5ffc15397b`; release run `33956770498` completed SUCCESS with exact merge-ref checkout, 5/5 deterministic audit, browser E2E PASS and reproducible package equality. Dependency runner policy `33956769811` PASS. Reviews: none. Review threads: none. PR mergeable before merge.
+Blocking items: NONE.
 
 ### GATE-4 — Post-merge main
-Status: UNSATISFIED
-Evidence: not merged.
-Blocking items: GATE-3.
+Status: SATISFIED
+Evidence: merge commit `7e2e73483eac7c5452ff35a8bff3c2ef2e0410b8`; release run `33956878784` completed SUCCESS; dependency policy run `33956878787` SUCCESS; five audit cycles SUCCESS; browser E2E SUCCESS; package/provenance job `101281843172` SUCCESS.
+Blocking items: NONE.
 
 ## 5. Current Critical Path
 
-### CP-1 — Implement Chromium/MV3 browser E2E and wire it into extension-ci
-Status: ACTIVE
-Release gate: GATE-2
-Why critical: closes the browser integration evidence gap identified by owner.
-Depends on: released 0.7.0 product.
-Blocks: PR validation and release closure.
-Execution plane: HQ_DIRECT
-Exact scope: tests/browser browser harness plus release workflow wiring; product code untouched unless test proves a defect.
-Acceptance condition: branch browser E2E passes and proves one-send idempotency using loaded extension.
-Evidence: pending branch workflow.
-
-### CP-2 — Validate canonical PR merge tree
-Status: PENDING
-Release gate: GATE-3
-Depends on: CP-1
-Blocks: CP-3
-Execution plane: PROJECT_RUNNER
-Acceptance condition: exact merge-tree passes deterministic audits, browser E2E and dependency policy.
-
-### CP-3 — Merge exact head and validate main
-Status: PENDING
-Release gate: GATE-4
-Depends on: CP-2
-Blocks: DONE
-Execution plane: HQ_DIRECT + PROJECT_RUNNER
-Acceptance condition: exact merged main reproduces gates; package hash remains canonical if product tree unchanged.
+CP-1 — implement Chromium/MV3 browser E2E and workflow gate: DONE.
+CP-2 — validate canonical PR #23 merge tree: DONE.
+CP-3 — merge exact head and validate main: DONE.
+CP-4 — persist verified browser-E2E hardening release state: DONE by this state-only revision.
 
 ## 6. Active Execution Registry
 
-HQ: CP-1 writer/integrator on release/0.7.0-browser-e2e-hardening.
+HQ: DONE for browser-E2E hardening wave.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: pending branch workflow.
+CI/runtime: no active release-critical execution.
 
 ## 7. Safe Parallel Work
 
-NONE — workflow and browser harness are tightly coupled and should have one canonical writer.
+NONE — release-hardening wave is complete.
 
 ## 8. Current Blockers
 
-NONE. Native optional-permission confirmation is being treated as a browser-owned boundary; the E2E must prove permission state without adding permanent GitHub host permission or credentials.
+NONE.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS.
-Evidence Audit: PASS — gap is explicit and new evidence requirement is concrete.
-Release Alignment Audit: PASS — no product feature expansion.
-Dependency & Ordering Audit: PASS.
-Execution & Parallelism Audit: PASS.
-Adversarial Audit: PASS — test must not weaken production permission model, use secrets, or turn API failure into restart.
+Repository Coverage Audit: PASS — only HQ state, release workflow and browser E2E harness changed; no extension/product source changed.
+Evidence Audit: PASS — independent exact branch, PR merge-tree and post-merge main evidence exists, including loaded-browser runtime proof.
+Release Alignment Audit: PASS — closes the requested testing gap without feature or UI scope expansion.
+Dependency & Ordering Audit: PASS — branch E2E → PR merge-tree → exact merge → post-merge main → persistence.
+Execution & Parallelism Audit: PASS — one canonical writer; deterministic CI used for exact-ref verification.
+Adversarial Audit: PASS — production manifest still does not grant GitHub at install time; no GitHub/ChatGPT credentials are stored in CI; native permission acceptance is represented only inside a disposable Chromium profile; production Control Center/service worker/content script/live GitHub path is exercised; one-send idempotency is proven in browser; protocol-level GET/credentials-omit/no-Authorization and fail-closed API behavior remain covered by deterministic tests.
 
-## 10. Next Action
+## 10. Release Evidence Summary
 
-Exact next action: commit browser E2E harness and release-gate workflow changes, then validate branch.
-Executor: HQ_DIRECT.
-Expected evidence: branch workflow exact SHA with browser E2E assertions.
-Acceptance condition: GATE-1 and GATE-2 satisfied.
+Frozen branch head: `271531133543a171a4576375124ad4c8dafb5cbb`.
+Branch release run: `33956655114` — SUCCESS; 5/5 × 80/80; browser E2E PASS; package/provenance PASS; artifact ID `9966599448`.
 
-## 11. Last Material Revision
+PR #23 merge-tree SHA: `5327eaf54e9dd62e9799a9358fcc4a5ffc15397b`.
+PR release run: `33956770498` — SUCCESS; exact merge-ref; 5/5 × 80/80; browser E2E PASS; package/provenance PASS; artifact ID `9966628907`.
+PR dependency policy: `33956769811` — PASS.
 
-What changed: owner promoted browser E2E from recommendation to immediate release-hardening scope.
-Why the critical path changed: existing unit/static tests do not prove loaded-extension Chrome integration.
-Evidence causing the change: direct owner request plus live inspection of watchdog tests.
+Post-merge main commit: `7e2e73483eac7c5452ff35a8bff3c2ef2e0410b8`.
+Main release run: `33956878784` — SUCCESS; exact main SHA; 5/5 deterministic cycles; inspected cycle 80/80 PASS; browser E2E PASS; package/provenance PASS.
+Main dependency policy: `33956878787` — PASS.
+Main artifact ID: `9966664068`.
 
-## 12. Chat Rotation Checkpoint
+Canonical product ZIP SHA-256 remains unchanged:
+`46b66e8dd951fd40625134f54661ed18fed180796ebd2e0c7d5b5b6c35f89f3d`
 
-Safe to rotate chat: NO.
-Last completed atomic action: branch created from main state-only head.
+Canonical source-manifest SHA-256 remains unchanged:
+`32d6e9f1d1a2267e400fe2e0c55d245c2e624ec30753eb4f2cc6ebc2583f34bc`
+
+Packaged extension file count remains 15; reproducible timestamp remains `2020-01-01T00:00:00`.
+
+## 11. Browser E2E Boundary
+
+The E2E does not click Chrome's native optional-permission confirmation bubble because that browser-owned UI is outside Playwright page automation. Instead, the disposable CI Chromium profile is seeded to the exact accepted host-permission state after separately proving the permission is absent on initial extension install. The test then runs the production Control Center save path, production `chrome.permissions.request()` state, production service worker, production content script, real public GitHub Actions observation, inactivity restart and duplicate-send protection.
+
+No production permission was widened to make the test pass.
+
+## 12. Next Action
+
+Exact next action: await next owner scope or evidence-backed regression.
+Executor: NONE until new scope.
+Expected evidence: N/A.
+Acceptance condition: N/A.
+
+## 13. Last Material Revision
+
+What changed: browser E2E became a permanent release gate and passed at branch, PR merge-tree and post-merge main.
+Why the critical path changed: owner requested immediate closure of the real-browser validation gap.
+Evidence causing closure: runs `33956655114`, `33956770498`, `33956878784`, dependency-policy runs, exact SHAs and unchanged reproducible product hashes.
+
+## 14. Chat Rotation Checkpoint
+
+Safe to rotate chat: YES.
+Last completed atomic action: post-merge main `7e2e73483eac7c5452ff35a8bff3c2ef2e0410b8` passed browser E2E, 5/5 deterministic audit, dependency policy and reproducible package/provenance equality.
 Active external executions and exact refs: NONE.
-Unpersisted material reasoning: browser E2E implementation in progress.
-Recovery entrypoint: live-read master, this revision and release/0.7.0-browser-e2e-hardening.
-Exact next action after recovery: implement CP-1.
-Rotation blockers: active release-hardening wave.
+Unpersisted material reasoning: NONE.
+Recovery entrypoint: live-read organizational master prompt, this revision and current main; treat `7e2e7348...` as the validated browser-E2E hardening merge beneath this later HQ-only state commit.
+Exact next action after recovery: await owner scope or evidence-backed regression.
+Rotation blockers: NONE.
