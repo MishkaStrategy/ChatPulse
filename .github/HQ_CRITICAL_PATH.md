@@ -2,136 +2,125 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 35
-updated_at: 2026-09-05T15:28:00Z
-project_state: EXECUTING
+critical_path_revision: 36
+updated_at: 2026-09-05T15:44:30Z
+project_state: VALIDATING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: NOT_READY
-basis_ref: main
-basis_sha: 651e83dc2ea6f210494516276aa424d45a42a878
+basis_ref: release/0.7.4-independent-actions-watchdog
+basis_sha: 0f8bac313191a52b4c4ea4c71941ac6c129d33e5
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
-Release target: ChatPulse 0.7.4 beta — independent GitHub Actions scheduling, per-chat GitHub-only resume mode, lossless serialization of simultaneous scheduler triggers, and a safe post-open ChatGPT authentication warm-up grace.
+Release target: ChatPulse 0.7.4 beta — independent GitHub Actions scheduling, per-chat GitHub-only resume mode, lossless scheduler-trigger serialization, and a 60-second post-open ChatGPT authentication warm-up grace.
 
-Definition of RELEASED: ordinary and GitHub alarms neither reset nor suppress each other; GitHub-only chats have no automatic ordinary interval check; concurrent triggers queue and execute with their own source/parameters; after ChatPulse creates/replaces/reloads a ChatGPT document, a transient unauthenticated snapshot during the first 60 seconds is treated as page warm-up rather than a durable logout; watchdog retry after the grace must revalidate the current GitHub Actions state before any send; master Stop, active-run blocking, fail-closed API behavior, token isolation, draft/active-tab safety and at-most-once dispatch remain intact; final frozen branch, PR merge-tree and main gates pass.
+Definition of RELEASED: ordinary and GitHub alarms neither reset nor suppress each other; GitHub-only chats receive no automatic ordinary interval checks; concurrent triggers queue without losing source/parameters; a fresh unauthenticated ChatGPT document gets one non-extending 60-second grace per restart episode, followed by a targeted forced GitHub Actions revalidation before any restart send; true logout after the grace remains fail-closed; master Stop, active-run blocking, private token isolation, draft/active-tab safety and at-most-once dispatch remain intact; final branch/PR/main gates pass.
 
 Mandatory gates:
-- [x] independent ordinary/GitHub alarm lifecycle + per-chat GitHub-only mode;
-- [x] more than two independent workflow inactivity episodes can restart;
-- [x] concurrent scheduler triggers are serialized without losing source/parameters on current branch candidate;
-- [ ] 60-second post-open authentication grace with bounded retry and fresh GitHub revalidation;
-- [ ] existing safety regressions remain green;
-- [ ] final branch/PR/main release evidence all green on the new exact candidate.
+- [x] independent alarm lifecycle + GitHub-only mode;
+- [x] lossless simultaneous-trigger serialization;
+- [x] >2 independent workflow inactivity episodes can restart;
+- [x] one bounded 60-second post-open auth grace with no deadline extension;
+- [x] grace retry performs a fresh targeted GitHub Actions read before send;
+- [x] frozen branch exact head passed five deterministic audits, Chromium E2E and reproducible package/provenance;
+- [ ] exact PR #28 merge-tree + dependency policy + review/thread/mergeability gates;
+- [ ] exact post-merge main release + dependency gates.
 
-Required evidence: final branch/PR/main SHAs, workflow IDs, alarm-starvation and simultaneous-trigger regressions, post-open auth-grace regression, test counts, Chromium E2E, reproducible package/source-manifest SHA-256.
+Required evidence: exact SHAs/run IDs, 112/112 deterministic test count, Chromium E2E, package/source hashes, review/thread state and dependency policy.
 
-Known exclusions: normal GitHub polling remains approximately 10 minutes; one bounded extra GitHub read is permitted only for the explicit post-open grace retry so a restart is never sent from stale Actions state. Inactivity N semantics, 20-minute stuck-generation threshold, active-tab destructive-recovery policy, credential boundary and unrelated draft PR #17 remain unchanged.
+Explicit exclusions: normal GitHub poll cadence remains ~10 minutes; only the explicit post-open grace retry may force one bounded extra repository read. Inactivity N, 20-minute stuck threshold, credential boundary and unrelated draft PR #17 are unchanged.
 
 ## 2. Repository Basis
 Default branch: main.
-Default branch observed SHA: `651e83dc2ea6f210494516276aa424d45a42a878` before this r35 state commit.
-Superseded product candidate on main: `32152d9b99c94f8137adda85cda8cb23c5549e45`.
+Current main before this state-only commit: `4c44bd5b8cc2b0b5d353f9054e2078e9604714a6` (HQ state only; product parent lineage unchanged).
 Canonical branch: `release/0.7.4-independent-actions-watchdog`.
-Current branch head before auth-grace change: `b2c66ec80b70001894008508f2a7e8f45e1408e9` — superseded as final release candidate by this owner scope.
-Canonical PR: #28, open; current head `b2c66ec80b70001894008508f2a7e8f45e1408e9`; must be updated and fully revalidated after auth-grace patch.
-Relevant previous merged PR: #27 is superseded intermediate 0.7.4 evidence.
+Frozen branch head: `0f8bac313191a52b4c4ea4c71941ac6c129d33e5`.
+Canonical PR: #28.
+Current PR merge-tree before this state-only commit: `a72f3d753d655cd8a70b918761a362ee0c51379c`, generated as merge of `0f8bac31...` into `4c44bd5b...`; this merge-tree is superseded by this r36 state-only main commit and must be re-read/revalidated before merge.
 Relevant workflows: `.github/workflows/extension-ci.yml`, `.github/workflows/docker-runner-policy.yml`.
 
 ## 3. Repository Scan Summary
-Project: local Chrome MV3 ChatGPT task runner. Build: deterministic package + Node validation. Tests: deterministic extension suite plus loaded Chromium E2E.
+Project: local Chrome MV3 ChatGPT task runner. Build: deterministic Python package + Node static/test audit. Tests: 112 deterministic extension tests plus loaded Chromium GitHub watchdog E2E on the frozen branch.
 
-Material findings:
-1. Original watchdog stoppage had two scheduler starvation paths: dual-alarm recreation and drop-on-active trigger identity. Both are addressed on the current 0.7.4 branch.
-2. `content-script.js` reports `authenticated: false` until composer/messages/profile navigation elements hydrate. A fresh ChatGPT document can therefore be temporarily classified as `not-authenticated` even when the Chrome profile is actually signed in.
-3. `waitForHydratedSnapshot()` currently accepts an unauthenticated page as hydrated immediately, so a newly created/replaced tab can reach watchdog `decide()` too early and log `restart отложен: в профиле Chrome не выполнен вход`.
+Material findings and implemented resolutions:
+1. Dual alarm recreation starvation fixed by independent idempotent alarm synchronization.
+2. `activeCheck` trigger dropping fixed by rejection-safe promise-tail serialization preserving every trigger source/parameters.
+3. Per-chat `githubWatchOnly` provides GitHub-only automatic resume while manual check remains explicit.
+4. Fresh-page false logout fixed by runtime-only `githubRestartGraceKey/Until` plus a one-shot Chrome alarm at `documentStartedAt + 60s`; same episode cannot extend/start another grace after expiry; new activity/run clears grace; global Stop clears grace alarms.
+5. Grace expiry runs `github-watchdog-grace` targeted to the chat and force-polls the repository before restart eligibility is re-evaluated, preventing stale Actions state from causing a send.
 
 ## 4. Release Gates
-### GATE-1 — Independent alarms + GitHub-only
+### GATE-1 — Behavior implementation
 Status: SATISFIED
-Evidence: implemented and regression-covered in the 0.7.4 branch lineage.
-Blocking: NONE.
+Evidence: frozen branch exact head `0f8bac31...`; unit/service-worker regressions cover independent alarms, GitHub-only scheduler, simultaneous trigger serialization, >2 episodes, post-open grace and fresh revalidation.
 
-### GATE-2 — Lossless trigger serialization
+### GATE-2 — Frozen branch
 Status: SATISFIED
-Evidence: branch head `b2c66ec8...` contains rejection-safe promise-tail serialization plus simultaneous-trigger regression.
-Blocking: final combined revalidation only.
+Evidence: release run `33975579796` SUCCESS on exact head `0f8bac31...`; five audit cycles each 112/112; Chromium E2E PASS; package/provenance PASS.
+Package ZIP SHA-256: `489850034ccce208021c93b43196a6f4f7410d8309753d785c6caaececd1e66d`.
+Source manifest SHA-256: `d70b24b683875893ff417a077f6f870cdda450574365ac8118731b0f53992a03`.
+File count: 18; fixed timestamp `2020-01-01T00:00:00`.
+Artifact ID: `9972230323`; outer artifact digest `e2b0acf8bd197d6309dc50b05b2c6afb0f95bec1f1bab28792f4608914ae5e03`; repository retention caps it to 1 day.
 
-### GATE-3 — Post-open authentication grace
+### GATE-3 — Canonical PR merge-tree
 Status: UNSATISFIED
-Evidence: fresh unauthenticated snapshot currently becomes `not-authenticated` immediately; hydration helper explicitly permits `!authenticated` as ready.
-Blocking: 60-second warm-up classification, one-shot retry scheduling, fresh GitHub state revalidation before send, deterministic regression.
+Blocking: state-only main commit r36 regenerates merge-tree; re-read PR #28 exact merge SHA, then require release gate + dependency policy + reviews/threads + mergeable.
 
-### GATE-4 — Final frozen branch
+### GATE-4 — Post-merge main
 Status: UNSATISFIED
-Blocking: GATE-3 plus combined full release gate.
-
-### GATE-5 — Final PR merge-tree
-Status: UNSATISFIED
-Blocking: GATE-4 and updated PR #28 exact merge-ref evidence.
-
-### GATE-6 — Final main
-Status: UNSATISFIED
-Blocking: GATE-5.
+Blocking: GATE-3.
 
 ## 5. Current Critical Path
-### CP-1 — Add safe 60-second post-open auth grace
+### CP-1 — Revalidate PR #28 exact merge-tree after r36
 Status: ACTIVE
 Release gate: GATE-3
-Execution plane: HQ_DIRECT + PROJECT_RUNNER.
-Exact scope: service-worker restart flow, hydration/auth warm-up detection, one-shot retry alarm/routing, current-Actions revalidation, deterministic tests/static guard, changelog/PR description if needed.
-Acceptance: transient unauthenticated snapshots from a document younger than 60 seconds never produce the durable logout path; retry occurs no earlier than the 60-second document-age boundary; the retry re-fetches the watched repository before restart eligibility is evaluated; truly unauthenticated pages older than the grace still fail safely; no repeated grace loop for the same restart episode.
+Execution plane: PROJECT_RUNNER + HQ_DIRECT.
+Acceptance: current PR merge SHA built from frozen head into current main; five ×112/112, Chromium E2E, same package hashes, dependency policy PASS, no blocking reviews/threads, mergeable=true.
 
-### CP-2 — Final frozen branch validation
+### CP-2 — Merge exact frozen head and validate main
 Status: PENDING
 Depends: CP-1.
-Acceptance: exact branch head passes five deterministic audit cycles, Chromium E2E, reproducible package/provenance; prior scheduler/credential/recovery safety remains green.
+Acceptance: exact post-merge product SHA has five ×112/112, Chromium E2E, matching hashes and dependency policy PASS.
 
-### CP-3 — Update and validate PR #28 merge-tree
+### CP-3 — Persist DONE checkpoint
 Status: PENDING
 Depends: CP-2.
-Acceptance: exact PR merge-ref + dependency policy + reviews/threads + mergeability green; package hashes match branch.
-
-### CP-4 — Merge exact head + final main validation
-Status: PENDING
-Depends: CP-3.
-Acceptance: exact main product SHA fully green; package hashes match branch/PR; final HQ checkpoint persisted.
 
 ## 6. Active Execution Registry
-HQ: CP-1 canonical writer/integrator.
+HQ: PR #28 integrator and release evidence owner.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: current PR #28 evidence is superseded until new head is produced.
+CI/runtime: PR merge-tree gates to be identified after r36 merge-ref regeneration.
 
 ## 7. Safe Parallel Work
-NONE — grace timing, watchdog revalidation, alarm routing and restart idempotency are tightly coupled to the same service-worker state contract.
+NONE — next transition is exact-ref validation/merge and must remain serialized.
 
 ## 8. Current Blockers
-NONE.
+NONE; PR merge-tree must simply be regenerated/revalidated after the material state checkpoint.
 
 ## 9. Critical Path Audits
-Repository Coverage Audit: PASS — content authentication snapshot, hydration/recovery, watchdog restart, alarm routing, tests and release surfaces are in scope.
-Evidence Audit: PASS — exact false-auth path is visible in live source and matches the owner-observed log string.
-Release Alignment Audit: PASS — addition is limited to the reported post-open race and required safe retry behavior.
-Dependency & Ordering Audit: PASS — grace implementation precedes combined branch validation, then PR merge-tree, then main.
-Execution & Parallelism Audit: PASS — one canonical writer avoids race/conflict on service-worker logic.
-Adversarial Audit: PASS — no blind send after waiting; fresh GitHub revalidation is mandatory so new active Actions cannot be missed during the grace; truly logged-out pages still fail closed; master Stop/controlRevision/session guards remain authoritative.
+Repository Coverage Audit: PASS — all scheduler/model/restart/auth-grace/test/package surfaces covered; temporary executor/script removed from final PR diff.
+Evidence Audit: PASS — exact branch run `33975579796`; 112/112 counts, E2E and provenance independently logged.
+Release Alignment Audit: PASS — only reported watchdog failures, requested GitHub-only mode and reported fresh-tab auth race plus necessary safety/release hardening.
+Dependency & Ordering Audit: PASS — implementation → clean frozen branch → PR merge-tree → main.
+Execution & Parallelism Audit: PASS — one canonical writer; CI only validates exact refs.
+Adversarial Audit: PASS — grace cannot extend indefinitely, does not blindly send, fresh Actions revalidation precedes retry, Stop/activity/new run invalidate pending grace, old/true unauth remains fail-closed.
 
 ## 10. Next Action
-Implement CP-1 on `release/0.7.4-independent-actions-watchdog`, update PR #28 head, then freeze and validate the new exact candidate.
+Re-read PR #28 after r36, identify its new exact merge-tree, validate release/dependency/review/thread/mergeability gates, then merge exact head.
 
 ## 11. Last Material Revision
-Owner reported frequent false `restart отложен: в профиле Chrome не выполнен вход` immediately after ChatPulse opens a new ChatGPT tab and requested at least one minute of post-open timing. Live inspection confirmed a hydration race: unauthenticated young documents are accepted as hydrated and passed to restart decision too early. The 0.7.4 contract now includes a 60-second warm-up grace and fresh GitHub revalidation before any delayed retry send.
+Frozen candidate `0f8bac31...` passed exact branch gate. The 60-second grace and targeted forced revalidation are now proven by deterministic service-worker integration tests. Release moved from implementation to canonical PR validation.
 
 ## 12. Chat Rotation Checkpoint
 Safe to rotate: NO.
-Last completed atomic action: persisted owner-auth-grace scope and verified exact race in content/service-worker source.
-Active external executions and exact refs: PR #28 open; head `b2c66ec80b70001894008508f2a7e8f45e1408e9` is superseded as final candidate.
-Unpersisted material reasoning: CP-1 implementation pending.
-Recovery entrypoint: live master + r35 + current main + PR #28 + canonical branch.
-Exact next action after recovery: implement CP-1 and run deterministic regression/full branch gate.
-Rotation blockers: active 0.7.4 release fix wave.
+Last completed atomic action: frozen branch `0f8bac31...` fully validated and evidence persisted.
+Active external executions: PR #28; merge-tree will regenerate after this r36 state-only main commit.
+Unpersisted material reasoning: NONE.
+Recovery entrypoint: live master + r36 + PR #28 + frozen branch head.
+Exact next action after recovery: validate regenerated PR merge-tree.
+Rotation blockers: release not yet merged/main-validated.
