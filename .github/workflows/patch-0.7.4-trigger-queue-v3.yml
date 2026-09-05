@@ -1,0 +1,182 @@
+name: ChatPulse 0.7.4 trigger queue patch v3
+
+on:
+  push:
+    branches:
+      - release/0.7.4-independent-actions-watchdog
+    paths:
+      - ".github/workflows/patch-0.7.4-trigger-queue-v3.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chatpulse-0.7.4-trigger-queue-v3
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: release/0.7.4-independent-actions-watchdog
+      - name: Assert exact source head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Reapply validated bounded patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: unique anchor failed: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          rep('chrome-extension/background/service-worker-v2.js', '''async function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
+            if (activeCheck) return activeCheck;
+            activeCheck = performCheck(source, allowWhenStopped, onlyChatId).finally(() => {
+              activeCheck = null;
+            });
+            return activeCheck;
+          }
+          ''', '''function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
+            const previous = activeCheck;
+            const queued = (previous ? previous.catch(() => {}) : Promise.resolve())
+              .then(() => performCheck(source, allowWhenStopped, onlyChatId));
+            let tracked = null;
+            tracked = queued.finally(() => {
+              if (activeCheck === tracked) activeCheck = null;
+            });
+            activeCheck = tracked;
+            return tracked;
+          }
+          ''')
+
+          rep('tests/chrome-extension/github-watchdog-runtime.test.mjs', '''test("GitHub watchdog uses a distinct alarm but the shared activeCheck serialization", () => {
+            assert.match(worker, /chatpulse-github-actions-watchdog/);
+            assert.match(worker, /if \\(source\\.startsWith\\(\"github-watchdog\"\\)\\)/);
+            assert.match(worker, /activeCheck = performCheck/);
+          });
+          ''', '''test("GitHub watchdog uses a distinct alarm and lossless shared serialization", () => {
+            assert.match(worker, /chatpulse-github-actions-watchdog/);
+            assert.match(worker, /if \\(source\\.startsWith\\(\"github-watchdog\"\\)\\)/);
+            assert.match(worker, /const previous = activeCheck/);
+            assert.match(worker, /previous\\.catch\\(\\(\\) => \\{\\}\\)/);
+            assert.match(worker, /then\\(\\(\\) => performCheck\\(source, allowWhenStopped, onlyChatId\\)\\)/);
+            assert.match(worker, /if \\(activeCheck === tracked\\) activeCheck = null/);
+            assert.doesNotMatch(worker, /if \\(activeCheck\\) return activeCheck/);
+          });
+          ''')
+
+          handler = '''  let githubFetchHandler = async () => ({
+            ok: true,
+            status: 200,
+            headers: { get() { return null; } },
+            async json() {
+              return { workflow_runs: [{ id: 9001, created_at: '2026-09-05T00:00:00.000Z', status: 'completed' }] };
+            }
+          });
+          
+          '''
+          rep('tests/chrome-extension/service-worker.test.mjs', '  function clone(value) {\n', handler + '  function clone(value) {\n')
+          rep('tests/chrome-extension/service-worker.test.mjs', '  globalThis.chrome = {\n', '  globalThis.fetch = (...args) => githubFetchHandler(...args);\n\n  globalThis.chrome = {\n')
+          permissions = '''    permissions: {
+            async contains({ origins } = {}) {
+              return Array.isArray(origins) && origins.includes('https://api.github.com/*');
+            }
+          },
+          '''
+          rep('tests/chrome-extension/service-worker.test.mjs', '    alarms: {\n', permissions + '    alarms: {\n')
+          rep('tests/chrome-extension/service-worker.test.mjs', '    setSendHandler(fn) { sendHandler = fn; },\n', '''    setSendHandler(fn) { sendHandler = fn; },
+            setGithubFetchHandler(fn) { githubFetchHandler = fn; },
+            fireAlarm(name) {
+              for (const listener of alarmListeners) listener({ name });
+            },
+          ''')
+
+          scenario = '''// 9. Simultaneous ordinary and GitHub alarms are serialized instead of dropping the second trigger.
+          installState({
+            lastCommandedFingerprint: 'answer-1',
+            lastHardRefreshAt: new Date().toISOString(),
+            profile: {
+              ...model.defaultChatProfile(),
+              intervalMinutes: 10,
+              githubWatchEnabled: true,
+              githubWatchOnly: false,
+              githubRepository: 'MishkaStrategy/ChatPulse',
+              githubIdleMinutes: 30
+            }
+          }, { enabled: true, intervalMinutes: 10 });
+          harness.setSendHandler(async (_id, message) => {
+            if (message.type === 'CHATPULSE_INSPECT') return { ok: true, snapshot: makeSnapshot() };
+            if (message.type === 'CHATPULSE_SEND') return { ok: true, outcome: 'confirmed' };
+            return { ok: true };
+          });
+          let githubFetches = 0;
+          harness.setGithubFetchHandler(async () => {
+            githubFetches += 1;
+            return {
+              ok: true,
+              status: 200,
+              headers: { get() { return null; } },
+              async json() {
+                return { workflow_runs: [{ id: 9001, created_at: '2026-09-05T00:00:00.000Z', status: 'completed' }] };
+              }
+            };
+          });
+          harness.fireAlarm('chatpulse-monitor');
+          harness.fireAlarm('chatpulse-github-actions-watchdog');
+          const collisionDeadline = Date.now() + 5_000;
+          while (!harness.data.chatpulseState?.chats?.[0]?.githubLastCheckedAt && Date.now() < collisionDeadline) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          assert.equal(githubFetches, 1, 'queued GitHub alarm must execute after the ordinary alarm');
+          assert.equal(harness.data.chatpulseState.chats[0].githubLastRunId, '9001');
+          assert.ok(harness.data.chatpulseState.chats[0].githubLastCheckedAt, 'GitHub observation must persist after collision');
+          
+          // 10. Scheduler configuration is idempotent: ordinary and GitHub alarms keep their original schedule.
+          '''
+          rep('tests/chrome-extension/service-worker.test.mjs', '// 9. Scheduler configuration is idempotent: ordinary and GitHub alarms keep their original schedule.\n', scenario)
+          rep('tests/chrome-extension/service-worker.test.mjs', '// 10. A GitHub-only chat schedules only the independent Actions watchdog.\n', '// 11. A GitHub-only chat schedules only the independent Actions watchdog.\n')
+          rep('tests/chrome-extension/service-worker.test.mjs', "  github_only_scheduler: 'PASS',\n", "  github_only_scheduler: 'PASS',\n  simultaneous_alarm_serialization: 'PASS',\n")
+
+          rep('scripts/validate_extension.mjs', '''assert.ok(background.includes("profile.githubWatchOnly"), "Automatic ordinary checks must exclude GitHub-only chats");
+          ''', '''assert.ok(background.includes("profile.githubWatchOnly"), "Automatic ordinary checks must exclude GitHub-only chats");
+          assert.ok(!background.includes("if (activeCheck) return activeCheck;"), "Concurrent scheduler triggers must never be dropped");
+          assert.ok(background.includes("previous.catch(() => {})"), "Queued scheduler trigger must survive rejection of the previous check");
+          assert.ok(background.includes("if (activeCheck === tracked) activeCheck = null;"), "Only the current queue tail may release the shared check guard");
+          ''')
+          PY
+          git rm .github/workflows/patch-0.7.4-trigger-queue.yml .github/workflows/patch-0.7.4-trigger-queue-v2.yml .github/workflows/patch-0.7.4-trigger-queue-v3.yml
+          git diff --check
+      - name: Revalidate exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run audit:extension
+          npm run package:beta
+      - name: Commit validated patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ChatPulse Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          changed="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' '.github/workflows/patch-0.7.4-trigger-queue-v2.yml' '.github/workflows/patch-0.7.4-trigger-queue-v3.yml' '.github/workflows/patch-0.7.4-trigger-queue.yml' 'chrome-extension/background/service-worker-v2.js' 'scripts/validate_extension.mjs' 'tests/chrome-extension/github-watchdog-runtime.test.mjs' 'tests/chrome-extension/service-worker.test.mjs' | sort)"
+          test "$changed" = "$expected"
+          git commit -m "fix: serialize concurrent scheduler triggers"
+          git push origin HEAD:release/0.7.4-independent-actions-watchdog
