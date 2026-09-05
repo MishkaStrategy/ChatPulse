@@ -23,7 +23,6 @@ Release surface: scheduler/alarm lifecycle and serialization, per-chat profile/m
 Definition of RELEASED: ordinary monitoring and the GitHub Actions watchdog neither reset/postpone each other's Chrome alarms nor drop each other's trigger when both fire concurrently; a watched chat can opt into GitHub-only mode so automatic ordinary interval checks are disabled while the watchdog remains active; manual Check Now remains explicit/manual; global Stop remains master stop; existing watchdog inactivity, active-run blocking, fail-closed API errors, token isolation and at-most-once restart semantics remain unchanged; final frozen branch, canonical PR merge-tree and post-merge main evidence all pass.
 
 Mandatory release gates:
-
 - [x] Independent alarm lifecycle: unchanged normal/watchdog checks preserve the opposite alarm when its desired period is unchanged.
 - [x] Per-chat `githubWatchOnly` mode excludes the chat from automatic ordinary start/interval checks while keeping it watchdog-eligible; all-GitHub-only configuration schedules no ordinary alarm.
 - [x] Manual Check Now remains available; global Start does not automatically ordinary-check a GitHub-only chat; global Stop remains master stop.
@@ -33,7 +32,6 @@ Mandatory release gates:
 - [ ] Final five deterministic audit cycles, Chromium E2E and reproducible package/provenance pass on the post-fix frozen branch, PR merge-tree and main; dependency policy passes on applicable PR/main triggers.
 
 Required release evidence: exact final branch/PR/main SHAs, workflow IDs, alarm-preservation and simultaneous-trigger regression assertions, deterministic test counts, browser E2E result, package/source-manifest SHA-256.
-
 Known explicit exclusions: changing the GitHub 10-minute poll cadence; changing inactivity-N semantics; changing the 20-minute stuck-generation threshold; closing active tabs; weakening fail-closed GitHub/token behavior; unrelated draft PR #17.
 
 ## 2. Repository Basis
@@ -42,7 +40,7 @@ Default branch: main.
 Default branch validated-but-superseded 0.7.4 candidate SHA: `32152d9b99c94f8137adda85cda8cb23c5549e45`.
 Critical-path basis ref: main.
 Critical-path basis SHA: `32152d9b99c94f8137adda85cda8cb23c5549e45`.
-Canonical integration branch: `release/0.7.4-independent-actions-watchdog` (to fast-forward from merged head and advance with the trigger-serialization fix).
+Canonical integration branch: `release/0.7.4-independent-actions-watchdog` (advance from merged head with the trigger-serialization fix).
 Merged superseded PR: #27, final head `9003a27306833e413badde929771ce1916818d6d`, validated merge-tree `4a51ce7fe093fbc037539a56ed3a7a1748a3336b`.
 Canonical post-fix PR / RC: pending.
 Relevant open PRs: #17 draft remains separate/excluded.
@@ -63,7 +61,7 @@ Material findings: the original starvation bug was fixed by independent alarm sy
 ### GATE-1 — Independent alarm lifecycle and GitHub-only mode
 Status: SATISFIED
 Evidence: frozen branch `9003a273...` and PR #27 merge-tree `4a51ce7f...` passed 5x104/104; tests report `independent_alarm_lifecycle: PASS`, `github_only_scheduler: PASS`, and >2 watchdog episodes PASS.
-Blocking items: NONE for this gate.
+Blocking items: NONE.
 
 ### GATE-2 — Lossless scheduler trigger serialization
 Status: UNSATISFIED
@@ -129,47 +127,39 @@ Acceptance condition: all main gates green and final 0.7.4 hashes recorded.
 Evidence: pending.
 
 ## 6. Active Execution Registry
-
 HQ: CP-1 canonical writer/integrator.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: main run `33973400438` may finish for superseded `32152d9b...`; it is noncanonical and cannot close 0.7.4.
+CI/runtime: superseded main run `33973400438` and dependency run `33973400433` on `32152d9b...`; they cannot close 0.7.4.
 
 ## 7. Safe Parallel Work
-
 NONE — the remaining fix is a tightly coupled shared serialization point plus its exact regression; parallel writers provide no material benefit.
 
 ## 8. Current Blockers
-
 NONE — the defect has a bounded executable fix.
 
 ## 9. Critical Path Audits
-
 Repository Coverage Audit: PASS — the additional shared serialization point between the two scheduler surfaces is now explicitly included alongside alarm/model/UI/tests/release surfaces.
 Evidence Audit: PASS — live main source directly proves concurrent triggers are dropped; branch/PR/main candidate evidence is exact but correctly classified as superseded for final release.
 Release Alignment Audit: PASS — lossless trigger serialization is required to truly fix the owner's reported watchdog stoppage; no unrelated feature was added.
 Dependency & Ordering Audit: PASS — serialization fix must precede a new frozen branch gate, new PR merge-tree and final main validation.
-Execution & Parallelism Audit: PASS — one canonical writer remains correct for the three tightly coupled fix/test/static-validation files.
+Execution & Parallelism Audit: PASS — one canonical writer remains correct for the tightly coupled fix/test/static-validation files.
 Adversarial Audit: PASS — plan now covers both starvation mechanisms: alarm rescheduling and active-check trigger loss; queue must survive previous rejection, master Stop and all fail-closed/watchdog safety rules remain unchanged.
-
-Material findings and resolutions: PR #27/main `32152d9b...` solved alarm reset starvation but is not sufficient for release closure. The correct second fix is a promise tail/serial queue that preserves each trigger's own `source` and parameters rather than returning the active promise.
+Material findings and resolutions: PR #27/main `32152d9b...` solved alarm reset starvation but is not sufficient for release closure. The correct second fix is a promise-tail serial queue that preserves each trigger's own `source` and parameters rather than returning the active promise.
 
 ## 10. Next Action
-
-Exact next action: fast-forward `release/0.7.4-independent-actions-watchdog` to this state checkpoint, patch lossless `runCheck()` serialization plus simultaneous-alarm regression, then validate the exact final branch head.
+Exact next action: advance `release/0.7.4-independent-actions-watchdog` to this state checkpoint, patch lossless `runCheck()` serialization plus simultaneous-alarm regression, then validate the exact final branch head.
 Executor: HQ_DIRECT + PROJECT_RUNNER.
 Expected evidence: dynamic simultaneous-trigger PASS, static no-drop assertion, full extension audit.
 Acceptance condition: GATE-2 satisfied and final branch gate green.
 
 ## 11. Last Material Revision
-
 What changed: PR #27 was fully validated and merged, but final adversarial audit before DONE found that the shared `activeCheck` lock drops concurrent scheduler triggers.
 Why the critical path changed: the original release contract requires the GitHub watchdog to remain independently reliable; a phase-aligned ordinary alarm can still suppress it on the merged candidate.
 Evidence causing the change: exact `runCheck()` implementation on product main `32152d9b99c94f8137adda85cda8cb23c5549e45` plus independent alarm behavior already proven on the candidate.
 
 ## 12. Chat Rotation Checkpoint
-
 Safe to rotate chat: NO.
 Last completed atomic action: PR #27 exact-head merge completed; post-merge adversarial audit identified and bounded the remaining trigger-loss defect.
 Active external executions and exact refs: superseded main release run `33973400438` and dependency run `33973400433` on `32152d9b...`; no final candidate execution yet.
