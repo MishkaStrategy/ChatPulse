@@ -39,6 +39,16 @@ jobs:
           p.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
           python3 scripts/patch_074_auth_grace.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tests/chrome-extension/github-watchdog-runtime.test.mjs")
+          text = p.read_text(encoding="utf-8")
+          old = "  assert.match(worker, /chatpulse-github-restart-grace:/);\n"
+          new = "  assert.match(worker, /chatIdFromGithubRestartGraceAlarm/);\n"
+          if text.count(old) != 1:
+              raise SystemExit("unexpected auth-grace static assertion")
+          p.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
           git diff --check
       - name: Validate patched candidate
         run: |
