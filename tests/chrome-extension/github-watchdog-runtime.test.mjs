@@ -6,10 +6,14 @@ import { fileURLToPath } from "node:url";
 const workerPath = fileURLToPath(new URL("../../chrome-extension/background/service-worker-v2.js", import.meta.url));
 const worker = await readFile(workerPath, "utf8");
 
-test("GitHub watchdog uses a distinct alarm but the shared activeCheck serialization", () => {
+test("GitHub watchdog uses a distinct alarm and lossless shared serialization", () => {
   assert.match(worker, /chatpulse-github-actions-watchdog/);
   assert.match(worker, /if \(source\.startsWith\("github-watchdog"\)\)/);
-  assert.match(worker, /activeCheck = performCheck/);
+  assert.match(worker, /const previous = activeCheck/);
+  assert.match(worker, /previous\.catch\(\(\) => \{\}\)/);
+  assert.match(worker, /then\(\(\) => performCheck\(source, allowWhenStopped, onlyChatId\)\)/);
+  assert.match(worker, /if \(activeCheck === tracked\) activeCheck = null/);
+  assert.doesNotMatch(worker, /if \(activeCheck\) return activeCheck/);
 });
 
 test("GitHub API failures are recorded and never mapped directly to a restart", () => {

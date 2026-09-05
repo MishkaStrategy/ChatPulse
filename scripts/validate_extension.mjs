@@ -228,6 +228,9 @@ assert.ok(background.includes("syncPeriodicAlarm"), "Scheduler must synchronize 
 assert.ok(background.includes("chrome.alarms.get"), "Scheduler must preserve unchanged alarm scheduledTime");
 assert.ok(background.includes('source === "alarm" || source === "start"'), "Automatic ordinary checks must identify scheduler/start sources");
 assert.ok(background.includes("profile.githubWatchOnly"), "Automatic ordinary checks must exclude GitHub-only chats");
+assert.ok(!background.includes("if (activeCheck) return activeCheck;"), "Concurrent scheduler triggers must never be dropped");
+assert.ok(background.includes("previous.catch(() => {})"), "Queued scheduler trigger must survive rejection of the previous check");
+assert.ok(background.includes("if (activeCheck === tracked) activeCheck = null;"), "Only the current queue tail may release the shared check guard");
 assert.ok(githubActions.includes('export const GITHUB_API_ORIGIN = "https://api.github.com/*"'));
 assert.ok(githubActions.includes('credentials: "omit"'), "GitHub client must omit browser credentials");
 assert.ok(githubActions.includes("RUN_PAGE_SIZE = 100"));

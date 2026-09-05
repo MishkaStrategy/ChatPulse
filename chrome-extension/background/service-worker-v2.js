@@ -396,12 +396,16 @@ function assertGithubWatchCapacity(state) {
   }
 }
 
-async function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
-  if (activeCheck) return activeCheck;
-  activeCheck = performCheck(source, allowWhenStopped, onlyChatId).finally(() => {
-    activeCheck = null;
+function runCheck(source, allowWhenStopped = false, onlyChatId = null) {
+  const previous = activeCheck;
+  const queued = (previous ? previous.catch(() => {}) : Promise.resolve())
+    .then(() => performCheck(source, allowWhenStopped, onlyChatId));
+  let tracked = null;
+  tracked = queued.finally(() => {
+    if (activeCheck === tracked) activeCheck = null;
   });
-  return activeCheck;
+  activeCheck = tracked;
+  return tracked;
 }
 
 async function performCheck(source, allowWhenStopped, onlyChatId = null) {
