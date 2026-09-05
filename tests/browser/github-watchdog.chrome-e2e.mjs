@@ -128,44 +128,64 @@ try {
     Number.isFinite(Date.parse(String(baseline.chat.githubLastActivityAt || ""))),
     "live GitHub activity timestamp missing"
   );
+  assert.ok(
+    Number(baseline.chat.githubActiveRunCount) > 0,
+    `this CI run must be observed as unfinished work; state=${JSON.stringify(baseline.chat)}`
+  );
   assert.equal(baseline.chat.githubLastError, null, "live GitHub baseline recorded an error");
   assert.equal(baseline.chat.githubRestartCount, 0, "baseline must not restart the chat");
   assert.equal(await sentCount(chatPage), 0, "baseline unexpectedly sent a continuation");
 
   const baselineRunId = baseline.chat.githubLastRunId;
   const baselineRunCreatedAt = baseline.chat.githubLastRunCreatedAt;
+  const baselineActiveRunCount = baseline.chat.githubActiveRunCount;
 
-  let restarted = null;
-  for (let attempt = 0; attempt < 3 && !restarted; attempt += 1) {
-    await makeWatchdogStale(optionsPage);
-    const previousCheck = (await getState(optionsPage)).chats[0].githubLastCheckedAt;
-    await optionsPage.locator("#checkButton").click();
+  // Prove the owner-requested behavior against the live GitHub API: even after
+  // artificially aging the idle timestamp, the currently running CI workflow
+  // must keep the chat from restarting.
+  await makeWatchdogStale(optionsPage, { activeRunCount: baselineActiveRunCount });
+  const activeBefore = (await getState(optionsPage)).chats[0];
+  await optionsPage.locator("#checkButton").click();
+  const activeBlocked = await waitForGithubCheck(
+    optionsPage,
+    activeBefore.githubLastCheckedAt,
+    "live active-run watchdog check did not finish"
+  );
+  assert.ok(activeBlocked.githubActiveRunCount > 0, "live active Actions disappeared unexpectedly during block proof");
+  assert.equal(activeBlocked.githubRestartCount, 0, "unfinished Actions allowed a watchdog restart");
+  assert.equal(await sentCount(chatPage), 0, "unfinished Actions submitted a continuation");
 
-    restarted = await waitFor(async () => {
-      const state = await getState(optionsPage);
-      const chat = state.chats[0];
-      if (chat.githubLastError) throw new Error(`watchdog live fetch failed: ${chat.githubLastError}; state=${JSON.stringify(chat)}`);
-      if (chat.githubRestartCount === 1) return { state, chat };
-      if (chat.githubLastCheckedAt && chat.githubLastCheckedAt !== previousCheck) return null;
-      return null;
-    }, `watchdog did not complete stale check attempt ${attempt + 1}`, 15_000, false);
+  // The live run cannot complete while this E2E job is still executing. Replace
+  // only the GitHub fetch result inside the disposable service-worker runtime with
+  // a deterministic completed-run response. Product code, permissions, storage,
+  // Control Center and content-script paths remain production code.
+  await installCompletedGithubFixture(serviceWorker, REPOSITORY, baselineRunId, baselineRunCreatedAt);
 
-    if (!restarted) {
-      const state = await getState(optionsPage);
-      const chat = state.chats[0];
-      // A new workflow run may legitimately appear while this CI job is running.
-      // Re-age the newly observed activity marker and retry instead of treating
-      // concurrent GitHub activity as a product failure.
-      if (chat.githubRestartCount !== 0) {
-        throw new Error(`unexpected restart count ${chat.githubRestartCount}`);
-      }
-    }
-  }
+  const transitionBefore = (await getState(optionsPage)).chats[0];
+  await optionsPage.locator("#checkButton").click();
+  const transitionedIdle = await waitForGithubCheck(
+    optionsPage,
+    transitionBefore.githubLastCheckedAt,
+    "active-to-idle watchdog transition did not finish"
+  );
+  assert.equal(transitionedIdle.githubActiveRunCount, 0, "completed fixture still reported active Actions");
+  assert.equal(transitionedIdle.githubRestartCount, 0, "active-to-idle transition restarted immediately");
+  assert.equal(await sentCount(chatPage), 0, "active-to-idle transition submitted immediately");
+  assert.ok(
+    Date.parse(transitionedIdle.githubLastActivityAt) >= Date.parse(transitionBefore.githubLastCheckedAt),
+    "active-to-idle transition did not start a fresh idle window"
+  );
 
-  if (!restarted) {
+  await makeWatchdogStale(optionsPage, { activeRunCount: 0 });
+  const staleBefore = (await getState(optionsPage)).chats[0];
+  await optionsPage.locator("#checkButton").click();
+  const restarted = await waitFor(async () => {
     const state = await getState(optionsPage);
-    throw new Error(`watchdog never restarted after three stable-marker attempts: ${JSON.stringify(state.chats[0])}`);
-  }
+    const chat = state.chats[0];
+    if (chat.githubLastError) throw new Error(`watchdog fixture fetch failed: ${chat.githubLastError}; state=${JSON.stringify(chat)}`);
+    return chat.githubRestartCount === 1 ? { state, chat } : null;
+  }, "watchdog did not restart after completed Actions became stale");
+  assert.notEqual(restarted.chat.githubLastCheckedAt, staleBefore.githubLastCheckedAt, "restart check timestamp did not advance");
 
   await waitFor(async () => (await sentCount(chatPage)) === 1, "restart command was not submitted to ChatGPT-origin fixture");
   assert.equal(await latestUserMessage(chatPage), COMMAND, "restart command text mismatch");
@@ -190,13 +210,16 @@ try {
   assert.equal(finalChat.githubLastRestartKey, restartKey, "restart key changed without new GitHub activity");
 
   // Protocol details (GET, credentials:omit, no Authorization) are asserted by
-  // github-actions-client.test.mjs. This browser E2E proves that the loaded
-  // production MV3 worker actually produced a valid observation from the public
-  // GitHub Actions endpoint and then used that observation to control restart.
+  // github-actions-client.test.mjs. This browser E2E proves a real public active
+  // workflow blocks restart, then the loaded production MV3 path correctly starts
+  // a fresh idle window when active work finishes and preserves one-send idempotency.
   console.log(`browser_e2e_extension_id=${extensionId}`);
   console.log(`browser_e2e_repository=${REPOSITORY}`);
   console.log(`browser_e2e_github_run_id=${baselineRunId}`);
   console.log(`browser_e2e_github_run_created_at=${baselineRunCreatedAt}`);
+  console.log(`browser_e2e_live_active_run_count=${baselineActiveRunCount}`);
+  console.log("browser_e2e_active_run_block=PASS");
+  console.log("browser_e2e_active_to_idle_reset=PASS");
   console.log(`browser_e2e_restart_key=${restartKey}`);
   console.log("browser_e2e_result=PASS");
 } finally {
@@ -247,6 +270,15 @@ async function getState(extensionPage) {
   return response.state;
 }
 
+async function waitForGithubCheck(extensionPage, previousCheckedAt, message) {
+  return waitFor(async () => {
+    const state = await getState(extensionPage);
+    const chat = state.chats[0];
+    if (chat?.githubLastError) throw new Error(`${chat.githubLastError}; state=${JSON.stringify(chat)}`);
+    return chat?.githubLastCheckedAt && chat.githubLastCheckedAt !== previousCheckedAt ? chat : null;
+  }, message);
+}
+
 function finalWatchSnapshot(state) {
   return {
     lastCheckAt: state.lastCheckAt,
@@ -255,9 +287,9 @@ function finalWatchSnapshot(state) {
   };
 }
 
-async function makeWatchdogStale(extensionPage) {
+async function makeWatchdogStale(extensionPage, { activeRunCount = 0 } = {}) {
   const staleAt = new Date(Date.now() - (IDLE_MINUTES + 2) * 60_000).toISOString();
-  await extensionPage.evaluate(async ({ staleAt }) => {
+  await extensionPage.evaluate(async ({ staleAt, activeRunCount }) => {
     const stored = await chrome.storage.local.get("chatpulseState");
     const state = stored.chatpulseState;
     if (!state?.chats?.length) throw new Error("chatpulseState missing chat");
@@ -266,13 +298,41 @@ async function makeWatchdogStale(extensionPage) {
     if (!chat.lastObservedFingerprint) throw new Error("normal ChatGPT baseline missing");
     chat.githubWatchStartedAt = staleAt;
     chat.githubLastActivityAt = staleAt;
+    chat.githubActiveRunCount = activeRunCount;
     chat.lastCommandedFingerprint = chat.lastObservedFingerprint;
     chat.lastDispatchOutcome = "confirmed";
     chat.githubLastRestartAt = null;
     chat.githubLastRestartKey = null;
     chat.githubRestartCount = 0;
     await chrome.storage.local.set({ chatpulseState: state });
-  }, { staleAt });
+  }, { staleAt, activeRunCount });
+}
+
+async function installCompletedGithubFixture(serviceWorker, repository, runId, createdAt) {
+  await serviceWorker.evaluate(({ repository, runId, createdAt }) => {
+    const [owner, repo] = repository.split("/");
+    const target = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs?per_page=100`;
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : String(input?.url || input);
+      if (url === target) {
+        return new Response(JSON.stringify({
+          workflow_runs: [{
+            id: Number(runId),
+            created_at: createdAt,
+            status: "completed"
+          }]
+        }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-ratelimit-remaining": "59"
+          }
+        });
+      }
+      return originalFetch(input, init);
+    };
+  }, { repository, runId, createdAt });
 }
 
 async function seedGrantedOptionalHost(userDataDir, extensionId, origin) {
