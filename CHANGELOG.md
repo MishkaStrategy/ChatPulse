@@ -4,6 +4,7 @@
 
 - fix a scheduler starvation bug where each ordinary interval check recreated/postponed the GitHub 10-minute alarm and each GitHub watchdog check could recreate/postpone a longer ordinary alarm;
 - preserve unchanged Chrome alarms and only recreate the specific scheduler whose desired period actually changed;
+- serialize simultaneous ordinary and GitHub scheduler triggers so a watchdog check is never discarded merely because another ChatPulse check is already running;
 - add per-chat **Только GitHub Actions** mode: no automatic ordinary interval checks for that chat while the Actions watchdog remains active;
 - keep manual **Проверить сейчас** available in Actions-only mode and keep global Stop as the master stop for all automatic sends;
 - preserve active-run blocking, active-to-idle fresh countdown, fail-closed API errors, private-token isolation and one-restart-per-workflow-marker semantics;
