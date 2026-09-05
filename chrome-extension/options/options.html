@@ -285,17 +285,17 @@
             <div class="field-row">
               <label class="field">
                 <span>Repository</span>
-                <input class="profile-github-repository" type="text" autocomplete="off" spellcheck="false" placeholder="owner/repo">
-                <small>Публичный GitHub repository, привязанный к этому project-чату.</small>
+                <input class="profile-github-repository" type="text" autocomplete="off" spellcheck="false" placeholder="MishkaStrategy/ChatPulse">
+                <small>Формат: <code>owner/repo</code>. Например: <code>MishkaStrategy/ChatPulse</code>. Не вставляйте URL GitHub или ссылку с <code>/actions</code>.</small>
               </label>
               <label class="field">
                 <span>Перезапуск после простоя, минут</span>
                 <input class="profile-github-idle" type="number" min="10" max="10080" step="1" inputmode="numeric">
-                <small>Если новый workflow run не появился за N минут, будет максимум один controlled restart до следующей новой Actions activity.</small>
+                <small>Пока есть незавершённый GitHub Actions run, restart заблокирован. Когда активных runs больше нет, отсчёт N минут начинается заново.</small>
               </label>
             </div>
             <small class="profile-github-status">Watchdog выключен.</small>
-            <p class="integration-note">Доступ к <code>api.github.com</code> запрашивается Chrome только при включении. ChatPulse читает только последний публичный workflow run, не использует GitHub token, не запускает workflows и не пишет в repository.</p>
+            <p class="integration-note">Доступ к <code>api.github.com</code> запрашивается Chrome только при включении. ChatPulse одним публичным read-only запросом проверяет последние workflow runs, чтобы видеть новые и незавершённые Actions; GitHub token не используется, workflows не запускаются и repository не изменяется.</p>
           </section>
 
           <label class="toggle-line profile-telegram">
