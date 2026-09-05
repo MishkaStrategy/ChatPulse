@@ -10,29 +10,30 @@ ChatPulse — локальное расширение Google Chrome.
 - общие значения команды, интервала и стоп-фразы;
 - индивидуальные профили чатов: собственная команда/интервал/стоп-фраза, лимит продолжений, лимит времени, настройка Telegram-событий и опциональные `owner/repo` + idle timeout GitHub Actions watchdog;
 - локальный task/runtime state: счётчик продолжений, время запуска, статус/причина завершения и следующая допустимая проверка;
-- если включён GitHub watchdog: последний публичный workflow run ID/время activity/проверки, restart idempotency key/count и локальная ошибка watchdog;
+- если включён GitHub watchdog: последний workflow run ID/время activity/проверки, aggregate active-run count, restart idempotency key/count и локальная ошибка watchdog;
 - выбранная тема;
 - локальный журнал состояния;
 - технические отпечатки последних ответов, необходимые для защиты от повторной отправки;
-- если пользователь сам включает Telegram: Telegram chat ID и bot token в отдельной локальной конфигурации.
+- если пользователь сам включает Telegram: Telegram chat ID и bot token в отдельной локальной конфигурации;
+- если пользователь добавляет GitHub token для private repository: token в отдельном repository-keyed локальном credential store.
 
-Bot token считается секретом. Он не возвращается в публичный runtime-state ChatPulse и после сохранения не показывается обратно в интерфейсе.
+Telegram bot token и GitHub token считаются секретами. Они не входят в `chatpulseState`, не возвращаются в публичный runtime-state ChatPulse и после сохранения не показываются обратно в интерфейсе. Для GitHub credential store ChatPulse дополнительно пытается ограничить `chrome.storage.local` уровнем `TRUSTED_CONTEXTS`, чтобы content scripts не имели прямого доступа к локальному секрету в поддерживаемых версиях Chrome.
 
 ## Экспорт / импорт конфигурации
 
-ChatPulse 0.7.0 экспортирует только **портативную конфигурацию**, а не полную копию локального хранилища. JSON содержит общие настройки, URL/названия чатов, их включённое состояние и профили.
+ChatPulse 0.7.2 экспортирует только **портативную конфигурацию**, а не полную копию локального хранилища. JSON содержит общие настройки, URL/названия чатов, их включённое состояние и профили.
 
 В экспорт намеренно не включаются:
 
-- Telegram bot token и другие credentials;
+- Telegram bot token, GitHub tokens и другие credentials;
 - tab ID;
 - session ID и внутренние ID чатов;
 - fingerprints ответов и история `at-most-once` dispatch;
 - счётчики/время текущего task-run;
 - локальный журнал и ошибки runtime;
-- GitHub workflow run IDs, activity/check timestamps, restart keys/counts и ошибки watchdog.
+- GitHub workflow run IDs, activity/check timestamps, active-run runtime state, restart keys/counts и ошибки watchdog.
 
-При импорте ChatPulse создаёт новые локальные ID и безопасные baseline/runtime значения, сбрасывает счётчики задач и оставляет глобальный мониторинг остановленным. Существующий локальный Telegram bot token импортом не читается и не перезаписывается.
+При импорте ChatPulse создаёт новые локальные ID и безопасные baseline/runtime значения, сбрасывает счётчики задач и оставляет глобальный мониторинг остановленным. Существующие локальные Telegram/GitHub credentials импортом не читаются и не перезаписываются.
 
 ## Что не собирается
 
@@ -43,13 +44,17 @@ ChatPulse не собирает и не передаёт разработчик�
 - историю браузера;
 - содержимое переписки как отдельную базу данных;
 - аналитику, телеметрию или рекламные идентификаторы;
-- Telegram bot token или chat ID на сервер разработчика — собственного сервера у ChatPulse нет.
+- Telegram/GitHub tokens или Telegram chat ID на сервер разработчика — собственного сервера у ChatPulse нет.
 
 ## Сеть
 
 Основная автоматика выполняется локально в Chrome и взаимодействует только со страницами ChatGPT, которые пользователь открыл или добавил сам.
 
-GitHub Actions watchdog также полностью опционален. При его включении Chrome отдельно запрашивает доступ к `https://api.github.com/*`. ChatPulse выполняет только read-only запрос последнего публичного workflow run выбранного `owner/repo`, без Authorization/GitHub token, без записи в repository и без запуска workflows. Permission/network/404/rate-limit/невалидный ответ не считаются inactivity и сами по себе не могут инициировать отправку в ChatGPT.
+GitHub Actions watchdog также полностью опционален. При его включении Chrome отдельно запрашивает доступ к `https://api.github.com/*`. Для публичного repository ChatPulse выполняет read-only запрос последних workflow runs без GitHub credentials. Для private repository пользователь может локально сохранить GitHub token; ChatPulse добавляет его как `Authorization: Bearer …` только к тому же repository-scoped read-only Actions API запросу. Token не используется для workflow dispatch или repository writes.
+
+Кнопка **Проверить токен** проверяет доступ к Actions именно для указанного `owner/repo`. Вставленный token при простой проверке не сохраняется; новый token сохраняется только при сохранении профиля после успешной проверки. Значение token не выводится в статус, журнал или runtime-state.
+
+GitHub permission/network/401/403/404/rate-limit/невалидный ответ не считаются inactivity и сами по себе не могут инициировать отправку в ChatGPT. Для private repository рекомендуется fine-grained PAT с доступом только к нужному repository и `Actions: Read-only`; classic PAT имеет более широкий доступ и не рекомендуется.
 
 Telegram полностью опционален. При включении Chrome отдельно запрашивает доступ только к `https://api.telegram.org/*`. ChatPulse может отправлять напрямую в Telegram Bot API:
 
@@ -66,8 +71,8 @@ Telegram полностью опционален. При включении Chro
 
 ## Удаление данных
 
-Удалите расширение в `chrome://extensions`, затем при необходимости очистите его данные через настройки Chrome. Удаление расширения удаляет его локальное хранилище, включая сохранённый Telegram bot token.
+Удалите сохранённый GitHub token отдельной кнопкой в профиле repository, если он больше не нужен. При удалении расширения в `chrome://extensions` Chrome удаляет локальное хранилище расширения, включая Telegram bot token и сохранённые GitHub tokens.
 
 ## Ограничение ответственности
 
-DOM и интерфейс ChatGPT, а также Telegram Bot API могут изменяться без уведомления. Перед использованием в важных сценариях проверяйте Control Center и журнал на тестовом чате и задавайте ограничение задачи, если используете режим «до завершения».
+DOM и интерфейс ChatGPT, GitHub REST API и Telegram Bot API могут изменяться без уведомления. Перед использованием в важных сценариях проверяйте Control Center и журнал на тестовом чате и задавайте ограничение задачи, если используете режим «до завершения».
