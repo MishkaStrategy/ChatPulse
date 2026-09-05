@@ -6,11 +6,13 @@ on:
   push:
     branches:
       - release/0.7.0-github-actions-watchdog
+      - release/0.7.0-browser-e2e-hardening
       - main
     paths:
       - ".github/workflows/extension-ci.yml"
       - "chrome-extension/**"
       - "tests/chrome-extension/**"
+      - "tests/browser/**"
       - "scripts/**"
       - "package.json"
       - "README.md"
@@ -24,6 +26,7 @@ on:
       - ".github/workflows/extension-ci.yml"
       - "chrome-extension/**"
       - "tests/chrome-extension/**"
+      - "tests/browser/**"
       - "scripts/**"
       - "package.json"
       - "README.md"
@@ -69,9 +72,49 @@ jobs:
       - name: Syntax, unit, task, GitHub watchdog, Telegram and static security audit
         run: npm run audit:extension
 
+  browser-e2e:
+    name: Chromium MV3 browser E2E — GitHub watchdog
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert exact event head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "candidate_sha=$GITHUB_SHA"
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install and audit pinned Playwright Chromium harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp package.json /tmp/chatpulse-package.json
+          npm install --save-dev --save-exact playwright@1.62.1
+          npm audit --audit-level=high
+          npx playwright install --with-deps chromium
+          cp /tmp/chatpulse-package.json package.json
+          rm -f package-lock.json
+          git diff --exit-code -- package.json
+
+      - name: Run loaded-extension GitHub watchdog browser E2E
+        env:
+          CHATPULSE_E2E_REPOSITORY: MishkaStrategy/ChatPulse
+        run: node tests/browser/github-watchdog.chrome-e2e.mjs
+
   package:
     name: Reproducible beta package and provenance
-    needs: audit
+    needs: [audit, browser-e2e]
     runs-on: [self-hosted, fast]
     timeout-minutes: 10
 

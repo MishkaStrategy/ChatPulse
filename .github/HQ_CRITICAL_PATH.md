@@ -2,166 +2,160 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 24
-updated_at: 2026-09-02T07:40:00Z
-project_state: DONE
+critical_path_revision: 25
+updated_at: 2026-09-05T08:40:00Z
+project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
-handoff_status: READY
-basis_ref: main
-basis_sha: 408d95ff256eb70e0442ae36f912d4a528fcbe35
+handoff_status: NOT_READY
+basis_ref: release/0.7.0-browser-e2e-hardening
+basis_sha: 6f8f087bc11460a48da94edeeede62735472bddd
 ---
 
 # HQ Critical Path
 
-## 1. Released contract — ChatPulse 0.7.0 beta
+## 1. Current Release Contract
 
-ChatPulse 0.7.0 beta is **RELEASED**.
+Release target: strengthen the already released ChatPulse 0.7.0 beta with a real Chromium/MV3 browser E2E release gate for the GitHub Actions watchdog, without changing the released extension behavior unless the E2E exposes a product defect.
 
-Owner scope delivered: per-chat GitHub Actions inactivity watchdog. A project chat can bind to a public GitHub repository in `owner/repo` form and a configured idle window `N`; if no new GitHub Actions workflow run appears for that repository for `N` minutes, ChatPulse may perform one controlled restart-send for that inactivity episode.
+Release surface: test harness and release workflow only unless a verified defect requires product repair.
 
-Repository activity is defined as creation of a new latest GitHub Actions workflow-run ID. Restart stays in the same ChatGPT conversation and uses the chat's effective continuation command.
+Definition of RELEASED: the exact product bits pass existing 5x deterministic audit plus a loaded-extension Chromium E2E that exercises Control Center, per-chat GitHub watcher configuration, real optional host-permission state, public GitHub Actions observation, stale inactivity transition and exactly one same-chat restart dispatch against a deterministic ChatGPT-origin fixture; PR merge-tree and post-merge main evidence must pass.
 
-## 2. Released product identity
+Mandatory release gates:
 
-Canonical release branch: `release/0.7.0-github-actions-watchdog`.
-Frozen branch head: `0d5f8e941c04a2a231dc846c5d45180a7514f78b`.
-Canonical PR: **#22**.
-PR merge-tree SHA: `bd5a375ce4fb45b42c935086722bea8ebba33875`.
-Released product merge on `main`: `408d95ff256eb70e0442ae36f912d4a528fcbe35`.
-Manifest at released product: `0.7.0` / `0.7.0 beta`, Manifest V3, Chrome 120+.
+- [ ] Existing deterministic audit remains green.
+- [ ] Browser loads the unpacked production MV3 extension and service worker.
+- [ ] GitHub host permission is absent before opt-in and present for the exercised watcher path.
+- [ ] Control Center adds a ChatGPT-origin chat and saves watcher profile through production UI.
+- [ ] Public GitHub Actions observation establishes a baseline without credentials.
+- [ ] Synthetic elapsed inactivity through persisted runtime state triggers exactly one controlled restart against the production content script.
+- [ ] A repeated watchdog check for the same activity marker does not send a second restart.
+- [ ] PR merge-tree and post-merge main reproduce the browser E2E plus existing release checks.
 
-Canonical product ZIP SHA-256:
-`46b66e8dd951fd40625134f54661ed18fed180796ebd2e0c7d5b5b6c35f89f3d`
+Required release evidence: exact SHAs, workflow/job IDs, browser E2E log assertions, unchanged product package hash if no product files change.
 
-Canonical source-manifest SHA-256:
-`32d6e9f1d1a2267e400fe2e0c55d245c2e624ec30753eb4f2cc6ebc2583f34bc`
+Known explicit exclusions: storing ChatGPT or GitHub credentials in CI; automation against an authenticated live ChatGPT account; private GitHub repositories; changing PR #17 runner-policy scope.
 
-Packaged extension file count: 15.
-Reproducible timestamp: `2020-01-01T00:00:00`.
+## 2. Repository Basis
 
-## 3. Delivered watchdog safety contract
+Default branch: main.
+Default branch observed SHA: 6f8f087bc11460a48da94edeeede62735472bddd.
+Critical-path basis ref: release/0.7.0-browser-e2e-hardening.
+Critical-path basis SHA: 6f8f087bc11460a48da94edeeede62735472bddd.
+Canonical integration branch: release/0.7.0-browser-e2e-hardening.
+Canonical PR / RC: pending.
+Relevant open PRs: #17 draft, explicitly excluded.
+Relevant CI / workflows: .github/workflows/extension-ci.yml and docker-runner-policy.yml.
+Relevant release/deployment state: 0.7.0 product basis remains 408d95ff256eb70e0442ae36f912d4a528fcbe35 beneath later HQ-only main state.
 
-- schema v5; watchdog disabled by default;
-- strict `owner/repo` repository normalization;
-- idle timeout bounded to 10–10080 minutes;
-- GitHub public API polling no more often than every 10 minutes;
-- repositories deduplicated per cycle and limited to eight unique active repositories;
-- `https://api.github.com/*` exists only in `optional_host_permissions`;
-- public client sends no GitHub token or `Authorization` header and performs no repository writes/workflow dispatches;
-- first successful repository observation establishes a fresh baseline and can never immediately restart from an old historical run;
-- a new workflow-run ID resets the inactivity episode and restart idempotency;
-- a successful empty Actions run list creates a baseline at observation time;
-- permission/network/403/404/rate-limit/malformed responses are errors only and never inactivity;
-- restart selection requires a successful poll for that repository in the current watchdog cycle;
-- each activity marker permits at most one submitted restart until a new workflow run appears;
-- watchdog restart does not call `startChatRun()` and does not reset `runStartedAt` or `continuationCount`;
-- live master engine/task scope/chat enabled state, `controlRevision`, global session, limits, stop phrase, authentication/page readiness, active generation, user draft and fresh DOM preflight are revalidated before send;
-- watchdog can nudge an externally stalled already-commanded response only under its separate repository-episode idempotency; ordinary response-level at-most-once behavior is unchanged;
-- a real watchdog restart performs `recordDispatch()` plus `recordGithubRestart()` and is durably checkpointed before optional notifications;
-- top Stop remains the master stop for watchdog sending;
-- portable JSON contains only non-secret watcher configuration and excludes workflow run IDs, activity/check timestamps, restart keys/counts/history and watchdog errors.
+## 3. Repository Scan Summary
 
-## 4. Released implementation surfaces
+Project purpose: local Chrome MV3 ChatGPT task runner.
+Architecture / major components: popup/options UI, MV3 service worker, ChatGPT content script, pure model helpers, optional Telegram and GitHub clients.
+Build / packaging: deterministic Python package script, Node validation.
+Tests / validation: Node test suite and static validator; no browser E2E existed before this wave.
+CI: 5-cycle audit plus reproducible package on self-hosted fast runner.
+Release / deployment: merge + exact CI evidence; no store publication required.
+Governance: organizational HQ master 1.2 live-read on this wave; this file is project state.
+External release dependencies: public GitHub API and Chromium download for browser E2E only.
+Material findings: the existing watchdog tests are strong unit/static checks but do not prove loaded-extension browser integration; native Chrome permission prompt itself is a browser-owned UI boundary and may require a test-safe grant strategy without weakening production permissions.
 
-- `chrome-extension/lib/model-v2.js`: schema v5, watcher profile/runtime state, baseline/activity/restart/error/poll transitions.
-- `chrome-extension/background/github-actions.js`: public read-only GitHub Actions API client.
-- `chrome-extension/background/service-worker-v2.js`: serialized polling, fail-closed current-success gate and controlled same-chat restart.
-- Control Center: per-chat GitHub enabled toggle, `owner/repo`, idle `N`, permission request and runtime status.
-- portable configuration: watcher settings included, runtime excluded.
-- manifest/package/static validator/release workflow/docs/privacy/security moved to 0.7.0.
-- no temporary HQ helper workflows/scripts remain in the released product diff.
-- unrelated PR #17 runner-policy scope was not incorporated.
+## 4. Release Gates
 
-## 5. Release evidence
+### GATE-1 — Existing deterministic release checks
+Status: UNSATISFIED
+Evidence: pending branch run.
+Blocking items: new harness not yet committed.
 
-### Frozen branch
-Run `33603354170` on exact `0d5f8e94...`:
-- five independent audit cycles: **5/5 PASS**;
-- **80/80 tests PASS** per cycle;
-- legacy recovery/active-tab/stop-phrase/confirmed and unconfirmed at-most-once regressions PASS;
-- GitHub client/baseline/idempotency/polling/runtime/optional-permission/export tests PASS;
-- static security/privacy watchdog boundary PASS;
-- reproducible package/security/provenance PASS;
-- canonical ZIP and source-manifest hashes reproduced twice;
-- branch artifact ID `9836185628`.
+### GATE-2 — Loaded-extension Chromium watchdog E2E
+Status: UNSATISFIED
+Evidence: pending.
+Blocking items: implement and run browser harness.
 
-### Canonical PR #22 merge tree
-Exact merge-tree SHA `bd5a375ce4fb45b42c935086722bea8ebba33875`.
-Release run `33603905456`:
-- merge-ref checkout explicitly verified the merge-tree SHA;
-- five audit cycles: **5/5 PASS**;
-- **80/80 tests PASS**;
-- static PASS;
-- package/security/provenance PASS;
-- ZIP/source-manifest hashes exactly equal the frozen branch values.
-Dependency runner policy run `33603905391`: PASS.
-Reviews: none.
-Unresolved review threads: none.
-Mergeability before merge: true.
+### GATE-3 — Canonical PR merge-tree
+Status: UNSATISFIED
+Evidence: no PR yet.
+Blocking items: GATE-1 and GATE-2.
 
-### Post-merge main
-Product commit `408d95ff256eb70e0442ae36f912d4a528fcbe35`.
-Release run `33604290732`:
-- five independent audit cycles: **5/5 PASS**;
-- inspected main cycle verifies exact product SHA, `0.7.0-beta.1`, **80/80 PASS**, legacy safety regressions PASS and static watchdog audit PASS;
-- reproducible package built twice identically;
-- package/security/provenance PASS;
-- ZIP SHA exactly `46b66e8d...`;
-- source-manifest SHA exactly `32d6e9f1...`;
-- main artifact ID `9836499086`.
-Dependency runner policy run `33604290755`: PASS.
-Released manifest confirms GitHub API is optional only; permanent host permissions remain ChatGPT domains.
+### GATE-4 — Post-merge main
+Status: UNSATISFIED
+Evidence: not merged.
+Blocking items: GATE-3.
 
-## 6. Release gates
+## 5. Current Critical Path
 
-GATE-1 predecessor 0.6.0 release: SATISFIED.
-GATE-2 schema/watchdog model/migration: SATISFIED.
-GATE-3 GitHub client/runtime/fail-closed API handling: SATISFIED.
-GATE-4 Control Center/config/docs/optional-permission/privacy: SATISFIED.
-GATE-5 exact frozen branch regression/package/security: SATISFIED.
-GATE-6 canonical PR merge-tree equality/reviews/threads: SATISFIED.
-GATE-7 exact-head merge + post-merge main equality: SATISFIED.
+### CP-1 — Implement Chromium/MV3 browser E2E and wire it into extension-ci
+Status: ACTIVE
+Release gate: GATE-2
+Why critical: closes the browser integration evidence gap identified by owner.
+Depends on: released 0.7.0 product.
+Blocks: PR validation and release closure.
+Execution plane: HQ_DIRECT
+Exact scope: tests/browser browser harness plus release workflow wiring; product code untouched unless test proves a defect.
+Acceptance condition: branch browser E2E passes and proves one-send idempotency using loaded extension.
+Evidence: pending branch workflow.
 
-## 7. Critical path
+### CP-2 — Validate canonical PR merge tree
+Status: PENDING
+Release gate: GATE-3
+Depends on: CP-1
+Blocks: CP-3
+Execution plane: PROJECT_RUNNER
+Acceptance condition: exact merge-tree passes deterministic audits, browser E2E and dependency policy.
 
-All release-critical work for owner-requested GitHub Actions watchdog is complete.
+### CP-3 — Merge exact head and validate main
+Status: PENDING
+Release gate: GATE-4
+Depends on: CP-2
+Blocks: DONE
+Execution plane: HQ_DIRECT + PROJECT_RUNNER
+Acceptance condition: exact merged main reproduces gates; package hash remains canonical if product tree unchanged.
 
-CP-1 branch implementation/validation: DONE.
-CP-2 canonical PR merge-tree validation: DONE.
-CP-3 exact-head merge/post-merge equality: DONE.
-CP-4 release persistence: DONE by this state-only commit.
+## 6. Active Execution Registry
 
-## 8. Active execution registry
-
-HQ: DONE for ChatPulse 0.7.0 watchdog release.
-PROJECT_RUNNER: no active release-critical execution.
+HQ: CP-1 writer/integrator on release/0.7.0-browser-e2e-hardening.
 Workers: NONE.
 Codex: NONE.
-Human gate: NONE.
+Zero-model control: NONE.
+CI/runtime: pending branch workflow.
 
-## 9. Current blockers
+## 7. Safe Parallel Work
 
-NONE.
+NONE — workflow and browser harness are tightly coupled and should have one canonical writer.
 
-## 10. Six critical-path audits
+## 8. Current Blockers
+
+NONE. Native optional-permission confirmation is being treated as a browser-owned boundary; the E2E must prove permission state without adding permanent GitHub host permission or credentials.
+
+## 9. Critical Path Audits
 
 Repository Coverage Audit: PASS.
-Evidence Audit: PASS — branch, merge-tree and post-merge main are independently evidenced.
-Release Alignment Audit: PASS — delivered requested public GitHub Actions inactivity watchdog only; private auth/GitHub writes/cloud/new-chat scope excluded.
-Dependency & Ordering Audit: PASS — predecessor → model → runtime → UI → release surface → branch → PR → main.
-Execution & Parallelism Audit: PASS — one canonical writer and exact-ref project runner validation avoided conflicting changes.
-Adversarial Audit: PASS — API failure cannot cause restart; polling is bounded; optional permission remains opt-in; restart is one-per-activity-marker; counters/guards/session/control/draft/generation/master-stop are preserved; runtime data is excluded from export.
+Evidence Audit: PASS — gap is explicit and new evidence requirement is concrete.
+Release Alignment Audit: PASS — no product feature expansion.
+Dependency & Ordering Audit: PASS.
+Execution & Parallelism Audit: PASS.
+Adversarial Audit: PASS — test must not weaken production permission model, use secrets, or turn API failure into restart.
 
-## 11. Next action
+## 10. Next Action
 
-No release-critical action remains. Await the next owner scope or a new evidence-backed regression.
+Exact next action: commit browser E2E harness and release-gate workflow changes, then validate branch.
+Executor: HQ_DIRECT.
+Expected evidence: branch workflow exact SHA with browser E2E assertions.
+Acceptance condition: GATE-1 and GATE-2 satisfied.
 
-## 12. Chat rotation checkpoint
+## 11. Last Material Revision
 
-Safe to rotate: YES.
-Last completed atomic action: product `408d95ff...` passed post-merge main 5/5 audit, 80/80 tests, static/dependency/package/security/provenance equality; revision 24 marks the release DONE.
-Active external execution: NONE.
-Unpersisted material reasoning: NONE.
-Recovery: live-read master prompt, this revision and current main; treat `408d95ff...` as the released 0.7.0 product basis beneath later state-only HQ commits.
-Rotation blockers: NONE.
+What changed: owner promoted browser E2E from recommendation to immediate release-hardening scope.
+Why the critical path changed: existing unit/static tests do not prove loaded-extension Chrome integration.
+Evidence causing the change: direct owner request plus live inspection of watchdog tests.
+
+## 12. Chat Rotation Checkpoint
+
+Safe to rotate chat: NO.
+Last completed atomic action: branch created from main state-only head.
+Active external executions and exact refs: NONE.
+Unpersisted material reasoning: browser E2E implementation in progress.
+Recovery entrypoint: live-read master, this revision and release/0.7.0-browser-e2e-hardening.
+Exact next action after recovery: implement CP-1.
+Rotation blockers: active release-hardening wave.
