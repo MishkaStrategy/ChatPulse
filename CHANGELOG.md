@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.1 beta — active GitHub Actions awareness
+
+- treat every observed non-`completed` GitHub Actions workflow run as active project work that blocks watchdog restart;
+- inspect up to 100 recent public workflow runs in the same single read-only API request, while keeping the existing 10-minute polling throttle, eight-repository cap and no-token/no-write boundary;
+- refresh repository activity while unfinished runs exist and start a fresh `N`-minute idle window when active work transitions to no active work, so stale pre-run idle time can never cause an immediate restart;
+- fail closed when workflow status metadata is missing or malformed, preserving the rule that API/permission/network uncertainty is never treated as inactivity;
+- retain new-run activity reset and one-restart-per-marker idempotency after all active work has finished;
+- make the Control Center repository field explicit: enter `owner/repo`, for example `MishkaStrategy/ChatPulse`, not a GitHub URL or an `/actions` URL;
+- extend deterministic and loaded-Chromium E2E coverage so a real active CI run must block restart before the completed/idle/restart path is exercised;
+- move deterministic beta package/provenance output to ChatPulse 0.7.1.
+
 ## 0.7.0 beta — GitHub Actions inactivity watchdog
 
 - add an optional per-chat GitHub Actions watchdog bound to a public `owner/repo`;
