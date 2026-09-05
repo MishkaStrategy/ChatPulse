@@ -2,118 +2,113 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 33
-updated_at: 2026-09-05T13:25:00Z
+critical_path_revision: 34
+updated_at: 2026-09-05T15:01:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: NOT_READY
 basis_ref: main
-basis_sha: e954997515a333426457d659bf637fd529906496
+basis_sha: 32152d9b99c94f8137adda85cda8cb23c5549e45
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.4 beta — make the GitHub Actions watchdog scheduler durable and independent from the ordinary chat interval, and add a per-chat GitHub-only resume mode.
+Release target: ChatPulse 0.7.4 beta — make the GitHub Actions watchdog scheduler durable and independent from the ordinary chat interval, add a per-chat GitHub-only resume mode, and guarantee that simultaneous scheduler triggers are serialized rather than dropped.
 
-Release surface: scheduler/alarm lifecycle, per-chat profile/model, MV3 service-worker routing, Control Center GitHub watchdog UI, portable config, deterministic scheduler/watchdog tests, loaded-Chromium regression gate, version/package/workflow metadata and reproducible packaging.
+Release surface: scheduler/alarm lifecycle and serialization, per-chat profile/model, MV3 service-worker routing, Control Center GitHub watchdog UI, portable config, deterministic scheduler/watchdog tests, loaded-Chromium regression gate, version/package/workflow metadata and reproducible packaging.
 
-Definition of RELEASED: ordinary monitoring and the GitHub Actions watchdog no longer reset/postpone each other's Chrome alarms; a watched chat can opt into GitHub-only mode so automatic interval checks are disabled for that chat while the watchdog remains active; manual Check Now remains explicit/manual; global Stop remains master stop; watchdog inactivity, active-run blocking, fail-closed API errors, token isolation and at-most-once restart semantics remain unchanged; frozen branch, canonical PR merge-tree and post-merge main evidence all pass.
+Definition of RELEASED: ordinary monitoring and the GitHub Actions watchdog neither reset/postpone each other's Chrome alarms nor drop each other's trigger when both fire concurrently; a watched chat can opt into GitHub-only mode so automatic ordinary interval checks are disabled while the watchdog remains active; manual Check Now remains explicit/manual; global Stop remains master stop; existing watchdog inactivity, active-run blocking, fail-closed API errors, token isolation and at-most-once restart semantics remain unchanged; final frozen branch, canonical PR merge-tree and post-merge main evidence all pass.
 
 Mandatory release gates:
 
-- [ ] Independent alarm lifecycle: unchanged normal checks never recreate/postpone the GitHub 10-minute alarm, and unchanged watchdog checks never recreate/postpone the ordinary interval alarm.
-- [ ] Per-chat `githubWatchOnly` mode excludes the chat from automatic ordinary interval checks while keeping it eligible for the GitHub watchdog.
-- [ ] If every eligible chat is GitHub-only, no ordinary monitor alarm is scheduled; the GitHub watchdog alarm still is.
-- [ ] Manual Check Now can still inspect a GitHub-only chat; global Start does not cause an automatic ordinary continuation for it.
-- [ ] Global Stop still disables all automatic sends and clears both scheduler surfaces.
-- [ ] New workflow-run activity continues to reset the restart idempotency episode indefinitely; no hard-coded restart-count cap is introduced.
-- [ ] Existing active-run blocking, active->idle fresh countdown, API fail-closed behavior, private-token isolation, draft/active-tab safety and continuation at-most-once remain green.
-- [ ] Five deterministic audit cycles, Chromium E2E and reproducible package/provenance pass on frozen branch, PR merge-tree and main; dependency policy passes on applicable PR/main triggers.
+- [x] Independent alarm lifecycle: unchanged normal/watchdog checks preserve the opposite alarm when its desired period is unchanged.
+- [x] Per-chat `githubWatchOnly` mode excludes the chat from automatic ordinary start/interval checks while keeping it watchdog-eligible; all-GitHub-only configuration schedules no ordinary alarm.
+- [x] Manual Check Now remains available; global Start does not automatically ordinary-check a GitHub-only chat; global Stop remains master stop.
+- [x] More than two independent workflow-run inactivity episodes can restart; there is no hard-coded restart-count cap.
+- [ ] Concurrent ordinary/watchdog triggers are queued serially; the later trigger still executes even when another check is active, and a failure of the earlier trigger cannot suppress the later one.
+- [ ] Existing active-run blocking, active->idle fresh countdown, API fail-closed behavior, private-token isolation, draft/active-tab safety, stuck-tab recovery and continuation at-most-once remain green after the serialization fix.
+- [ ] Final five deterministic audit cycles, Chromium E2E and reproducible package/provenance pass on the post-fix frozen branch, PR merge-tree and main; dependency policy passes on applicable PR/main triggers.
 
-Required release evidence: exact branch/PR/main SHAs, workflow IDs, scheduler regression assertions, deterministic test counts, browser E2E result, package/source-manifest SHA-256.
+Required release evidence: exact final branch/PR/main SHAs, workflow IDs, alarm-preservation and simultaneous-trigger regression assertions, deterministic test counts, browser E2E result, package/source-manifest SHA-256.
 
-Known explicit exclusions: changing the GitHub 10-minute poll cadence; changing the inactivity N semantics; changing the 20-minute stuck-generation threshold; closing active tabs; weakening fail-closed GitHub/token behavior; unrelated draft PR #17.
+Known explicit exclusions: changing the GitHub 10-minute poll cadence; changing inactivity-N semantics; changing the 20-minute stuck-generation threshold; closing active tabs; weakening fail-closed GitHub/token behavior; unrelated draft PR #17.
 
 ## 2. Repository Basis
 
 Default branch: main.
-Default branch observed SHA: `e954997515a333426457d659bf637fd529906496`.
-Validated previous product commit: `800f6e9ead0fa119ed7cd7a82957ac058d4f2d97` (0.7.3 beta).
+Default branch validated-but-superseded 0.7.4 candidate SHA: `32152d9b99c94f8137adda85cda8cb23c5549e45`.
 Critical-path basis ref: main.
-Critical-path basis SHA: `e954997515a333426457d659bf637fd529906496`.
-Canonical integration branch: `release/0.7.4-independent-actions-watchdog` (to create from this state checkpoint).
-Canonical PR / RC: pending.
+Critical-path basis SHA: `32152d9b99c94f8137adda85cda8cb23c5549e45`.
+Canonical integration branch: `release/0.7.4-independent-actions-watchdog` (to fast-forward from merged head and advance with the trigger-serialization fix).
+Merged superseded PR: #27, final head `9003a27306833e413badde929771ce1916818d6d`, validated merge-tree `4a51ce7fe093fbc037539a56ed3a7a1748a3336b`.
+Canonical post-fix PR / RC: pending.
 Relevant open PRs: #17 draft remains separate/excluded.
-Relevant Issues: none required for this owner-direct regression patch.
 Relevant CI / workflows: `.github/workflows/extension-ci.yml`, `.github/workflows/docker-runner-policy.yml`.
-Relevant release/deployment state: 0.7.3 beta released and green; no Chrome Web Store publication required by current project policy.
+Relevant release/deployment state: PR #27 was merged but 0.7.4 is NOT DONE because final adversarial audit found a shared `runCheck()` trigger-loss defect before release closure.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner.
 Architecture / major components: popup/options UI, MV3 service worker, pure state/model helpers, ChatGPT content script, optional Telegram and GitHub Actions integrations.
 Build / packaging: deterministic Python ZIP/source-manifest packaging plus Node validation.
-Tests / validation: 102 deterministic extension tests plus loaded-Chromium E2E before this patch.
+Tests / validation: 104 deterministic extension tests plus loaded-Chromium E2E on the superseded candidate.
 CI: five deterministic audit cycles, Chromium E2E, reproducible package/provenance and dependency runner policy.
-Release / deployment: validated merge to main; CI artifact is the installable beta package.
-Governance: organizational HQ master 1.2 live-read for this wave.
-External release dependencies: Chromium download for E2E.
-Material findings: `configureAlarm()` currently clears both `chatpulse-monitor` and `chatpulse-github-actions-watchdog` before recreating them. Therefore each ordinary check postpones the watchdog alarm and each watchdog check postpones the ordinary alarm. Whichever cadence fires more frequently can starve the other indefinitely. The watchdog is also coupled to `state.enabled`/`chat.enabled`, so the safe GitHub-only design is per-chat exclusion from the ordinary automatic scheduler while preserving the master engine/watchdog eligibility and master Stop semantics.
+Material findings: the original starvation bug was fixed by independent alarm synchronization and GitHub-only mode is implemented. Final adversarial inspection found a second starvation path: `runCheck()` returns the current `activeCheck` whenever any check is active, so a second alarm trigger is silently discarded rather than executed after the first. Since independent 10-minute alarms can remain phase-aligned, a simultaneous ordinary alarm can repeatedly suppress the GitHub watchdog.
 
 ## 4. Release Gates
 
-### GATE-1 — Independent scheduler lifecycle
-Status: UNSATISFIED
-Evidence: current `configureAlarm()` unconditionally clears both alarm names and recreates them.
-Blocking items: idempotent per-alarm synchronization plus deterministic starvation regression coverage.
+### GATE-1 — Independent alarm lifecycle and GitHub-only mode
+Status: SATISFIED
+Evidence: frozen branch `9003a273...` and PR #27 merge-tree `4a51ce7f...` passed 5x104/104; tests report `independent_alarm_lifecycle: PASS`, `github_only_scheduler: PASS`, and >2 watchdog episodes PASS.
+Blocking items: NONE for this gate.
 
-### GATE-2 — GitHub-only resume mode
+### GATE-2 — Lossless scheduler trigger serialization
 Status: UNSATISFIED
-Evidence: current profile has no mode that disables ordinary automatic interval checks while preserving watchdog eligibility.
-Blocking items: additive profile field/UI, scheduler filtering and portable-config coverage.
+Evidence: product main `32152d9b...` still contains `if (activeCheck) return activeCheck;`, which discards the semantic identity of every concurrent trigger.
+Blocking items: serialize queued triggers behind the active check, continue the queue after a previous rejection, and add a simultaneous ordinary+GitHub alarm integration regression.
 
-### GATE-3 — Frozen branch validation
+### GATE-3 — Final frozen branch validation
 Status: UNSATISFIED
-Evidence: release branch not yet created.
-Blocking items: GATE-1 and GATE-2.
+Evidence: pre-fix branch evidence is superseded by GATE-2 finding.
+Blocking items: GATE-2.
 
-### GATE-4 — Canonical PR merge-tree
+### GATE-4 — Final canonical PR merge-tree
 Status: UNSATISFIED
-Evidence: no 0.7.4 PR yet.
-Blocking items: GATE-3.
+Evidence: PR #27 is merged but superseded as final RC by GATE-2 finding.
+Blocking items: GATE-3 and a post-fix PR.
 
-### GATE-5 — Post-merge main
+### GATE-5 — Final post-merge main
 Status: UNSATISFIED
-Evidence: not merged.
+Evidence: current main candidate is known incomplete despite partial green CI.
 Blocking items: GATE-4.
 
 ## 5. Current Critical Path
 
-### CP-1 — Fix scheduler starvation and add GitHub-only per-chat mode
+### CP-1 — Serialize concurrent scheduler triggers without dropping source semantics
 Status: ACTIVE
-Release gate: GATE-1, GATE-2
-Why critical: directly fixes the reported watchdog stoppage and owner-requested no-general-interval mode.
-Depends on: released 0.7.3 behavior.
+Release gate: GATE-2
+Why critical: otherwise two independently correct alarms can still starve each other whenever they fire while the shared check lock is occupied.
+Depends on: merged `32152d9b...` candidate.
 Blocks: CP-2.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
-Exact scope: model/profile, service-worker alarm synchronization/routing, Control Center watchdog controls/status, portable config, deterministic tests, release metadata.
-Acceptance condition: independent alarms remain scheduled across opposite-path checks; GitHub-only chats receive no automatic ordinary interval continuation but remain watchdog-eligible; all safety contracts stay green.
-Evidence: pending branch SHA/workflow.
+Exact scope: `runCheck()` serialization, simultaneous-alarm dynamic regression, static guard against reintroducing drop-on-active behavior. No product scope expansion.
+Acceptance condition: two synchronous ordinary/GitHub alarm events execute in serial order; GitHub observation is persisted after the ordinary check; later trigger executes even if the previous promise rejects; `assertIdentityMutationSafe` remains active while queued work exists.
+Evidence: pending post-fix branch SHA/run.
 
-### CP-2 — Validate frozen 0.7.4 branch
+### CP-2 — Validate final frozen 0.7.4 branch
 Status: PENDING
 Release gate: GATE-3
 Depends on: CP-1
 Blocks: CP-3
 Execution plane: PROJECT_RUNNER
 Exact scope: five deterministic audits, Chromium E2E, reproducible package/provenance.
-Acceptance condition: exact branch head fully green.
+Acceptance condition: exact post-fix branch head fully green.
 Evidence: pending.
 
-### CP-3 — Validate canonical PR merge-tree
+### CP-3 — Validate post-fix canonical PR merge-tree
 Status: PENDING
 Release gate: GATE-4
 Depends on: CP-2
@@ -123,14 +118,14 @@ Exact scope: exact PR merge ref plus dependency policy/review/thread/mergeabilit
 Acceptance condition: exact merge-tree fully green with no unresolved blocker.
 Evidence: pending.
 
-### CP-4 — Merge exact head and validate main
+### CP-4 — Merge exact post-fix head and validate final main
 Status: PENDING
 Release gate: GATE-5
 Depends on: CP-3
 Blocks: DONE
 Execution plane: HQ_DIRECT + PROJECT_RUNNER
-Exact scope: merge only validated head, validate exact main product commit, persist final state.
-Acceptance condition: all main gates green and 0.7.4 hashes recorded.
+Exact scope: merge only validated head, validate exact final main product commit, persist DONE state.
+Acceptance condition: all main gates green and final 0.7.4 hashes recorded.
 Evidence: pending.
 
 ## 6. Active Execution Registry
@@ -139,46 +134,46 @@ HQ: CP-1 canonical writer/integrator.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: NONE until frozen branch head is created.
+CI/runtime: main run `33973400438` may finish for superseded `32152d9b...`; it is noncanonical and cannot close 0.7.4.
 
 ## 7. Safe Parallel Work
 
-NONE — scheduler lifecycle, profile semantics, service-worker routing and UI/tests are tightly coupled; split writers would create avoidable overlap on the same state contract.
+NONE — the remaining fix is a tightly coupled shared serialization point plus its exact regression; parallel writers provide no material benefit.
 
 ## 8. Current Blockers
 
-NONE.
+NONE — the defect has a bounded executable fix.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — scheduler/model/service-worker/UI/portable-config/tests/release metadata/workflow/package surfaces identified; unrelated PR #17 excluded.
-Evidence Audit: PASS — root cause is directly visible in live `configureAlarm()` and current profile/watchdog eligibility code; previous 0.7.3 release evidence remains intact.
-Release Alignment Audit: PASS — scope is limited to the reported Actions stoppage plus the requested GitHub-only mode and necessary regression/release hardening.
-Dependency & Ordering Audit: PASS — scheduler/profile implementation precedes frozen validation, then PR merge-tree, then exact main validation.
-Execution & Parallelism Audit: PASS — one canonical writer is appropriate for coupled scheduler/state/UI changes; project runners provide deterministic validation.
-Adversarial Audit: PASS — master Stop remains authoritative; GitHub-only mode does not bypass completion guards or API fail-closed behavior; manual checks remain explicit; no new permissions/network write surface is introduced.
+Repository Coverage Audit: PASS — the additional shared serialization point between the two scheduler surfaces is now explicitly included alongside alarm/model/UI/tests/release surfaces.
+Evidence Audit: PASS — live main source directly proves concurrent triggers are dropped; branch/PR/main candidate evidence is exact but correctly classified as superseded for final release.
+Release Alignment Audit: PASS — lossless trigger serialization is required to truly fix the owner's reported watchdog stoppage; no unrelated feature was added.
+Dependency & Ordering Audit: PASS — serialization fix must precede a new frozen branch gate, new PR merge-tree and final main validation.
+Execution & Parallelism Audit: PASS — one canonical writer remains correct for the three tightly coupled fix/test/static-validation files.
+Adversarial Audit: PASS — plan now covers both starvation mechanisms: alarm rescheduling and active-check trigger loss; queue must survive previous rejection, master Stop and all fail-closed/watchdog safety rules remain unchanged.
 
-Material findings and resolutions: the robust fix is not a larger delay but idempotent per-alarm synchronization that preserves an existing alarm when its desired period is unchanged. GitHub-only is modeled as an additive per-chat profile flag, default false, valid only with an enabled GitHub watcher; it suppresses ordinary automatic scheduling for that chat rather than disabling the master engine.
+Material findings and resolutions: PR #27/main `32152d9b...` solved alarm reset starvation but is not sufficient for release closure. The correct second fix is a promise tail/serial queue that preserves each trigger's own `source` and parameters rather than returning the active promise.
 
 ## 10. Next Action
 
-Exact next action: create `release/0.7.4-independent-actions-watchdog`, implement CP-1, freeze exact head and start the branch release gate.
+Exact next action: fast-forward `release/0.7.4-independent-actions-watchdog` to this state checkpoint, patch lossless `runCheck()` serialization plus simultaneous-alarm regression, then validate the exact final branch head.
 Executor: HQ_DIRECT + PROJECT_RUNNER.
-Expected evidence: starvation regression tests, GitHub-only scheduler tests, full extension audit.
-Acceptance condition: GATE-1 and GATE-2 satisfied and branch gate green.
+Expected evidence: dynamic simultaneous-trigger PASS, static no-drop assertion, full extension audit.
+Acceptance condition: GATE-2 satisfied and final branch gate green.
 
 ## 11. Last Material Revision
 
-What changed: owner reported the GitHub Actions watchdog resumed the chat twice and then stopped, and requested a GitHub-only resume mode without ordinary interval checks.
-Why the critical path changed: live code inspection found mutual Chrome-alarm starvation caused by unconditional dual-alarm reset and no current profile mode for interval exclusion.
-Evidence causing the change: current `service-worker-v2.js` `configureAlarm()` plus live model/profile/watchdog eligibility code on `main`.
+What changed: PR #27 was fully validated and merged, but final adversarial audit before DONE found that the shared `activeCheck` lock drops concurrent scheduler triggers.
+Why the critical path changed: the original release contract requires the GitHub watchdog to remain independently reliable; a phase-aligned ordinary alarm can still suppress it on the merged candidate.
+Evidence causing the change: exact `runCheck()` implementation on product main `32152d9b99c94f8137adda85cda8cb23c5549e45` plus independent alarm behavior already proven on the candidate.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: NO.
-Last completed atomic action: live-read organizational master/current repository state, reproduced the scheduler design defect from source and established the verified 0.7.4 release contract.
-Active external executions and exact refs: NONE.
-Unpersisted material reasoning: implementation pending.
-Recovery entrypoint: live-read organizational master, this revision and current main.
-Exact next action after recovery: create the 0.7.4 release branch and implement CP-1.
-Rotation blockers: active product patch wave.
+Last completed atomic action: PR #27 exact-head merge completed; post-merge adversarial audit identified and bounded the remaining trigger-loss defect.
+Active external executions and exact refs: superseded main release run `33973400438` and dependency run `33973400433` on `32152d9b...`; no final candidate execution yet.
+Unpersisted material reasoning: implementation of CP-1 pending.
+Recovery entrypoint: live-read organizational master, this revision, current main and `release/0.7.4-independent-actions-watchdog`.
+Exact next action after recovery: implement CP-1 and freeze final branch head.
+Rotation blockers: active product fix wave.
