@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Apply bounded serialization fix and regression
+      - name: Apply bounded serialization fix and regressions
         shell: bash
         run: |
           set -euo pipefail
@@ -74,31 +74,37 @@ jobs:
           }
           ''')
 
+          replace_once(
+              "tests/chrome-extension/github-watchdog-runtime.test.mjs",
+              '''test("GitHub watchdog uses a distinct alarm but the shared activeCheck serialization", () => {
+            assert.match(worker, /chatpulse-github-actions-watchdog/);
+            assert.match(worker, /if \\(source\\.startsWith\\(\"github-watchdog\"\\)\\)/);
+            assert.match(worker, /activeCheck = performCheck/);
+          });
+          ''',
+              '''test("GitHub watchdog uses a distinct alarm and lossless shared serialization", () => {
+            assert.match(worker, /chatpulse-github-actions-watchdog/);
+            assert.match(worker, /if \\(source\\.startsWith\\(\"github-watchdog\"\\)\\)/);
+            assert.match(worker, /const previous = activeCheck/);
+            assert.match(worker, /previous\\.catch\\(\\(\\) => \\{\\}\\)/);
+            assert.match(worker, /then\\(\\(\\) => performCheck\\(source, allowWhenStopped, onlyChatId\\)\\)/);
+            assert.match(worker, /if \\(activeCheck === tracked\\) activeCheck = null/);
+            assert.doesNotMatch(worker, /if \\(activeCheck\\) return activeCheck/);
+          });
+          ''')
+
           handler = '''  let githubFetchHandler = async () => ({
             ok: true,
             status: 200,
             headers: { get() { return null; } },
             async json() {
-              return {
-                workflow_runs: [{
-                  id: 9001,
-                  created_at: '2026-09-05T00:00:00.000Z',
-                  status: 'completed'
-                }]
-              };
+              return { workflow_runs: [{ id: 9001, created_at: '2026-09-05T00:00:00.000Z', status: 'completed' }] };
             }
           });
           
           '''
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              "  function clone(value) {\n",
-              handler + "  function clone(value) {\n")
-
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              "  globalThis.chrome = {\n",
-              "  globalThis.fetch = (...args) => githubFetchHandler(...args);\n\n  globalThis.chrome = {\n")
+          replace_once("tests/chrome-extension/service-worker.test.mjs", "  function clone(value) {\n", handler + "  function clone(value) {\n")
+          replace_once("tests/chrome-extension/service-worker.test.mjs", "  globalThis.chrome = {\n", "  globalThis.fetch = (...args) => githubFetchHandler(...args);\n\n  globalThis.chrome = {\n")
 
           permissions = '''    permissions: {
             async contains({ origins } = {}) {
@@ -106,11 +112,7 @@ jobs:
             }
           },
           '''
-          replace_once(
-              "tests/chrome-extension/service-worker.test.mjs",
-              "    alarms: {\n",
-              permissions + "    alarms: {\n")
-
+          replace_once("tests/chrome-extension/service-worker.test.mjs", "    alarms: {\n", permissions + "    alarms: {\n")
           replace_once(
               "tests/chrome-extension/service-worker.test.mjs",
               "    setSendHandler(fn) { sendHandler = fn; },\n",
@@ -121,7 +123,7 @@ jobs:
             },
           ''')
 
-          scenario = '''// 11. Simultaneous ordinary and GitHub alarms are serialized instead of dropping the second trigger.
+          scenario = '''// 9. Simultaneous ordinary and GitHub alarms are serialized instead of dropping the second trigger.
           installState({
             lastCommandedFingerprint: 'answer-1',
             lastHardRefreshAt: new Date().toISOString(),
@@ -142,13 +144,7 @@ jobs:
               status: 200,
               headers: { get() { return null; } },
               async json() {
-                return {
-                  workflow_runs: [{
-                    id: 9001,
-                    created_at: '2026-09-05T00:00:00.000Z',
-                    status: 'completed'
-                  }]
-                };
+                return { workflow_runs: [{ id: 9001, created_at: '2026-09-05T00:00:00.000Z', status: 'completed' }] };
               }
             };
           });
@@ -162,12 +158,16 @@ jobs:
           assert.equal(harness.data.chatpulseState.chats[0].githubLastRunId, '9001');
           assert.ok(harness.data.chatpulseState.chats[0].githubLastCheckedAt, 'GitHub observation must persist after collision');
           
+          // 10. Scheduler configuration is idempotent: ordinary and GitHub alarms keep their original schedule.
           '''
           replace_once(
               "tests/chrome-extension/service-worker.test.mjs",
-              "console.log(JSON.stringify({\n",
-              scenario + "console.log(JSON.stringify({\n")
-
+              "// 9. Scheduler configuration is idempotent: ordinary and GitHub alarms keep their original schedule.\n",
+              scenario)
+          replace_once(
+              "tests/chrome-extension/service-worker.test.mjs",
+              "// 10. A GitHub-only chat schedules only the independent Actions watchdog.\n",
+              "// 11. A GitHub-only chat schedules only the independent Actions watchdog.\n")
           replace_once(
               "tests/chrome-extension/service-worker.test.mjs",
               "  github_only_scheduler: 'PASS',\n",
@@ -199,9 +199,9 @@ jobs:
           set -euo pipefail
           git config user.name "ChatPulse Release Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add chrome-extension/background/service-worker-v2.js tests/chrome-extension/service-worker.test.mjs scripts/validate_extension.mjs .github/workflows/patch-0.7.4-trigger-queue.yml
+          git add chrome-extension/background/service-worker-v2.js tests/chrome-extension/service-worker.test.mjs tests/chrome-extension/github-watchdog-runtime.test.mjs scripts/validate_extension.mjs .github/workflows/patch-0.7.4-trigger-queue.yml
           changed="$(git diff --cached --name-only | sort)"
-          expected="$(printf '%s\n' '.github/workflows/patch-0.7.4-trigger-queue.yml' 'chrome-extension/background/service-worker-v2.js' 'scripts/validate_extension.mjs' 'tests/chrome-extension/service-worker.test.mjs' | sort)"
+          expected="$(printf '%s\n' '.github/workflows/patch-0.7.4-trigger-queue.yml' 'chrome-extension/background/service-worker-v2.js' 'scripts/validate_extension.mjs' 'tests/chrome-extension/github-watchdog-runtime.test.mjs' 'tests/chrome-extension/service-worker.test.mjs' | sort)"
           test "$changed" = "$expected"
           git commit -m "fix: serialize concurrent scheduler triggers"
           git push origin HEAD:release/0.7.4-independent-actions-watchdog
