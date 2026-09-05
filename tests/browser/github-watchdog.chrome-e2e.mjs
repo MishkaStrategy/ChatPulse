@@ -110,13 +110,23 @@ try {
 
   await optionsPage.locator("#toggleButton").click();
 
+  const chatBaseline = await waitFor(async () => {
+    const state = await getState(optionsPage);
+    const chat = state.chats[0];
+    if (!state.enabled) return null;
+    if (chat?.lastError) throw new Error(`ChatGPT baseline failed: ${chat.lastError}; state=${JSON.stringify(chat)}`);
+    return chat?.lastObservedFingerprint ? { state, chat } : null;
+  }, "ChatGPT DOM baseline was not established by the loaded extension");
+  assert.ok(chatBaseline.chat.lastObservedSessionId, "ChatGPT baseline session id missing");
+
   const baseline = await waitFor(async () => {
     const state = await getState(optionsPage);
     const chat = state.chats[0];
-    if (!state.enabled || !chat?.githubLastCheckedAt || !chat.lastObservedFingerprint) return null;
-    if (chat.githubLastError) throw new Error(`watchdog baseline failed: ${chat.githubLastError}`);
-    return { state, chat };
-  }, "watchdog did not establish a browser/live-GitHub baseline");
+    if (chat?.githubLastError) {
+      throw new Error(`GitHub watchdog baseline failed: ${chat.githubLastError}; state=${JSON.stringify(chat)}`);
+    }
+    return chat?.githubLastCheckedAt ? { state, chat } : null;
+  }, "GitHub watchdog baseline was not established by the loaded extension");
 
   assert.ok(baseline.chat.githubWatchStartedAt, "watchdog start timestamp missing");
   assert.equal(baseline.chat.githubRestartCount, 0, "baseline must not restart the chat");
@@ -131,7 +141,7 @@ try {
     restarted = await waitFor(async () => {
       const state = await getState(optionsPage);
       const chat = state.chats[0];
-      if (chat.githubLastError) throw new Error(`watchdog live fetch failed: ${chat.githubLastError}`);
+      if (chat.githubLastError) throw new Error(`watchdog live fetch failed: ${chat.githubLastError}; state=${JSON.stringify(chat)}`);
       if (chat.githubRestartCount === 1) return { state, chat };
       if (chat.githubLastCheckedAt && chat.githubLastCheckedAt !== previousCheck) return null;
       return null;
@@ -161,10 +171,12 @@ try {
   assert.equal(restarted.chat.continuationCount, 1, "restart must count as one real continuation");
 
   const restartKey = restarted.chat.githubLastRestartKey;
+  const beforeSecondCheck = finalWatchSnapshot(await getState(optionsPage));
   await optionsPage.locator("#checkButton").click();
   await waitFor(async () => {
     const state = await getState(optionsPage);
-    return state.chats[0].githubLastCheckedAt ? state : null;
+    const current = finalWatchSnapshot(state);
+    return current.lastCheckAt !== beforeSecondCheck.lastCheckAt ? state : null;
   }, "second watchdog check did not finish");
   await new Promise((resolve) => setTimeout(resolve, 1_000));
 
@@ -233,6 +245,14 @@ async function getState(extensionPage) {
   const response = await extensionPage.evaluate(async () => chrome.runtime.sendMessage({ type: "GET_STATE" }));
   if (!response?.ok) throw new Error(response?.error || "GET_STATE failed");
   return response.state;
+}
+
+function finalWatchSnapshot(state) {
+  return {
+    lastCheckAt: state.lastCheckAt,
+    githubLastCheckedAt: state.chats[0]?.githubLastCheckedAt,
+    githubRestartCount: state.chats[0]?.githubRestartCount
+  };
 }
 
 async function makeWatchdogStale(extensionPage) {
