@@ -61,7 +61,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/apply_073_recovery_patch.py .github/workflows/apply-073-recovery-patch.yml
+          git checkout HEAD -- .github/workflows/extension-ci.yml .github/workflows/apply-073-recovery-patch.yml
+          rm -f scripts/apply_073_recovery_patch.py
           git config user.name "mishkacher"
           git config user.email "73113517+mishkacher@users.noreply.github.com"
           git add -A
