@@ -10,9 +10,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: chatpulse-0.7.4-auth-grace-patch
+  cancel-in-progress: true
+
 jobs:
   patch:
-    runs-on: [self-hosted, fast]
+    runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
