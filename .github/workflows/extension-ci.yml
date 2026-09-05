@@ -99,9 +99,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install --no-save playwright@1.62.1
+          cp package.json /tmp/chatpulse-package.json
+          npm install --save-dev --save-exact playwright@1.62.1
           npm audit --audit-level=high
           npx playwright install --with-deps chromium
+          cp /tmp/chatpulse-package.json package.json
+          rm -f package-lock.json
+          git diff --exit-code -- package.json
 
       - name: Run loaded-extension GitHub watchdog browser E2E
         env:
