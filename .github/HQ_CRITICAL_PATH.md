@@ -2,149 +2,116 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 27
-updated_at: 2026-09-05T09:35:00Z
-project_state: EXECUTING
+critical_path_revision: 28
+updated_at: 2026-09-05T10:07:00Z
+project_state: DONE
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
-handoff_status: NOT_READY
+handoff_status: READY
 basis_ref: main
-basis_sha: 92b0291bc1638971c0e911bd6ad1d39155d88019
+basis_sha: eb009837505c570cc1646485244b8fbc4563a6ea
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.1 beta patch for GitHub Actions watchdog correctness and repository-field guidance.
+Release target: ChatPulse 0.7.1 beta patch for active GitHub Actions awareness and explicit repository-field guidance.
 
-Release surface: GitHub Actions client/runtime state model, watchdog service-worker behavior, Control Center copy/status, watchdog tests/E2E, release versioning/packaging documentation.
+Release surface: GitHub Actions public client/runtime model, Control Center guidance, watchdog deterministic/browser tests, release workflow/versioning/packaging documentation. The service-worker restart flow itself required no behavioral rewrite because it already consumes model decisions and current-successful-poll gating.
 
-Definition of RELEASED: ChatPulse polls GitHub independently every 10 minutes, treats any observed unfinished workflow run as active work that blocks same-chat restart, starts a fresh idle interval when the repository transitions from active work to no active work, preserves new-run/reset/idempotency/fail-closed safety, and shows an explicit valid `owner/repo` example in the repository field; exact branch, PR merge-tree and post-merge main evidence must all pass.
+Definition of RELEASED: ChatPulse polls GitHub independently every 10 minutes; any observed non-`completed` workflow run is active work that blocks same-chat restart; active work refreshes activity and an `active -> no active runs` transition starts a fresh idle interval; API/permission/malformed uncertainty remains fail-closed; new-run reset and one-restart-per-marker semantics remain intact; the repository field visibly documents valid `owner/repo` syntax with a concrete example; exact frozen branch, PR merge-tree and post-merge main evidence all pass.
 
 Mandatory release gates:
 
-- [ ] Public GitHub client reads enough recent workflow-run metadata to detect unfinished runs without credentials or writes.
-- [ ] `queued`, `in_progress`, `waiting`, `requested`, `pending` and any other non-`completed` run in the observed set block restart.
-- [ ] Active work refreshes watchdog activity and `active -> none` starts a new idle window instead of inheriting stale pre-run idle time.
-- [ ] API/permission/malformed failures remain error-only and cannot trigger restart.
-- [ ] New workflow run still resets inactivity episode and one activity marker still produces at most one restart.
-- [ ] Control Center shows the exact repository format with an example such as `MishkaStrategy/ChatPulse` and warns not to paste a GitHub URL or `/actions` URL.
-- [ ] Loaded Chromium/MV3 E2E proves an active live CI run blocks restart, then proves idle/restart/idempotency after deterministic active-work completion.
-- [ ] Existing deterministic audit remains green for five independent cycles.
-- [ ] Reproducible 0.7.1 beta package/provenance passes.
-- [ ] Canonical PR merge-tree and post-merge main reproduce all release gates.
+- [x] Public GitHub client reads bounded recent workflow-run status metadata without credentials or writes.
+- [x] Any non-`completed` observed run, including `queued`, `in_progress`, `waiting`, `requested` and `pending`, blocks restart.
+- [x] Active work refreshes repository activity and `active -> none` starts a fresh N-minute idle window.
+- [x] Permission/network/403/404/rate-limit/malformed responses remain error-only and cannot trigger restart.
+- [x] New workflow run resets inactivity episode and one activity marker still produces at most one restart.
+- [x] Control Center shows `owner/repo`, example `MishkaStrategy/ChatPulse`, and warns against GitHub URLs or `/actions` URLs.
+- [x] Loaded Chromium/MV3 E2E proves active-work blocking, active-to-idle reset, eventual restart and duplicate-send protection.
+- [x] Five independent deterministic audit cycles pass on branch, PR merge-tree and main.
+- [x] Reproducible 0.7.1 beta package/provenance passes with equal canonical hashes on branch, PR merge-tree and main.
+- [x] Canonical PR merge-tree and post-merge main reproduce all release gates.
 
-Required release evidence: exact SHAs, branch/PR/main workflow IDs, E2E assertions, 5x test counts, dependency-policy result, package/source-manifest SHA-256.
+Required release evidence: exact SHAs, workflow/job IDs, browser E2E assertions, 5x test counts, dependency-policy results, package/source-manifest SHA-256.
 
-Known explicit exclusions: private GitHub repositories/tokens; workflow dispatch/writes; authenticated live ChatGPT automation; redesign beyond requested repository guidance/status; unrelated draft PR #17.
+Known explicit exclusions: private GitHub repositories/tokens; GitHub writes or workflow dispatch; authenticated live ChatGPT automation; broad UI redesign; unrelated draft PR #17.
 
 ## 2. Repository Basis
 
 Default branch: main.
-Default branch observed SHA: `92b0291bc1638971c0e911bd6ad1d39155d88019`.
+Validated product main commit: `eb009837505c570cc1646485244b8fbc4563a6ea`.
 Critical-path basis ref: main.
-Critical-path basis SHA: `92b0291bc1638971c0e911bd6ad1d39155d88019`.
-Canonical integration branch: `release/0.7.1-active-actions-watchdog` (to create after this state revision).
-Canonical PR / RC: pending.
-Relevant open PRs: #17 draft remains separate/excluded.
+Critical-path basis SHA: `eb009837505c570cc1646485244b8fbc4563a6ea`.
+Canonical integration branch: `release/0.7.1-active-actions-watchdog`.
+Frozen final branch head: `2e901fd43f8669bfae2b9865163ab8bf4fad1e6d`.
+Canonical PR: #24.
+Final PR merge-tree SHA: `501c9d70f1ba6b624aecb230bb7fde2247523b89`.
+Relevant open PRs after release: #17 draft remains separate/excluded.
 Relevant Issues: none required for this owner-direct patch.
 Relevant CI / workflows: `.github/workflows/extension-ci.yml`, `.github/workflows/docker-runner-policy.yml`.
-Relevant release/deployment state: 0.7.0 beta is released and browser-E2E hardened; current product behavior only tracks new workflow-run IDs and does not inspect run status.
+Relevant release/deployment state: 0.7.1 beta merged to main and exact main release evidence is green; no Chrome Web Store publication is required by this release contract.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner.
-Architecture / major components: popup/options UI, MV3 service worker, pure model/state helpers, ChatGPT content script, optional Telegram and public GitHub clients.
+Architecture / major components: popup/options UI, MV3 service worker, pure state/model helpers, ChatGPT content script, optional Telegram and public GitHub clients.
 Build / packaging: deterministic Python package script plus Node validation.
-Tests / validation: 80-test deterministic extension suite plus Playwright loaded-Chromium E2E before this patch.
-CI: five-cycle deterministic audit, browser E2E, reproducible package/provenance, dependency runner policy.
-Release / deployment: validated merge to main; no Chrome Web Store publication required.
-Governance: organizational HQ master 1.2 live-read for this wave.
-External release dependencies: public GitHub API and Chromium download for E2E only.
-Material findings: current client requests only `per_page=1` and reduces the payload to `id/created_at`; therefore a long-running Action does not block restart. The current CI run itself provides a real active-run E2E condition for the new behavior.
+Tests / validation: 84-test deterministic extension suite plus Playwright loaded-Chromium E2E.
+CI: five independent deterministic audit cycles, browser E2E, reproducible package/provenance, dependency runner policy.
+Release / deployment: validated PR merge to main; package artifact generated by main CI.
+Governance: organizational HQ master 1.2 live-read for this wave; this file records the final verified state.
+External release dependencies: public GitHub API for product operation; Chromium download for E2E.
+Material findings: 0.7.0 only tracked workflow-run creation IDs, so long-running Actions could be misclassified as idle. 0.7.1 inspects up to 100 recent runs in one bounded public request and persists only aggregate active-run runtime state. During the first PR E2E, a shared hosted-runner IP exhausted GitHub's unauthenticated API rate limit; the product correctly failed closed. The E2E was then made deterministic by supplying the current `GITHUB_RUN_ID` as the active-run fixture through the production fetch/parser/runtime path, while protocol GET/`credentials: omit`/no-Authorization/rate-limit behavior remains separately tested. Earlier branch run `33959175521` additionally proved the real public API could observe its current CI run as active (`active_run_count=1`).
 
 ## 4. Release Gates
 
 ### GATE-1 — Active Actions correctness
-Status: UNSATISFIED
-Evidence: current client/model omit workflow status.
-Blocking items: implement active-run observation and idle transition semantics.
+Status: SATISFIED
+Evidence: deterministic tests cover all non-completed statuses, active blocking, repeated active observations, active-to-idle fresh baseline, new-run reset, error fail-closed and one-restart idempotency. Loaded Chromium E2E reproduces active block -> active-to-idle reset -> one restart -> no duplicate.
+Blocking items: NONE.
 
 ### GATE-2 — UI guidance
-Status: UNSATISFIED
-Evidence: current field only says public repository and placeholder `owner/repo`.
-Blocking items: add concrete example and URL warning.
+Status: SATISFIED
+Evidence: Control Center repository field placeholder is `MishkaStrategy/ChatPulse`; annotation states `owner/repo`, gives that example, and warns not to paste a GitHub URL or `/actions` URL. UI regression test and static validator pass.
+Blocking items: NONE.
 
-### GATE-3 — Branch validation
-Status: UNSATISFIED
-Evidence: patch not implemented.
-Blocking items: GATE-1 and GATE-2.
+### GATE-3 — Frozen release branch
+Status: SATISFIED
+Evidence: final branch head `2e901fd43f8669bfae2b9865163ab8bf4fad1e6d`; release run `33959533925` SUCCESS; 5/5 deterministic cycles; 84/84 tests per inspected cycle; browser E2E PASS; reproducible package/provenance PASS; artifact ID `9967500127`.
+Blocking items: NONE.
 
 ### GATE-4 — Canonical PR merge-tree
-Status: UNSATISFIED
-Evidence: no PR yet.
-Blocking items: GATE-3.
+Status: SATISFIED
+Evidence: PR #24 merge-tree `501c9d70f1ba6b624aecb230bb7fde2247523b89`; release run `33959536211` SUCCESS with 5/5 deterministic cycles, browser E2E PASS and package/provenance equality; dependency-policy run `33959536180` PASS; reviews none; review threads none; PR mergeable before merge.
+Blocking items: NONE.
 
 ### GATE-5 — Post-merge main
-Status: UNSATISFIED
-Evidence: not merged.
-Blocking items: GATE-4.
+Status: SATISFIED
+Evidence: product merge commit `eb009837505c570cc1646485244b8fbc4563a6ea`; release run `33959684851` SUCCESS; dependency-policy run `33959684870` SUCCESS; all five audit cycles SUCCESS; inspected cycle 84/84 PASS; browser E2E job `101289266102` SUCCESS at exact main SHA; package/provenance job `101289373572` SUCCESS; main artifact ID `9967538216`.
+Blocking items: NONE.
 
 ## 5. Current Critical Path
 
-### CP-1 — Implement active-run-aware watchdog and repository guidance
-Status: ACTIVE
-Release gate: GATE-1, GATE-2
-Why critical: prevents a false restart while GitHub Actions is still doing project work and removes repository-input ambiguity.
-Depends on: released 0.7.0 beta state.
-Blocks: CP-2.
-Execution plane: HQ_DIRECT
-Exact scope: one canonical writer across GitHub client, model/runtime, UI copy/status, tests, versioning and release workflow.
-Acceptance condition: deterministic tests cover active/non-active transitions and UI example; loaded-browser E2E covers active blocking plus eventual one-send restart.
-Evidence: pending branch SHA/workflow.
-
-### CP-2 — Validate frozen release branch
-Status: PENDING
-Release gate: GATE-3
-Depends on: CP-1
-Blocks: CP-3
-Execution plane: PROJECT_RUNNER
-Exact scope: 5x audit, browser E2E, reproducible package/provenance, dependency policy.
-Acceptance condition: exact branch head fully green.
-Evidence: pending.
-
-### CP-3 — Validate canonical PR merge tree
-Status: PENDING
-Release gate: GATE-4
-Depends on: CP-2
-Blocks: CP-4
-Execution plane: PROJECT_RUNNER
-Exact scope: exact GitHub PR merge ref, all release gates, reviews/threads/mergeability.
-Acceptance condition: merge-tree fully green with no unresolved review blocker.
-Evidence: pending.
-
-### CP-4 — Merge exact head and validate main
-Status: PENDING
-Release gate: GATE-5
-Depends on: CP-3
-Blocks: DONE
-Execution plane: HQ_DIRECT + PROJECT_RUNNER
-Exact scope: merge only validated PR head, then reproduce complete release evidence on exact main product commit.
-Acceptance condition: main fully green; package hashes recorded; critical path persisted DONE.
-Evidence: pending.
+CP-1 — implement active-run-aware watchdog and repository guidance: DONE.
+CP-2 — validate frozen release branch: DONE.
+CP-3 — validate canonical PR #24 merge tree: DONE.
+CP-4 — merge exact head and validate main: DONE.
+CP-5 — persist verified 0.7.1 release state: DONE by this revision.
 
 ## 6. Active Execution Registry
 
-HQ: CP-1 canonical writer/integrator.
+HQ: DONE for 0.7.1 patch wave.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: NONE until first branch commit.
+CI/runtime: no active release-critical execution.
 
 ## 7. Safe Parallel Work
 
-NONE — GitHub client payload, persisted runtime semantics, service-worker restart gating, UI status and E2E are tightly coupled and should have one canonical writer.
+NONE — release wave is complete.
 
 ## 8. Current Blockers
 
@@ -152,34 +119,66 @@ NONE.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — all affected product/test/release surfaces identified.
-Evidence Audit: PASS — branch, merge-tree and main evidence requirements are explicit.
-Release Alignment Audit: PASS — patch is limited to owner-requested watchdog correctness and input guidance.
-Dependency & Ordering Audit: PASS — model/client/UI/E2E must land before release validation.
-Execution & Parallelism Audit: PASS — one canonical writer avoids conflicting coupled changes.
-Adversarial Audit: PASS — design must not add tokens, writes, permanent GitHub permission or convert API uncertainty into inactivity.
+Repository Coverage Audit: PASS — product/release diff is limited to 13 intended files covering GitHub client/model, Control Center copy, deterministic/browser tests, validator, version/package/release workflow and changelog.
 
-Material findings and resolutions: use one bounded public API read per repository/poll and fail closed on malformed status data; persist active-run count only as runtime state and exclude it from portable export.
+Evidence Audit: PASS — exact frozen branch, exact PR merge-tree and exact post-merge main have independent green evidence; package hashes match across stages.
 
-## 10. Next Action
+Release Alignment Audit: PASS — changes are limited to owner-requested active-Action correctness and repository-input guidance plus necessary release/test hardening.
 
-Exact next action: create `release/0.7.1-active-actions-watchdog`, implement the active-run-aware client/model/UI/test/version patch, then validate exact branch head.
-Executor: HQ_DIRECT.
-Expected evidence: branch workflow with deterministic tests + loaded-browser active-run E2E + package provenance.
-Acceptance condition: GATE-1, GATE-2 and GATE-3 satisfied.
+Dependency & Ordering Audit: PASS — active-run semantics/UI/tests -> branch validation -> PR merge-tree/dependency policy -> exact merge -> main validation -> persistence.
 
-## 11. Last Material Revision
+Execution & Parallelism Audit: PASS — one canonical HQ writer handled tightly coupled client/model/UI/E2E surfaces; project runners provided deterministic exact-ref evidence.
 
-What changed: owner promoted active GitHub Actions awareness and explicit repository-format guidance into immediate product scope.
-Why the critical path changed: current 0.7.0 behavior can restart a chat while a workflow run is still unfinished because it tracks only run creation IDs.
-Evidence causing the change: live inspection of `github-actions.js`, model watchdog logic and owner decision.
+Adversarial Audit: PASS — one bounded public request inspects at most 100 recent runs; any non-completed status blocks restart; malformed/missing status fails closed; active-to-idle transition cannot inherit stale pre-run idle time; no token, Authorization header, GitHub write, workflow dispatch or permanent GitHub host permission was added; public shared-IP rate-limit does not create a false restart and no longer makes browser E2E flaky; portable export excludes `githubActiveRunCount` and other runtime watcher state.
 
-## 12. Chat Rotation Checkpoint
+Material findings and resolutions: first PR E2E failure on GitHub public rate limit was infrastructure evidence of fail-closed correctness, not product failure. Deterministic current-run fixture replaced public-network dependence in the release gate while retaining exact protocol tests and supplemental real-public branch proof.
 
-Safe to rotate chat: NO.
-Last completed atomic action: verified current main and opened 0.7.1 patch critical path.
+## 10. Release Evidence Summary
+
+Final branch head: `2e901fd43f8669bfae2b9865163ab8bf4fad1e6d`.
+Branch release run: `33959533925` — SUCCESS; 5/5 x 84/84; browser E2E PASS; package/provenance PASS; artifact ID `9967500127`.
+Supplemental real-public API branch proof: run `33959175521` observed itself as unfinished work with `active_run_count=1` and passed active-block/active-to-idle/restart semantics before the deterministic E2E hardening.
+
+PR #24 merge-tree SHA: `501c9d70f1ba6b624aecb230bb7fde2247523b89`.
+PR release run: `33959536211` — SUCCESS; exact merge-ref; 5/5 deterministic audit; browser E2E PASS; package/provenance PASS; artifact ID `9967493256`.
+PR dependency policy: `33959536180` — PASS.
+
+Post-merge main commit: `eb009837505c570cc1646485244b8fbc4563a6ea`.
+Main release run: `33959684851` — SUCCESS; exact main SHA; five audit cycles SUCCESS; inspected cycle 84/84 PASS; browser E2E PASS with `CHATPULSE_E2E_RUN_ID=33959684851`, `active_run_count=1`, `active_run_block=PASS`, `active_to_idle_reset=PASS`, restart/idempotency PASS; package/provenance PASS.
+Main dependency policy: `33959684870` — PASS.
+Main artifact ID: `9967538216`; artifact container digest `sha256:694bcb27afe81ca80445d3f25593d720b4ca928bcf36274550f83d944499d1de`; repository retention policy reduces retention to 1 day.
+
+Canonical 0.7.1 beta product ZIP SHA-256:
+`4887a493d6c8a390aa34422f42c7070cb4b13e39a3ce755c915cc00ddfc1f584`
+
+Canonical source-manifest SHA-256:
+`a2444861227cdeb6d3a13e146003db930625f6495f33bb26277fab1cbf8ec396`
+
+Packaged extension file count: 15. Reproducible timestamp: `2020-01-01T00:00:00`.
+
+## 11. Runtime Contract
+
+GitHub watchdog polling remains a distinct Chrome alarm at a 10-minute minimum cadence and is independent of the normal ChatGPT check interval. The public API request is repository-scoped and read-only. Up to 100 recent runs are inspected because the latest run alone is insufficient to detect another still-running workflow. `githubActiveRunCount > 0` yields `actions-active` and blocks restart. Each successful active observation refreshes activity; the first successful observation after active count returns to zero establishes a fresh inactivity start. Restart requires a successful current repository poll, no active runs, elapsed configured idle threshold and all existing ChatGPT live-send safety gates.
+
+## 12. Next Action
+
+Exact next action: await next owner scope or evidence-backed regression.
+Executor: NONE until new scope.
+Expected evidence: N/A.
+Acceptance condition: N/A.
+
+## 13. Last Material Revision
+
+What changed: ChatPulse 0.7.1 beta now treats unfinished GitHub Actions as active project work and documents valid repository input directly in Control Center.
+Why the critical path changed: owner approved active-run awareness after confirming 0.7.0 could restart while a long-running Action was still executing, and requested a concrete repository-format annotation.
+Evidence causing closure: branch `33959533925`, PR `33959536211`, main `33959684851`, dependency-policy runs, exact SHAs, browser E2E assertions and equal reproducible package hashes.
+
+## 14. Chat Rotation Checkpoint
+
+Safe to rotate chat: YES.
+Last completed atomic action: exact main product commit `eb009837505c570cc1646485244b8fbc4563a6ea` passed 5/5 deterministic audit, loaded-browser active-run E2E, dependency policy and reproducible package/provenance equality.
 Active external executions and exact refs: NONE.
-Unpersisted material reasoning: implementation pending.
-Recovery entrypoint: live-read organizational master prompt, this revision and current main.
-Exact next action after recovery: create release branch and implement CP-1.
-Rotation blockers: active product patch wave.
+Unpersisted material reasoning: NONE.
+Recovery entrypoint: live-read organizational master prompt, this revision and current main; treat `eb009837...` as the validated 0.7.1 product merge beneath the later HQ-only state commit created by this revision.
+Exact next action after recovery: await owner scope or evidence-backed regression.
+Rotation blockers: NONE.
