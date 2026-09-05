@@ -3,7 +3,7 @@
   "name": "ChatPulse",
   "version": "0.7.3",
   "version_name": "0.7.3 beta",
-  "description": "Локально продолжает выбранные чаты ChatGPT, восстанавливает зависшие фоновые вкладки и fail-closed отслеживает GitHub Actions.",
+  "description": "Локально продолжает выбранные чаты ChatGPT, заменяет зависшие фоновые вкладки новыми и fail-closed отслеживает GitHub Actions.",
   "minimum_chrome_version": "120",
   "permissions": [
     "alarms",
