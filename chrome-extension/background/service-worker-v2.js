@@ -424,9 +424,12 @@ async function performCheck(source, allowWhenStopped, onlyChatId = null) {
     if (onlyChatId && chat.id !== onlyChatId) continue;
     if (!chat.enabled) continue;
     if (observedState.taskOnly && !chat.taskActive && !allowWhenStopped) continue;
-    if (!bypassSchedule && !isChatDue(chat)) continue;
 
     let profile = effectiveChatProfile(observedState, chat);
+    const automaticOrdinaryCheck = source === "alarm" || source === "start";
+    if (profile.githubWatchOnly && automaticOrdinaryCheck) continue;
+    if (!bypassSchedule && !isChatDue(chat)) continue;
+
     chat = prepareChatRun(chat);
     observedState.chats[index] = chat;
     await persistRunStartCheckpoint(chat);
@@ -466,10 +469,7 @@ async function performCheck(source, allowWhenStopped, onlyChatId = null) {
       }
 
       const result = decide(runtimeChat, freshness.snapshot, observedState.sessionId);
-      observedState.chats[index] = scheduleNextChatCheck(
-        result.chat,
-        profile.intervalMinutes
-      );
+      observedState.chats[index] = scheduleOrdinaryNextCheck(result.chat, profile);
       observedState = appendLog(
         observedState,
         decisionLevel(result.decision),
@@ -539,10 +539,7 @@ async function performCheck(source, allowWhenStopped, onlyChatId = null) {
         preflight.snapshot,
         observedState.sessionId
       );
-      observedState.chats[index] = scheduleNextChatCheck(
-        preflightDecision.chat,
-        profile.intervalMinutes
-      );
+      observedState.chats[index] = scheduleOrdinaryNextCheck(preflightDecision.chat, profile);
       if (preflightDecision.decision === "stop-phrase-matched") {
         observedState = appendLog(
           observedState,
@@ -609,11 +606,11 @@ async function performCheck(source, allowWhenStopped, onlyChatId = null) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      observedState.chats[index] = scheduleNextChatCheck({
+      observedState.chats[index] = scheduleOrdinaryNextCheck({
         ...observedState.chats[index],
         lastDecision: "error",
         lastError: message
-      }, profile.intervalMinutes);
+      }, profile);
       observedState = appendLog(observedState, "error", `${chat.title}: ${message}`);
       if (previousError !== message) {
         observedState = await notifyChatEvent(
@@ -1185,43 +1182,69 @@ async function sendToContent(
   );
 }
 
+function scheduleOrdinaryNextCheck(chat, profile) {
+  if (profile?.githubWatchOnly) return { ...chat, nextEligibleAt: null };
+  return scheduleNextChatCheck(chat, profile.intervalMinutes);
+}
+
+async function syncPeriodicAlarm(name, intervalMinutes) {
+  const desiredInterval = Number(intervalMinutes);
+  const shouldRun = Number.isFinite(desiredInterval) && desiredInterval > 0;
+  const existing = await chrome.alarms.get(name);
+  if (!shouldRun) {
+    if (existing) await chrome.alarms.clear(name);
+    return null;
+  }
+  if (existing && Number(existing.periodInMinutes) === desiredInterval) return existing;
+  if (existing) await chrome.alarms.clear(name);
+  await chrome.alarms.create(name, {
+    delayInMinutes: desiredInterval,
+    periodInMinutes: desiredInterval
+  });
+  return chrome.alarms.get(name);
+}
+
 async function configureAlarm(state) {
-  await chrome.alarms.clear(ALARM_NAME);
-  await chrome.alarms.clear(GITHUB_ALARM_NAME);
   const globalInterval = clampInterval(state.intervalMinutes);
   if (!state.enabled) {
+    await syncPeriodicAlarm(ALARM_NAME, null);
+    await syncPeriodicAlarm(GITHUB_ALARM_NAME, null);
     return { ...state, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
   }
 
   const eligibleChats = state.chats.filter((chat) => chat.enabled && (!state.taskOnly || chat.taskActive));
   if (state.taskOnly && eligibleChats.length === 0) {
+    await syncPeriodicAlarm(ALARM_NAME, null);
+    await syncPeriodicAlarm(GITHUB_ALARM_NAME, null);
     return { ...state, enabled: false, taskOnly: false, intervalMinutes: globalInterval, nextCheckAt: null };
   }
-  const enabledIntervals = eligibleChats
-    .map((chat) => effectiveChatProfile(state, chat).intervalMinutes);
-  const alarmInterval = enabledIntervals.length
-    ? Math.min(...enabledIntervals)
-    : globalInterval;
-  await chrome.alarms.create(ALARM_NAME, {
-    delayInMinutes: alarmInterval,
-    periodInMinutes: alarmInterval
-  });
 
-  const watchedRepositories = new Set(eligibleChats
-    .map((chat) => effectiveChatProfile(state, chat))
+  const profiles = eligibleChats.map((chat) => effectiveChatProfile(state, chat));
+  const intervalProfiles = profiles.filter((profile) => !profile.githubWatchOnly);
+  const alarmInterval = intervalProfiles.length
+    ? Math.min(...intervalProfiles.map((profile) => profile.intervalMinutes))
+    : null;
+  const normalAlarm = await syncPeriodicAlarm(ALARM_NAME, alarmInterval);
+
+  const watchedRepositories = new Set(profiles
     .filter((profile) => profile.githubWatchEnabled && profile.githubRepository)
     .map((profile) => profile.githubRepository));
-  if (watchedRepositories.size > 0 && watchedRepositories.size <= MAX_GITHUB_WATCHED_REPOSITORIES) {
-    await chrome.alarms.create(GITHUB_ALARM_NAME, {
-      delayInMinutes: GITHUB_POLL_INTERVAL_MINUTES,
-      periodInMinutes: GITHUB_POLL_INTERVAL_MINUTES
-    });
-  }
+  const githubInterval = watchedRepositories.size > 0
+    && watchedRepositories.size <= MAX_GITHUB_WATCHED_REPOSITORIES
+    ? GITHUB_POLL_INTERVAL_MINUTES
+    : null;
+  await syncPeriodicAlarm(GITHUB_ALARM_NAME, githubInterval);
 
+  const scheduledTime = Number(normalAlarm?.scheduledTime);
+  const nextCheckAt = Number.isFinite(scheduledTime)
+    ? new Date(scheduledTime).toISOString()
+    : alarmInterval
+      ? new Date(Date.now() + alarmInterval * 60_000).toISOString()
+      : null;
   return {
     ...state,
     intervalMinutes: globalInterval,
-    nextCheckAt: new Date(Date.now() + alarmInterval * 60_000).toISOString()
+    nextCheckAt
   };
 }
 

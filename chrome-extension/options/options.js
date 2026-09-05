@@ -340,6 +340,7 @@ function renderChats() {
     const maxContinuations = row.querySelector(".profile-max-continuations");
     const maxRuntime = row.querySelector(".profile-max-runtime");
     const githubWatchEnabled = row.querySelector(".profile-github-watch-enabled");
+    const githubWatchOnly = row.querySelector(".profile-github-watch-only");
     const githubRepository = row.querySelector(".profile-github-repository");
     const githubIdle = row.querySelector(".profile-github-idle");
     const githubStatus = row.querySelector(".profile-github-status");
@@ -356,6 +357,7 @@ function renderChats() {
     maxContinuations.value = String(draft.maxContinuations);
     maxRuntime.value = String(draft.maxRuntimeMinutes);
     githubWatchEnabled.checked = draft.githubWatchEnabled;
+    githubWatchOnly.checked = draft.githubWatchOnly;
     githubRepository.value = draft.githubRepository || "";
     githubIdle.value = String(draft.githubIdleMinutes);
     githubStatus.textContent = githubWatchStatus(chat, effective);
@@ -364,14 +366,20 @@ function renderChats() {
 
     const capture = () => {
       const nextDraft = readProfileDraft(row);
+      if (!nextDraft.githubWatchEnabled) nextDraft.githubWatchOnly = false;
       profileDrafts.set(chat.id, nextDraft);
       stop.disabled = nextDraft.stopMode !== "custom";
+      githubWatchOnly.checked = nextDraft.githubWatchOnly;
+      githubWatchOnly.disabled = !nextDraft.githubWatchEnabled;
       githubRepository.disabled = !nextDraft.githubWatchEnabled;
       githubIdle.disabled = !nextDraft.githubWatchEnabled;
+      interval.disabled = nextDraft.githubWatchOnly;
     };
+    githubWatchOnly.disabled = !draft.githubWatchEnabled;
     githubRepository.disabled = !draft.githubWatchEnabled;
     githubIdle.disabled = !draft.githubWatchEnabled;
-    for (const control of [command, interval, stopMode, stop, maxContinuations, maxRuntime, githubWatchEnabled, githubRepository, githubIdle, telegramNotify]) {
+    interval.disabled = draft.githubWatchOnly;
+    for (const control of [command, interval, stopMode, stop, maxContinuations, maxRuntime, githubWatchEnabled, githubWatchOnly, githubRepository, githubIdle, telegramNotify]) {
       control.addEventListener("input", capture);
       control.addEventListener("change", capture);
     }
@@ -428,6 +436,7 @@ function readProfileDraft(root) {
     maxContinuations: nonNegativeInteger(root.querySelector(".profile-max-continuations").value),
     maxRuntimeMinutes: nonNegativeInteger(root.querySelector(".profile-max-runtime").value),
     githubWatchEnabled: root.querySelector(".profile-github-watch-enabled").checked,
+    githubWatchOnly: root.querySelector(".profile-github-watch-only").checked,
     githubRepository: root.querySelector(".profile-github-repository").value.trim(),
     githubIdleMinutes: boundedInteger(root.querySelector(".profile-github-idle").value, 10, 10080, 30),
     telegramNotify: root.querySelector(".profile-telegram-notify").checked
@@ -449,6 +458,7 @@ function profileToDraft(profile = {}) {
     maxContinuations: nonNegativeInteger(profile.maxContinuations),
     maxRuntimeMinutes: nonNegativeInteger(profile.maxRuntimeMinutes),
     githubWatchEnabled: profile.githubWatchEnabled === true,
+    githubWatchOnly: profile.githubWatchOnly === true,
     githubRepository: profile.githubRepository || "",
     githubIdleMinutes: boundedInteger(profile.githubIdleMinutes, 10, 10080, 30),
     telegramNotify: profile.telegramNotify !== false
@@ -467,6 +477,7 @@ function draftToProfile(draft) {
     maxContinuations: draft.maxContinuations,
     maxRuntimeMinutes: draft.maxRuntimeMinutes,
     githubWatchEnabled: draft.githubWatchEnabled,
+    githubWatchOnly: draft.githubWatchEnabled && draft.githubWatchOnly,
     githubRepository: draft.githubRepository || null,
     githubIdleMinutes: draft.githubIdleMinutes,
     telegramNotify: draft.telegramNotify
@@ -485,6 +496,7 @@ function effectiveProfile(chat) {
     maxContinuations: nonNegativeInteger(profile.maxContinuations),
     maxRuntimeMinutes: nonNegativeInteger(profile.maxRuntimeMinutes),
     githubWatchEnabled: profile.githubWatchEnabled === true,
+    githubWatchOnly: profile.githubWatchEnabled === true && profile.githubWatchOnly === true,
     githubRepository: profile.githubRepository || null,
     githubIdleMinutes: boundedInteger(profile.githubIdleMinutes, 10, 10080, 30),
     telegramNotify: profile.telegramNotify !== false
@@ -492,7 +504,7 @@ function effectiveProfile(chat) {
 }
 
 function profileSummary(profile) {
-  const pieces = [`${formatInterval(profile.intervalMinutes)} интервал`];
+  const pieces = [profile.githubWatchOnly ? "только GitHub Actions" : `${formatInterval(profile.intervalMinutes)} интервал`];
   if (profile.maxContinuations > 0) pieces.push(`≤ ${profile.maxContinuations} продолжений`);
   if (profile.maxRuntimeMinutes > 0) pieces.push(`≤ ${formatDuration(profile.maxRuntimeMinutes)}`);
   if (profile.stopPhrase) pieces.push("stop guard");

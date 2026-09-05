@@ -8,6 +8,7 @@ import {
   createChat,
   defaultState,
   githubWatchdogDecision,
+  normalizeChatProfile,
   normalizeGithubRepository,
   normalizeState,
   recordGithubActionsObservation,
@@ -48,6 +49,34 @@ test("GitHub idle N is bounded for public API safety", () => {
   assert.equal(clampGithubIdleMinutes(999999), 10080);
   assert.equal(GITHUB_POLL_INTERVAL_MINUTES, 10);
   assert.equal(MAX_GITHUB_WATCHED_REPOSITORIES, 8);
+});
+
+test("GitHub-only mode is default-off and requires an enabled configured watcher", () => {
+  assert.equal(normalizeChatProfile({}).githubWatchOnly, false);
+  assert.equal(normalizeChatProfile({ githubWatchOnly: true }).githubWatchOnly, false);
+  assert.equal(normalizeChatProfile({
+    githubWatchEnabled: true,
+    githubWatchOnly: true,
+    githubRepository: "MishkaStrategy/ChatPulse"
+  }).githubWatchOnly, true);
+});
+
+test("watchdog continues across more than two independent workflow-run episodes", () => {
+  let chat = createChat({ title: "A", url: "https://chatgpt.com/c/a" });
+  const base = Date.parse("2026-09-02T07:00:00.000Z");
+  for (let index = 0; index < 3; index += 1) {
+    const observedAt = new Date(base + index * 60 * 60_000).toISOString();
+    chat = recordGithubActionsObservation(chat, {
+      runId: String(100 + index),
+      createdAt: observedAt,
+      activeRunCount: 0
+    }, observedAt);
+    const decision = githubWatchdogDecision(chat, 10, base + index * 60 * 60_000 + 11 * 60_000);
+    assert.equal(decision.decision, "restart");
+    chat = recordGithubRestart(chat, decision.restartKey, new Date(base + index * 60 * 60_000 + 11 * 60_000).toISOString());
+  }
+  assert.equal(chat.githubRestartCount, 3);
+  assert.equal(chat.githubLastRestartKey, "run:102");
 });
 
 test("first successful Actions observation establishes a fresh baseline and never restarts immediately", () => {

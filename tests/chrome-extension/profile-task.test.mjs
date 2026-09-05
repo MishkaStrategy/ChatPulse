@@ -32,6 +32,7 @@ test("schema v3 state migrates to schema v5 with inheriting safe chat profile an
   assert.equal(state.chats[0].profile.stopPhrase, null);
   assert.equal(state.chats[0].profile.telegramNotify, true);
   assert.equal(state.chats[0].profile.githubWatchEnabled, false);
+  assert.equal(state.chats[0].profile.githubWatchOnly, false);
   assert.equal(state.chats[0].profile.githubRepository, null);
   assert.equal(state.chats[0].profile.githubIdleMinutes, 30);
   assert.equal(state.chats[0].continuationCount, 0);
@@ -54,6 +55,7 @@ test("per-chat profile inherits globals and can explicitly disable global stop p
     maxRuntimeMinutes: 0,
     telegramNotify: true,
     githubWatchEnabled: false,
+    githubWatchOnly: false,
     githubRepository: null,
     githubIdleMinutes: 30
   });
@@ -77,6 +79,7 @@ test("per-chat profile inherits globals and can explicitly disable global stop p
     maxRuntimeMinutes: 90,
     telegramNotify: false,
     githubWatchEnabled: false,
+    githubWatchOnly: false,
     githubRepository: null,
     githubIdleMinutes: 30
   });
