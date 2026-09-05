@@ -35,6 +35,15 @@ test("Control Center requests GitHub permission only when saving an enabled watc
   assert.ok(optionsHtml.includes("profile-github-idle"));
 });
 
+test("Control Center shows a concrete owner/repo example and active-run restart rule", () => {
+  assert.ok(optionsHtml.includes('placeholder="MishkaStrategy/ChatPulse"'));
+  assert.ok(optionsHtml.includes("Формат: <code>owner/repo</code>"));
+  assert.ok(optionsHtml.includes("Не вставляйте URL GitHub"));
+  assert.ok(optionsHtml.includes("/actions"));
+  assert.ok(optionsHtml.includes("Пока есть незавершённый GitHub Actions run, restart заблокирован"));
+  assert.ok(optionsHtml.includes("отсчёт N минут начинается заново"));
+});
+
 test("portable config includes watcher configuration but excludes all watcher runtime state", () => {
   const chat = {
     ...createChat({ title: "Project", url: "https://chatgpt.com/c/project" }),
@@ -48,6 +57,7 @@ test("portable config includes watcher configuration but excludes all watcher ru
     githubLastActivityAt: "2026-09-02T07:00:00.000Z",
     githubLastAttemptAt: "2026-09-02T07:01:00.000Z",
     githubLastCheckedAt: "2026-09-02T07:01:00.000Z",
+    githubActiveRunCount: 2,
     githubLastRestartAt: "2026-09-02T07:02:00.000Z",
     githubLastRestartKey: "run:999",
     githubRestartCount: 3,
@@ -60,7 +70,7 @@ test("portable config includes watcher configuration but excludes all watcher ru
   const serialized = JSON.stringify(config);
   for (const forbidden of [
     "githubLastRunId", "githubLastActivityAt", "githubLastAttemptAt", "githubLastCheckedAt",
-    "githubLastRestartAt", "githubLastRestartKey", "githubRestartCount", "githubLastError",
+    "githubActiveRunCount", "githubLastRestartAt", "githubLastRestartKey", "githubRestartCount", "githubLastError",
     "secret-ish runtime diagnostic", "run:999"
   ]) {
     assert.equal(serialized.includes(forbidden), false, forbidden);
