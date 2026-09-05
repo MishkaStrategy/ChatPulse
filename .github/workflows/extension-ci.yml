@@ -95,12 +95,12 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install pinned Playwright Chromium harness
+      - name: Install and audit pinned Playwright Chromium harness
         shell: bash
         run: |
           set -euo pipefail
-          npm install --no-save --no-package-lock playwright@1.62.1
-          npm audit --omit=dev --audit-level=high
+          npm install --no-save playwright@1.62.1
+          npm audit --audit-level=high
           npx playwright install --with-deps chromium
 
       - name: Run loaded-extension GitHub watchdog browser E2E
