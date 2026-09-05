@@ -10,27 +10,37 @@ import {
 test("GitHub Actions URL is repository-scoped and read-only", () => {
   assert.equal(
     githubActionsRunsURL("MishkaStrategy/ChatPulse"),
-    "https://api.github.com/repos/MishkaStrategy/ChatPulse/actions/runs?per_page=1"
+    "https://api.github.com/repos/MishkaStrategy/ChatPulse/actions/runs?per_page=100"
   );
   assert.throws(() => githubActionsRunsURL("https://github.com/MishkaStrategy/ChatPulse"));
 });
 
-test("latest workflow run payload is reduced to activity marker only", () => {
+test("workflow payload keeps latest activity marker and counts unfinished runs", () => {
   assert.deepEqual(parseLatestWorkflowRunPayload({ workflow_runs: [] }), {
     runId: null,
-    createdAt: null
+    createdAt: null,
+    activeRunCount: 0
   });
   assert.deepEqual(parseLatestWorkflowRunPayload({
-    workflow_runs: [{ id: 123, created_at: "2026-09-02T07:00:00Z", name: "secret-not-exported" }]
+    workflow_runs: [
+      { id: 123, created_at: "2026-09-02T07:00:00Z", status: "completed", name: "not-exported" },
+      { id: 122, created_at: "2026-09-02T06:55:00Z", status: "in_progress" },
+      { id: 121, created_at: "2026-09-02T06:50:00Z", status: "queued" },
+      { id: 120, created_at: "2026-09-02T06:45:00Z", status: "waiting" },
+      { id: 119, created_at: "2026-09-02T06:40:00Z", status: "requested" },
+      { id: 118, created_at: "2026-09-02T06:35:00Z", status: "pending" }
+    ]
   }), {
     runId: "123",
-    createdAt: "2026-09-02T07:00:00Z"
+    createdAt: "2026-09-02T07:00:00Z",
+    activeRunCount: 5
   });
-  assert.throws(() => parseLatestWorkflowRunPayload({ workflow_runs: [{ id: 123 }] }));
+  assert.throws(() => parseLatestWorkflowRunPayload({ workflow_runs: [{ id: 123, created_at: "2026-09-02T07:00:00Z" }] }));
+  assert.throws(() => parseLatestWorkflowRunPayload({ workflow_runs: [{ id: 123, status: "completed" }] }));
   assert.throws(() => parseLatestWorkflowRunPayload({}));
 });
 
-test("GitHub client sends no credentials and accepts a public latest run", async () => {
+test("GitHub client sends no credentials and accepts public run status metadata", async () => {
   const calls = [];
   const result = await fetchLatestGithubWorkflowRun("MishkaStrategy/ChatPulse", async (url, init) => {
     calls.push({ url, init });
@@ -38,10 +48,10 @@ test("GitHub client sends no credentials and accepts a public latest run", async
       ok: true,
       status: 200,
       headers: { get: () => null },
-      json: async () => ({ workflow_runs: [{ id: 7, created_at: "2026-09-02T07:00:00Z" }] })
+      json: async () => ({ workflow_runs: [{ id: 7, created_at: "2026-09-02T07:00:00Z", status: "in_progress" }] })
     };
   });
-  assert.deepEqual(result, { runId: "7", createdAt: "2026-09-02T07:00:00Z" });
+  assert.deepEqual(result, { runId: "7", createdAt: "2026-09-02T07:00:00Z", activeRunCount: 1 });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].init.credentials, "omit");
   assert.equal(Object.hasOwn(calls[0].init.headers, "Authorization"), false);
@@ -72,5 +82,14 @@ test("404, rate limit and malformed responses fail closed", async () => {
       json: async () => ({ nope: true })
     })),
     /неожиданный ответ/
+  );
+  await assert.rejects(
+    () => fetchLatestGithubWorkflowRun("a/b", async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ workflow_runs: [{ id: 1, created_at: "2026-09-02T07:00:00Z", status: null }] })
+    })),
+    /неполный workflow run/
   );
 });
