@@ -30,6 +30,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_073_recovery_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = '"release/0.7.2-private-github-token"'
+          new = '"release/0.7.3-private-github-token"'
+          if text.count(old) != 1:
+              raise SystemExit(f'patch guard hotfix expected one match, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
           python3 scripts/apply_073_recovery_patch.py
           npm run audit:extension
 
