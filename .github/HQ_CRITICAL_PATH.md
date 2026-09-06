@@ -2,116 +2,114 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 38
-updated_at: 2026-09-06T08:43:40Z
-project_state: EXECUTING
+critical_path_revision: 39
+updated_at: 2026-09-06T08:48:00Z
+project_state: VALIDATING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: main
-basis_sha: 2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8
+basis_ref: release/0.7.5-post-open-auth-warmup
+basis_sha: 30f0db2532786b3e9d876d7a151afba3ba593ac7
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.5 beta — fix the post-open ChatGPT authentication race reported by the owner.
+Release target: ChatPulse 0.7.5 beta — eliminate the shipped watchdog auth race that can log `restart отложен: в профиле Chrome не выполнен вход` immediately after ChatPulse opens a fresh ChatGPT tab.
 
-Release surface: Chrome MV3 extension watchdog restart path, focused auth-grace tests, version/package metadata and ordinary release CI.
+Release surface: bounded GitHub-watchdog auth-grace planner, focused regressions, 0.7.5 extension/package metadata and ordinary release CI.
 
-Definition of RELEASED: when ChatPulse itself creates or replaces a managed ChatGPT tab for a GitHub-watchdog restart, a transient unauthenticated snapshot cannot consume most of the intended warm-up merely because the document spent time loading; the restart receives a full non-extending 60-second grace from the ChatPulse open/replacement event when that event is known. Existing safety remains intact: no blind send, no grace extension for the same restart episode, a true logout after grace remains fail-closed, grace expiry revalidates GitHub Actions before eligibility/send, new workflow activity and global Stop invalidate pending grace, and at-most-once dispatch is preserved.
+Definition of RELEASED: whenever an eligible watchdog restart first observes `authenticated: false`, that restart episode receives exactly one non-extending 60-second warm-up from that first unauthenticated observation. Time already spent loading/hydrating the document cannot consume that minute. During grace no command is sent. The same `restartKey` cannot receive a second grace after expiry. At expiry the targeted watchdog path performs a fresh GitHub Actions read before send eligibility. If ChatGPT still reports unauthenticated, restart remains fail-closed. New workflow activity, successful restart, watcher reset and global Stop retain their existing invalidation behavior; at-most-once dispatch remains intact.
 
 Mandatory release gates:
-- [ ] bounded implementation uses the ChatPulse open/replacement timestamp when available while retaining document-start fallback for legacy/non-opened paths;
-- [ ] focused unit/service-worker regressions prove a slow-loading newly opened tab still receives a full 60 seconds and same-episode grace cannot extend;
-- [ ] version/package/release metadata is 0.7.5 beta and reproducible packaging remains deterministic;
+- [x] planner guarantees a full 60 seconds from first unauthenticated restart observation rather than from `documentStartedAt`;
+- [x] focused unit regression proves a 45-second-old document still receives 60, document age cannot consume the grace, same-episode grace cannot extend/restart, authenticated pages get no grace;
+- [x] manifest/package/workflow metadata targets 0.7.5 beta;
 - [ ] frozen release branch exact-head CI is green;
 - [ ] canonical PR exact merge-ref, reviews/threads and mergeability are green;
 - [ ] exact post-merge main release evidence is green.
 
-Required release evidence: exact SHAs/run IDs, deterministic tests, loaded Chromium MV3 E2E, reproducible package hashes, PR review/thread state and post-merge main CI.
+Required release evidence: exact SHAs/run IDs, deterministic suite, Chromium MV3 E2E, reproducible package/provenance, PR review/thread state and exact post-merge main CI.
 
-Known explicit exclusions: do not broaden authentication detection, do not weaken fail-closed behavior for genuinely logged-out profiles, do not change GitHub polling cadence, inactivity thresholds, credential boundaries, ordinary scheduler behavior, Telegram behavior or unrelated draft PR #17.
+Known explicit exclusions: do not weaken the authenticated send gate; do not change GitHub poll cadence, inactivity thresholds, scheduler behavior, credential boundaries, Telegram behavior, tab recovery or unrelated draft PR #17.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch observed SHA: `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8`.
-Critical-path basis ref: `main`.
-Critical-path basis SHA: `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8`.
+Default branch product basis before this patch: `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8` (subsequent main changes are HQ state-only).
+Critical-path basis ref: `release/0.7.5-post-open-auth-warmup`.
+Critical-path basis SHA: `30f0db2532786b3e9d876d7a151afba3ba593ac7`.
 Canonical integration branch: `release/0.7.5-post-open-auth-warmup`.
-Canonical PR / RC: not opened yet.
-Relevant open PRs: draft #17 is unrelated and excluded.
-Relevant Issues: retired #14 is unrelated and excluded.
-Relevant CI / workflows: `.github/workflows/extension-ci.yml`, `.github/workflows/docker-runner-policy.yml`.
-Relevant release/deployment state: 0.7.4 beta is closed; 0.7.5 beta patch release is now active due to owner-reported regression.
+Canonical PR / RC: pending branch validation.
+Relevant open PRs: draft #17 excluded.
+Relevant Issues: retired #14 excluded.
+Relevant CI / workflows: `.github/workflows/extension-ci.yml`; exact branch run `34022809958`.
+Relevant release/deployment state: branch validation active; no merge performed.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner with optional GitHub Actions watchdog.
 
-Architecture / major components: `service-worker-v2.js` owns watchdog restart/recovery, `github-restart-grace.js` plans bounded auth grace, `content-script.js` reports auth/document timing, model helpers persist watchdog runtime state, Node tests and Chromium E2E validate behavior.
+Architecture / major components: watchdog restart in `service-worker-v2.js`; bounded grace planning in `github-restart-grace.js`; content snapshot exposes auth state; model persists grace key/deadline; Node and loaded-Chromium tests cover release behavior.
 
-Build / packaging: Node validation plus reproducible Python ZIP/source-manifest packaging.
+Build / packaging: Node static/test audit plus deterministic Python ZIP/source-manifest package.
 
-Tests / validation: deterministic extension suite plus loaded Chromium MV3 GitHub-watchdog E2E.
+Tests / validation: deterministic extension suite, focused `github-restart-grace.test.mjs`, service-worker integration and Chromium MV3 E2E.
 
-CI: five deterministic audit cycles, browser E2E and reproducible package/provenance jobs.
+CI: release workflow now targets 0.7.5 branch/main, five deterministic audit cycles, browser E2E, then reproducible package/provenance.
 
-Release / deployment: beta artifact validated by exact branch, PR merge-ref and post-merge main CI.
+Governance: live organizational HQ master v1.2; `MishkaStrategy/ChatPulse` is the sole working repository.
 
-Governance: organizational HQ master v1.2; project repository is `MishkaStrategy/ChatPulse`.
+External release dependencies: GitHub Actions runners.
 
-External release dependencies: GitHub Actions self-hosted runners and GitHub-hosted Chromium job.
-
-Material findings: current 0.7.4 planner defines `GITHUB_RESTART_GRACE_MS = 60_000` but calculates a new grace deadline from `snapshot.documentStartedAt`. The service-worker test explicitly asserts the alarm is approximately `documentStartedAt + 60s`. Therefore time spent loading before first useful inspection consumes the user-intended post-open minute. The actual ChatPulse tab creation/replacement event is not currently passed into the grace planner.
+Material findings: 0.7.4 had the correct one-shot/non-extending machinery, but initial deadline was `documentStartedAt + 60s`. A slow load could therefore spend most of the grace before the watchdog even obtained the unauthenticated snapshot. The bounded repair keeps the existing service-worker alarm/revalidation path and changes only the planner's initial clock origin to `now + 60s` on first unauthenticated observation for the restart key.
 
 ## 4. Release Gates
 
-### GATE-1 — Correct post-open grace semantics
-Status: UNSATISFIED
-Evidence: `github-restart-grace.js`, `service-worker-v2.js`, `service-worker.test.mjs` on main.
-Blocking items: bounded patch and regressions.
+### GATE-1 — Behavior implementation
+Status: SATISFIED
+Evidence: branch helper commit lineage through `30f0db2...`; focused tests updated. Existing service-worker integration remains unchanged and exercises one-shot alarm + fresh GitHub retry.
+Blocking items: none.
 
 ### GATE-2 — Frozen branch validation
 Status: UNSATISFIED
-Evidence: release branch exists from exact main basis.
-Blocking items: implementation and exact-head CI.
+Evidence: run `34022809958` on exact `30f0db2532786b3e9d876d7a151afba3ba593ac7`; five self-hosted audit jobs plus Chromium E2E are queued.
+Blocking items: CI terminal success and downstream package/provenance.
 
 ### GATE-3 — Canonical PR
 Status: UNSATISFIED
-Evidence: none yet.
-Blocking items: frozen branch green first.
+Evidence: PR intentionally not opened before frozen branch validation.
+Blocking items: GATE-2.
 
 ### GATE-4 — Post-merge main
 Status: UNSATISFIED
 Evidence: none yet.
-Blocking items: PR merge first.
+Blocking items: GATE-3.
 
 ## 5. Current Critical Path
 
-### CP-1 — Implement full 60-second grace from ChatPulse open/replacement event
-Status: ACTIVE
+### CP-1 — Implement full restart auth warm-up
+Status: DONE
 Release gate: GATE-1.
-Why critical: owner regression is caused by the current clock origin, not by absence of a nominal 60-second constant.
+Why critical: fixes the reported race without changing send authorization semantics.
 Depends on: none.
 Blocks: CP-2.
 Execution plane: HQ_DIRECT.
-Exact scope: auth-grace planner, service-worker propagation of a bounded open/replacement timestamp, focused tests, 0.7.5 release metadata only.
-Acceptance condition: a newly created/replaced tab that spent substantial time loading still gets a non-extending 60 seconds from the ChatPulse open event when unauthenticated; old/non-opened tabs do not gain a fresh arbitrary delay; all existing safety invariants remain.
-Evidence: pending patch/test diff.
+Exact scope: planner, focused test, 0.7.5 manifest/package/workflow metadata and release-validation adapter.
+Acceptance condition: one 60-second non-extending grace per unauthenticated restart key; authenticated pages no grace; expiry remains fail-closed and fresh-revalidated.
+Evidence: exact branch head `30f0db2...`.
 
 ### CP-2 — Validate frozen release branch
-Status: PENDING
+Status: VERIFYING
 Release gate: GATE-2.
-Why critical: exact branch must pass deterministic, browser and package gates.
+Why critical: exact candidate must pass repository-native release gates.
 Depends on: CP-1.
 Blocks: CP-3.
 Execution plane: PROJECT_RUNNER.
-Exact scope: repository-native release CI on exact branch head.
-Acceptance condition: all required jobs succeed with reproducible 0.7.5 artifacts.
-Evidence: pending workflow run.
+Exact scope: run `34022809958` on exact head `30f0db2...`.
+Acceptance condition: all five audits + Chromium E2E + reproducible package/provenance succeed.
+Evidence: active run `34022809958`.
 
 ### CP-3 — Validate and merge canonical PR
 Status: PENDING
@@ -119,8 +117,8 @@ Release gate: GATE-3.
 Depends on: CP-2.
 Blocks: CP-4.
 Execution plane: HQ_DIRECT.
-Exact scope: exact PR head/base/diff/reviews/threads/CI/mergeability, then merge if ready.
-Acceptance condition: merged only from validated exact head.
+Exact scope: open PR only after frozen-head success; verify exact head/base/diff/reviews/threads/CI/mergeability, then merge when ready.
+Acceptance condition: merged only from validated exact candidate.
 Evidence: pending.
 
 ### CP-4 — Validate exact post-merge main
@@ -129,61 +127,61 @@ Release gate: GATE-4.
 Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
-Exact scope: exact main release CI and reproducible provenance.
-Acceptance condition: all mandatory release evidence green on exact product merge SHA.
+Exact scope: exact main 0.7.5 release CI and provenance.
+Acceptance condition: mandatory main evidence green on exact product merge SHA.
 Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: CP-1 — write scope limited to `release/0.7.5-post-open-auth-warmup` product/tests/release metadata and this HQ control file on main.
+HQ: no active write; next action depends on branch CI result.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: NONE active at this checkpoint.
+CI/runtime: GitHub Actions run `34022809958`, ref `release/0.7.5-post-open-auth-warmup`, SHA `30f0db2532786b3e9d876d7a151afba3ba593ac7`; expected evidence is five deterministic audit successes, Chromium E2E success and package/provenance success.
 
 ## 7. Safe Parallel Work
 
-NONE — the planner/service-worker/test/version changes are one tightly coupled small patch; parallel writers would add conflict and integration risk without material wall-clock benefit.
+NONE — opening/merging the canonical PR before the frozen exact-head gate would violate release ordering; no independent critical slice remains while branch CI is active.
 
 ## 8. Current Blockers
 
-NONE.
+NONE. Current state is external CI wait, not BLOCKED.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — inspected current main, grace planner, service-worker restart/recovery paths, content auth snapshot, model runtime merge, focused unit/service-worker tests, package metadata and release workflow.
+Repository Coverage Audit: PASS — relevant planner, service-worker retry/alarm path, content auth gate, runtime state, focused tests, package metadata and release workflow inspected.
 
-Evidence Audit: PASS — regression mechanism is proven by live main code and the existing test assertion using `documentStartedAt + 60s`; owner report supplies runtime evidence that the shipped behavior is insufficient.
+Evidence Audit: PASS — owner runtime report plus exact main code/test evidence identified the timing-origin defect; branch diff and exact CI run are live.
 
-Release Alignment Audit: PASS — only the clock-origin defect, focused regressions and necessary 0.7.5 release metadata are in scope.
+Release Alignment Audit: PASS — patch changes only auth warm-up timing plus required release/test metadata.
 
-Dependency & Ordering Audit: PASS — implementation/tests precede exact branch CI, then PR, merge and exact main validation.
+Dependency & Ordering Audit: PASS — implementation → exact frozen branch CI → PR → merge → exact main CI.
 
-Execution & Parallelism Audit: PASS — bounded HQ_DIRECT patch, repository-native CI validation, no overlapping writer and no Codex capability gap.
+Execution & Parallelism Audit: PASS — HQ direct bounded writes completed; repository runner now owns validation; no duplicate execution.
 
-Adversarial Audit: PASS — chosen design does not grant arbitrary grace to old tabs, does not extend a same-episode deadline, retains fresh GitHub revalidation before send and retains fail-closed true logout behavior.
+Adversarial Audit: PASS — delay cannot cause an unauthorized send, same restart key cannot extend/restart grace, authenticated pages bypass grace, expiry still routes through fresh GitHub Actions check and true logout remains fail-closed.
 
-Material findings and resolutions: replace document-age-only semantics with `max(documentStartedAt, known ChatPulse open/replacement time)` as the grace origin; if no trusted open/replacement time is available, retain the current document-start fallback.
+Material findings and resolutions: the first r38 design considered carrying an explicit tab-open timestamp through the service worker, but the smaller verified repair is stronger against all load-duration races: the already-existing one-shot grace begins on the first unauthenticated watchdog observation. It changes no service-worker send path and remains bounded by restart key.
 
 ## 10. Next Action
 
-Exact next action: patch the release branch and focused regressions, including 0.7.5 metadata.
-Executor: HQ_DIRECT.
-Expected evidence: branch diff and resulting exact branch head.
-Acceptance condition: bounded diff matches the release contract with no unrelated changes.
+Exact next action: live-reconcile run `34022809958`; on full success open the canonical 0.7.5 PR from exact head `30f0db2...` to current main.
+Executor: HQ.
+Expected evidence: terminal job conclusions and package/provenance.
+Acceptance condition: no PR created until frozen candidate is green.
 
 ## 11. Last Material Revision
 
-What changed: r37 DONE for 0.7.4 reopened into r38 EXECUTING for 0.7.5 due to owner-reported shipped regression.
-Why the critical path changed: 0.7.4 warm-up uses document-start timing and does not guarantee a full minute after ChatPulse opens a new tab.
-Evidence causing the change: owner runtime report plus live main planner/service-worker/test inspection.
+What changed: CP-1 completed; candidate frozen at `30f0db2...`; 0.7.5 release CI started.
+Why the critical path changed: implementation is complete and execution moved to validation.
+Evidence causing the change: exact branch commits and run `34022809958`.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: created `release/0.7.5-post-open-auth-warmup` from exact main `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8` and verified the bounded design.
-Active external executions and exact refs: NONE.
+Last completed atomic action: froze 0.7.5 candidate `30f0db2...` and launched repository-native release validation.
+Active external executions and exact refs: run `34022809958` on `release/0.7.5-post-open-auth-warmup` at `30f0db2532786b3e9d876d7a151afba3ba593ac7`.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r38 + release branch.
-Exact next action after recovery: implement CP-1 on `release/0.7.5-post-open-auth-warmup`.
+Recovery entrypoint: live master + r39 + exact branch run `34022809958`.
+Exact next action after recovery: inspect terminal CI; if fully green, create canonical PR; if red, inspect exact failing job and repair only the evidenced cause.
 Rotation blockers: NONE.
