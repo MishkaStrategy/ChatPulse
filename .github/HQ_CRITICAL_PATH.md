@@ -2,14 +2,14 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 42
-updated_at: 2026-09-06T09:57:00Z
+critical_path_revision: 43
+updated_at: 2026-09-06T10:01:00Z
 project_state: VALIDATING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: refs/pull/29/merge
-basis_sha: 7583fe5a0104bf9170cc4b9154ad4b9659e5d664
+basis_ref: main
+basis_sha: 8cff97b4651ed32810ef7783815b49175432ad66
 ---
 
 # HQ Critical Path
@@ -20,171 +20,174 @@ Release target: ChatPulse 0.7.5 beta — eliminate the shipped watchdog auth rac
 
 Release surface: bounded GitHub-watchdog auth-grace planner, focused regressions, 0.7.5 extension/package metadata and repository-native release CI.
 
-Definition of RELEASED: whenever an eligible watchdog restart first observes `authenticated: false`, that restart episode receives exactly one non-extending 60-second warm-up from that first unauthenticated observation. Time already spent loading/hydrating the document cannot consume that minute. During grace no command is sent. The same `restartKey` cannot receive a second grace after expiry. At expiry the targeted watchdog path performs a fresh GitHub Actions read before send eligibility. If ChatGPT still reports unauthenticated, restart remains fail-closed. New workflow activity, successful restart, watcher reset and global Stop retain their existing invalidation behavior; at-most-once dispatch remains intact.
+Definition of RELEASED: whenever an eligible watchdog restart first observes `authenticated: false`, that restart episode receives exactly one non-extending 60-second warm-up from that first unauthenticated observation. Time already spent loading/hydrating cannot consume that minute. During grace no command is sent. The same `restartKey` cannot receive a second grace after expiry. At expiry the targeted watchdog performs a fresh GitHub Actions read before send eligibility. If ChatGPT still reports unauthenticated, restart remains fail-closed. New workflow activity, successful restart, watcher reset and global Stop retain existing invalidation behavior; at-most-once dispatch remains intact.
 
 Mandatory release gates:
-- [x] planner guarantees a full 60 seconds from first unauthenticated restart observation rather than from `documentStartedAt`;
-- [x] focused regressions cover full-minute timing, document-age independence, non-extension, one grace per restart episode and authenticated bypass;
-- [x] manifest/package/workflow metadata targets 0.7.5 beta;
-- [x] frozen candidate five deterministic audit cycles are green;
-- [x] frozen candidate Chromium MV3 E2E is green;
-- [x] frozen candidate reproducible package/provenance is green;
-- [ ] canonical PR exact merge-ref, reviews/threads, dependency routing and release CI are green;
-- [ ] exact post-merge main release evidence is green.
+- [x] full 60 seconds from first unauthenticated watchdog observation;
+- [x] focused timing/non-extension/authenticated-bypass regressions;
+- [x] 0.7.5 beta release metadata;
+- [x] exact frozen branch release gate;
+- [x] canonical PR #29 merge-ref/reviews/threads/dependency/release gates;
+- [x] canonical PR #29 merged from exact frozen head;
+- [ ] exact post-merge main release gate and reproducible provenance are green.
 
-Required release evidence: exact SHAs/run IDs, deterministic suite, Chromium MV3 E2E, reproducible package/provenance, PR review/thread state, mergeability and exact post-merge main CI.
+Required release evidence: exact SHAs/run IDs, five deterministic audit cycles, Chromium MV3 E2E, reproducible package/provenance, PR review/thread state and exact post-merge main evidence.
 
-Known explicit exclusions: do not weaken the authenticated send gate; do not change GitHub poll cadence, inactivity thresholds, scheduler behavior, credential boundaries, Telegram behavior, tab recovery or unrelated draft PR #17.
+Known explicit exclusions: no weakening of authenticated send gate; no GitHub poll cadence, inactivity threshold, scheduler, credential boundary, Telegram, tab-recovery or unrelated draft PR #17 changes.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch observed SHA before this state-only checkpoint: `da5de22f723d381e6d0575a1cad4a9bdf0f43d22`.
-Product basis before 0.7.5 patch: `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8`; intervening main commits are HQ state-only.
-Frozen release branch: `release/0.7.5-post-open-auth-warmup`.
-Frozen branch SHA: `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`.
-Canonical PR: #29.
-Current PR merge ref: `7583fe5a0104bf9170cc4b9154ad4b9659e5d664`.
-Relevant open PRs: canonical #29; unrelated draft #17 excluded.
+Validated frozen branch: `release/0.7.5-post-open-auth-warmup` at `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`.
+Frozen branch run: `34024655868` SUCCESS.
+Canonical PR: #29, merged.
+Validated PR merge-ref: `7583fe5a0104bf9170cc4b9154ad4b9659e5d664` (merged frozen head into pre-r42 state `da5de22f...`).
+PR release run: `34026030803` SUCCESS on exact merge-ref; dependency policy run `34026030922` SUCCESS.
+Product merge commit: `8cff97b4651ed32810ef7783815b49175432ad66`, parents `196ba641358ad3e1701e790e92a42974fea606e4` (r42 state-only) and frozen head `1f400040...`.
+Exact post-merge release run: `34026201623` on product merge SHA, active.
+Exact post-merge dependency policy run: `34026201698`, SUCCESS.
+Relevant open PRs: unrelated draft #17 excluded.
 Relevant Issues: retired #14 excluded.
-Relevant CI / workflows: frozen run `34024655868` SUCCESS; PR release run `34026030803` in progress; dependency runner policy run `34026030922` SUCCESS.
-Relevant release/deployment state: frozen candidate validated; canonical PR open and mergeable; merge not yet performed.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner with optional GitHub Actions watchdog.
 
-Architecture / major components: watchdog restart in `service-worker-v2.js`; bounded grace planning in `github-restart-grace.js`; content snapshot exposes auth state; model persists grace key/deadline; Node and loaded-Chromium tests cover release behavior.
+Architecture / major components: watchdog restart in `service-worker-v2.js`; bounded grace planning in `github-restart-grace.js`; auth state from content snapshot; durable runtime state; Node and loaded-Chromium validation.
 
-Build / packaging: Node static/test audit plus deterministic Python ZIP/source-manifest package.
+Build / packaging: Node static/test audit plus deterministic Python ZIP/source-manifest packaging.
 
-Tests / validation: deterministic extension suite, focused `github-restart-grace.test.mjs`, service-worker integration and Chromium MV3 E2E.
+Tests / validation: 113 deterministic extension tests in merge context, focused auth-grace regressions, service-worker integration and Chromium MV3 browser E2E.
 
-CI: 0.7.5 release workflow has five deterministic audit cycles on `[self-hosted, fast]`, Chromium MV3 E2E on GitHub-hosted Ubuntu, then reproducible package/provenance. Workflow changes also trigger dependency-runner policy validation.
+CI: five deterministic audit cycles, Chromium MV3 E2E, reproducible package/provenance; workflow changes also trigger dependency-runner policy validation.
 
-Governance: live organizational HQ master v1.2; `MishkaStrategy/ChatPulse` is the sole working repository.
+Release / deployment: PR #29 merged; final exact-main evidence active.
 
-External release dependencies: GitHub Actions runner capacity.
+Governance: live organizational HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository. State-only HQ commits do not invalidate product critical-path evidence.
 
-Material findings: 0.7.4 had correct one-shot/non-extending machinery, but initial grace deadline was tied to document age. 0.7.5 keeps the existing alarm/revalidation/send path and starts the initial grace from the first unauthenticated watchdog observation for a restart key. Superseded candidate `30f0db2...` exposed a flaky integration upper bound (`60002 ms` against hard `<=60000`); the assertion was repaired test-only. Frozen candidate `1f400040...` then passed all release gates. Canonical PR #29 contains exactly eight expected release files and is cleanly mergeable against state-only-ahead main.
+External release dependencies: GitHub Actions runners.
+
+Material findings: 0.7.4 anchored grace to document age; 0.7.5 starts the existing bounded one-shot grace at first unauthenticated watchdog observation. A superseded candidate exposed only a 2 ms timing-test jitter and was repaired test-only. Frozen and PR merge-context gates are fully green. Final product merge `8cff97b4...` is now under exact-main validation.
 
 ## 4. Release Gates
 
 ### GATE-1 — Behavior implementation
 Status: SATISFIED
-Evidence: frozen candidate `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`; runtime fix and focused regressions present; follow-up timing change is test-only.
+Evidence: frozen head `1f400040...`; runtime planner fix plus focused regressions; authenticated send path unchanged.
 Blocking items: none.
 
 ### GATE-2 — Frozen branch validation
 Status: SATISFIED
-Evidence: run `34024655868` completed SUCCESS on exact frozen head `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`. All five deterministic audit cycles SUCCESS, Chromium MV3 E2E SUCCESS, reproducible package/provenance SUCCESS. ZIP SHA-256 `b6d42cf0788fd9c6e20965cfae1c1a8890f8b1c9d859edde1270499fd9013b43`; source-manifest SHA-256 `f5ef775f60f4993617b78fc1267ace08dfbfd3b946ec0b525c75dc17de9d8d68`; file count 18; reproducible timestamp `2020-01-01T00:00:00`; artifact ID `9986673651`, outer artifact digest `sha256:e3900e98284ead99d0c8a0f66003804eeb279785bd0f5eef4af1ee64035141f8`.
+Evidence: run `34024655868` SUCCESS; 5/5 audits, Chromium E2E and package/provenance. Canonical ZIP SHA-256 `b6d42cf0788fd9c6e20965cfae1c1a8890f8b1c9d859edde1270499fd9013b43`; source-manifest SHA-256 `f5ef775f60f4993617b78fc1267ace08dfbfd3b946ec0b525c75dc17de9d8d68`; artifact `9986673651`; file count 18; timestamp `2020-01-01T00:00:00`.
 Blocking items: none.
 
 ### GATE-3 — Canonical PR #29
-Status: UNSATISFIED
-Evidence: PR #29 open from exact frozen head `1f400040...` to `main`; raw GitHub state reports `mergeable: true`, `rebaseable: true`, `mergeable_state: unstable` while checks run. Reviews: none. Review threads: none. Changed files are exactly `.github/workflows/extension-ci.yml`, `chrome-extension/background/github-restart-grace.js`, `chrome-extension/manifest.json`, `package.json`, `scripts/package_extension.py`, `scripts/validate_extension_release.mjs`, `tests/chrome-extension/github-restart-grace.test.mjs`, `tests/chrome-extension/service-worker.test.mjs`. Dependency runner policy run `34026030922` SUCCESS. PR release run `34026030803` is in progress. Current merge ref is `7583fe5a0104bf9170cc4b9154ad4b9659e5d664`.
-Blocking items: terminal green PR release run and exact merge-ref verification.
+Status: SATISFIED
+Evidence: exact 8 expected files; `mergeable_state: clean`; reviews none; review threads none; dependency run `34026030922` SUCCESS; release run `34026030803` SUCCESS with 5/5 audits, Chromium E2E and package/provenance on exact merge-ref `7583fe5a...`; merged with expected head `1f400040...` into product merge `8cff97b4...`.
+Blocking items: none.
 
 ### GATE-4 — Post-merge main
 Status: UNSATISFIED
-Evidence: none yet.
-Blocking items: GATE-3.
+Evidence: exact main product merge `8cff97b4651ed32810ef7783815b49175432ad66`; release run `34026201623` is in progress with all six primary jobs on runners; dependency policy `34026201698` SUCCESS.
+Blocking items: terminal success of five audits + Chromium E2E + downstream reproducible package/provenance, with canonical hashes.
 
 ## 5. Current Critical Path
 
 ### CP-1 — Implement full restart auth warm-up
 Status: DONE
 Release gate: GATE-1.
-Why critical: fixes the reported race without changing send authorization semantics.
+Why critical: fixes reported fresh-tab auth race without changing authorization semantics.
 Depends on: none.
 Blocks: CP-2.
 Execution plane: HQ_DIRECT.
-Exact scope: planner, focused tests, 0.7.5 manifest/package/workflow metadata and timing-robust service-worker integration assertion.
-Acceptance condition: one 60-second non-extending grace per unauthenticated restart key; authenticated pages no grace; expiry remains fail-closed and fresh-revalidated.
-Evidence: exact frozen branch head `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`.
+Exact scope: planner, focused tests and required 0.7.5 release metadata.
+Acceptance condition: one full, non-extending minute per unauthenticated restart episode; authenticated pages bypass; expiry remains fresh-revalidated and fail-closed.
+Evidence: frozen head `1f400040...`.
 
 ### CP-2 — Validate frozen release branch
 Status: DONE
 Release gate: GATE-2.
-Why critical: exact candidate must pass repository-native release gates.
+Why critical: exact candidate must pass repository-native gates before integration.
 Depends on: CP-1.
 Blocks: CP-3.
 Execution plane: PROJECT_RUNNER.
-Exact scope: run `34024655868` on exact frozen head.
-Acceptance condition: all five deterministic audits + Chromium E2E + reproducible package/provenance succeed.
-Evidence: run `34024655868` SUCCESS and canonical hashes above.
+Exact scope: run `34024655868`.
+Acceptance condition: full branch gate success and reproducible provenance.
+Evidence: SUCCESS and canonical hashes above.
 
 ### CP-3 — Validate and merge canonical PR #29
-Status: VERIFYING
+Status: DONE
 Release gate: GATE-3.
+Why critical: validates integration into main context before merge.
 Depends on: CP-2.
 Blocks: CP-4.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
-Exact scope: validate exact PR head/base/diff, merge ref, reviews, threads, dependency routing, release CI and mergeability; merge only after all evidence is green.
-Acceptance condition: PR #29 merged from exact frozen head only after green merge-context release validation.
-Evidence: mergeable true; no reviews/threads; dependency policy SUCCESS; release run `34026030803` active.
+Exact scope: head/base/diff/merge-ref/reviews/threads/dependency/release CI/mergeability and expected-head merge.
+Acceptance condition: merge only from validated frozen head.
+Evidence: PR #29 merged; product merge `8cff97b4...`.
 
 ### CP-4 — Validate exact post-merge main
-Status: PENDING
+Status: VERIFYING
 Release gate: GATE-4.
+Why critical: RELEASED requires independent exact-main evidence, not merge alone.
 Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
-Exact scope: exact main 0.7.5 release CI and provenance.
-Acceptance condition: mandatory main evidence green on exact product merge SHA with canonical package hashes.
-Evidence: pending.
+Exact scope: run `34026201623` on `8cff97b4...`, plus reproducible provenance; dependency run `34026201698` already green.
+Acceptance condition: 5/5 audits + Chromium E2E + package/provenance SUCCESS with canonical package hashes.
+Evidence: active exact-main run.
 
 ## 6. Active Execution Registry
 
-HQ: canonical PR verification; no branch/product writes while PR gate is active.
+HQ: no product writes; live-reconcile exact-main validation and close release only after full evidence.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: PR #29 release run `34026030803` in progress; dependency runner policy `34026030922` SUCCESS. Frozen branch run `34024655868` SUCCESS is durable release evidence.
+CI/runtime: release run `34026201623` on `main` at `8cff97b4651ed32810ef7783815b49175432ad66` active; dependency policy `34026201698` SUCCESS.
 
 ## 7. Safe Parallel Work
 
-NONE — PR release CI is the remaining pre-merge dependency. No independent release-critical slice is safe or useful before exact merge-context validation finishes.
+NONE — exact post-merge main validation is the sole remaining release-critical dependency; duplicate execution or additional product/state changes cannot improve evidence.
 
 ## 8. Current Blockers
 
-NONE. Current state is active PR CI, not `BLOCKED`.
+NONE. Current state is active final CI, not `BLOCKED`.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — relevant planner, service-worker retry/alarm path, content auth gate, runtime state, tests, package metadata, release workflow, dependency routing and PR diff covered.
+Repository Coverage Audit: PASS — planner, service-worker alarm/revalidation path, auth/send boundary, tests, packaging, release CI, dependency routing and PR integration covered.
 
-Evidence Audit: PASS — frozen exact-head run is fully green with canonical hashes; canonical PR exact identities, mergeability, reviews/threads and active checks are live-verified.
+Evidence Audit: PASS — frozen branch and PR merge-context are independently green with exact identities/hashes; final main run is exact and live.
 
-Release Alignment Audit: PASS — release contains only the requested auth warm-up correction plus required tests/release metadata and a test-only anti-flake repair.
+Release Alignment Audit: PASS — only requested auth warm-up semantics plus tests/release metadata and test-only anti-flake repair are in product diff.
 
-Dependency & Ordering Audit: PASS — implementation → frozen branch CI → canonical PR merge-context CI → merge → exact main CI.
+Dependency & Ordering Audit: PASS — implementation → frozen validation → PR merge-context validation → merge → exact-main validation.
 
-Execution & Parallelism Audit: PASS — no duplicate execution or premature merge; PR gate and dependency policy are the only active validation surfaces.
+Execution & Parallelism Audit: PASS — no premature merge, duplicate CI or overlapping product write; final CI owns remaining gate.
 
-Adversarial Audit: PASS — no unauthorized delayed send; grace remains one-shot and non-extending; expiry fresh-revalidates GitHub Actions; true logout stays fail-closed; PR contains no unrelated product files.
+Adversarial Audit: PASS — no blind delayed send; grace non-extending and one-shot; expiry fresh-revalidates; true logout fail-closed; credential/at-most-once boundaries unchanged.
 
-Material findings and resolutions: frozen candidate is now fully validated. PR #29 is mergeable despite main being ahead by HQ state-only commits; GitHub generated merge ref `7583fe5a...`. Dependency runner policy passed. Remaining uncertainty is only the terminal PR release gate.
+Material findings and resolutions: all pre-merge release gates are closed; exact product merge is confirmed as main and has started its own release validation.
 
 ## 10. Next Action
 
-Exact next action: live-reconcile PR release run `34026030803`; if terminal SUCCESS and exact merge-ref context is verified, re-check PR head/base/mergeability/reviews/threads, then merge PR #29 with expected head SHA `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`. After merge, validate exact main release CI and provenance.
+Exact next action: live-reconcile run `34026201623`; on terminal SUCCESS verify package/provenance hashes match frozen/PR canonical hashes, then persist DONE and close the wave. On any failure inspect only the exact red job and repair only evidenced cause.
 Executor: HQ.
-Expected evidence: terminal PR release run, exact merge ref, merge result SHA, then exact main run/hashes.
-Acceptance condition: no merge before PR release gate is fully green and identities remain unchanged.
+Expected evidence: final job conclusions, artifact/provenance hashes and exact product merge identity.
+Acceptance condition: DONE only after exact-main release evidence is fully green.
 
 ## 11. Last Material Revision
 
-What changed: frozen candidate `1f400040...` passed all release validation; canonical PR #29 was opened; exact merge ref generated; dependency routing passed; PR release validation started.
-Why the critical path changed: CP-2 is complete and execution advanced to canonical PR verification.
-Evidence causing the change: run `34024655868` SUCCESS, artifact `9986673651`, PR #29, merge ref `7583fe5a...`, dependency run `34026030922` SUCCESS.
+What changed: canonical PR #29 passed all merge-context gates and was merged from frozen head into main as `8cff97b4...`; exact post-merge release validation started; dependency policy is already green.
+Why the critical path changed: CP-3 completed and CP-4 became the sole active release node.
+Evidence causing the change: PR #29 merge result, main branch identity, run `34026201623`, dependency run `34026201698`.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: opened and structurally verified canonical PR #29 after full frozen-candidate success.
-Active external executions and exact refs: PR #29 release run `34026030803` against head `1f400040b4ca0c985f52f8dc2a5775dd8bba607e` / current merge ref `7583fe5a0104bf9170cc4b9154ad4b9659e5d664`; dependency policy `34026030922` SUCCESS.
+Last completed atomic action: merged validated PR #29 and started exact-main reconciliation.
+Active external executions and exact refs: release run `34026201623` on `main` product SHA `8cff97b4651ed32810ef7783815b49175432ad66`; dependency run `34026201698` SUCCESS.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live organizational master + r42 + PR #29 + run `34026030803`.
-Exact next action after recovery: inspect PR release gate; on exact green, revalidate PR identities and merge; otherwise diagnose exact red job only.
+Recovery entrypoint: live organizational master + r43 + exact product merge `8cff97b4...` + run `34026201623`.
+Exact next action after recovery: inspect run `34026201623`; on full success verify provenance and persist DONE, otherwise diagnose exact failing job only.
 Rotation blockers: NONE.
