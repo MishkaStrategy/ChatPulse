@@ -530,6 +530,7 @@ harness.setGithubFetchHandler(async () => {
     }
   };
 });
+const graceDetectionStartedAt = Date.now();
 harness.fireAlarm('chatpulse-github-actions-watchdog');
 const graceScheduleDeadline = Date.now() + 5_000;
 while (!harness.data.chatpulseState?.chats?.[0]?.githubRestartGraceUntil && Date.now() < graceScheduleDeadline) {
@@ -541,8 +542,8 @@ assert.equal(githubFetches, 1);
 const graceAlarmName = `chatpulse-github-restart-grace:${graceChatId}`;
 const graceAlarm = harness.alarms.get(graceAlarmName);
 assert.ok(graceAlarm, 'one-shot auth grace alarm must be scheduled');
-const graceDelayFromDocumentStart = graceAlarm.scheduledTime - Date.parse(graceDocumentStartedAt);
-assert.ok(graceDelayFromDocumentStart >= 59_000 && graceDelayFromDocumentStart <= 60_000, graceDelayFromDocumentStart);
+const graceDelayFromDetectionStart = graceAlarm.scheduledTime - graceDetectionStartedAt;
+assert.ok(graceDelayFromDetectionStart >= 60_000 && graceDelayFromDetectionStart <= 61_000, graceDelayFromDetectionStart);
 
 harness.fireAlarm(graceAlarmName);
 const earlyRescheduleDeadline = Date.now() + 2_000;
