@@ -44,21 +44,11 @@ export function planGithubRestartAuthGrace({
     };
   }
 
-  const documentStartedAtMs = Date.parse(String(snapshot?.documentStartedAt || ""));
-  if (!Number.isFinite(documentStartedAtMs)) {
-    return { defer: false, reason: "unknown-document-age", until: null, delayMs: 0 };
-  }
-  const safeStartedAtMs = Math.min(documentStartedAtMs, now);
-  const ageMs = Math.max(0, now - safeStartedAtMs);
-  if (ageMs >= GITHUB_RESTART_GRACE_MS) {
-    return { defer: false, reason: "document-old", until: null, delayMs: 0 };
-  }
-
-  const untilMs = safeStartedAtMs + GITHUB_RESTART_GRACE_MS;
+  const untilMs = now + GITHUB_RESTART_GRACE_MS;
   return {
     defer: true,
-    reason: "new-document",
+    reason: "restart-warmup",
     until: new Date(untilMs).toISOString(),
-    delayMs: Math.max(0, untilMs - now)
+    delayMs: GITHUB_RESTART_GRACE_MS
   };
 }
