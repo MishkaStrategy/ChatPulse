@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 39
-updated_at: 2026-09-06T08:48:00Z
+critical_path_revision: 40
+updated_at: 2026-09-06T08:53:00Z
 project_state: VALIDATING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
@@ -18,15 +18,17 @@ basis_sha: 30f0db2532786b3e9d876d7a151afba3ba593ac7
 
 Release target: ChatPulse 0.7.5 beta — eliminate the shipped watchdog auth race that can log `restart отложен: в профиле Chrome не выполнен вход` immediately after ChatPulse opens a fresh ChatGPT tab.
 
-Release surface: bounded GitHub-watchdog auth-grace planner, focused regressions, 0.7.5 extension/package metadata and ordinary release CI.
+Release surface: bounded GitHub-watchdog auth-grace planner, focused regressions, 0.7.5 extension/package metadata and repository-native release CI.
 
 Definition of RELEASED: whenever an eligible watchdog restart first observes `authenticated: false`, that restart episode receives exactly one non-extending 60-second warm-up from that first unauthenticated observation. Time already spent loading/hydrating the document cannot consume that minute. During grace no command is sent. The same `restartKey` cannot receive a second grace after expiry. At expiry the targeted watchdog path performs a fresh GitHub Actions read before send eligibility. If ChatGPT still reports unauthenticated, restart remains fail-closed. New workflow activity, successful restart, watcher reset and global Stop retain their existing invalidation behavior; at-most-once dispatch remains intact.
 
 Mandatory release gates:
 - [x] planner guarantees a full 60 seconds from first unauthenticated restart observation rather than from `documentStartedAt`;
-- [x] focused unit regression proves a 45-second-old document still receives 60, document age cannot consume the grace, same-episode grace cannot extend/restart, authenticated pages get no grace;
+- [x] focused unit regression proves a 45-second-old document still receives 60 seconds, document age cannot consume the grace, same-episode grace cannot extend/restart, authenticated pages get no grace;
 - [x] manifest/package/workflow metadata targets 0.7.5 beta;
-- [ ] frozen release branch exact-head CI is green;
+- [x] frozen candidate Chromium MV3 E2E is green;
+- [ ] five frozen-candidate deterministic audit cycles are green;
+- [ ] frozen-candidate reproducible package/provenance is green;
 - [ ] canonical PR exact merge-ref, reviews/threads and mergeability are green;
 - [ ] exact post-merge main release evidence is green.
 
@@ -37,11 +39,12 @@ Known explicit exclusions: do not weaken the authenticated send gate; do not cha
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch product basis before this patch: `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8` (subsequent main changes are HQ state-only).
+Default branch observed SHA before this state-only checkpoint: `a0a048d94867b94dd0f3744dda9323c84a2155ac`.
+Product basis before 0.7.5 patch: `2b5527fdc3daa6f8b5aefc0b37c474ac12e8c7e8`; intervening main commits are HQ state-only.
 Critical-path basis ref: `release/0.7.5-post-open-auth-warmup`.
 Critical-path basis SHA: `30f0db2532786b3e9d876d7a151afba3ba593ac7`.
 Canonical integration branch: `release/0.7.5-post-open-auth-warmup`.
-Canonical PR / RC: pending branch validation.
+Canonical PR / RC: pending frozen branch validation.
 Relevant open PRs: draft #17 excluded.
 Relevant Issues: retired #14 excluded.
 Relevant CI / workflows: `.github/workflows/extension-ci.yml`; exact branch run `34022809958`.
@@ -57,25 +60,25 @@ Build / packaging: Node static/test audit plus deterministic Python ZIP/source-m
 
 Tests / validation: deterministic extension suite, focused `github-restart-grace.test.mjs`, service-worker integration and Chromium MV3 E2E.
 
-CI: release workflow now targets 0.7.5 branch/main, five deterministic audit cycles, browser E2E, then reproducible package/provenance.
+CI: 0.7.5 release workflow has five deterministic audit cycles on `[self-hosted, fast]`, Chromium MV3 E2E on GitHub-hosted Ubuntu, then reproducible package/provenance.
 
 Governance: live organizational HQ master v1.2; `MishkaStrategy/ChatPulse` is the sole working repository.
 
-External release dependencies: GitHub Actions runners.
+External release dependencies: GitHub Actions runner capacity.
 
-Material findings: 0.7.4 had the correct one-shot/non-extending machinery, but initial deadline was `documentStartedAt + 60s`. A slow load could therefore spend most of the grace before the watchdog even obtained the unauthenticated snapshot. The bounded repair keeps the existing service-worker alarm/revalidation path and changes only the planner's initial clock origin to `now + 60s` on first unauthenticated observation for the restart key.
+Material findings: 0.7.4 had correct one-shot/non-extending machinery, but its initial deadline was tied to document age. The 0.7.5 repair keeps the existing alarm/revalidation/send path and changes only the initial clock origin to the first unauthenticated watchdog observation for a restart key. Frozen candidate browser E2E has independently passed. Five deterministic jobs are currently queued for the repository's self-hosted `fast` runner class; there are no other in-progress ChatPulse workflow runs, so this is an external runner-capacity wait rather than evidence of product failure.
 
 ## 4. Release Gates
 
 ### GATE-1 — Behavior implementation
 Status: SATISFIED
-Evidence: branch helper commit lineage through `30f0db2...`; focused tests updated. Existing service-worker integration remains unchanged and exercises one-shot alarm + fresh GitHub retry.
+Evidence: exact candidate `30f0db2532786b3e9d876d7a151afba3ba593ac7`; focused tests and 0.7.5 release metadata are present.
 Blocking items: none.
 
 ### GATE-2 — Frozen branch validation
 Status: UNSATISFIED
-Evidence: run `34022809958` on exact `30f0db2532786b3e9d876d7a151afba3ba593ac7`; five self-hosted audit jobs plus Chromium E2E are queued.
-Blocking items: CI terminal success and downstream package/provenance.
+Evidence: run `34022809958` on exact candidate `30f0db2532786b3e9d876d7a151afba3ba593ac7`; Chromium MV3 browser E2E job `101458397716` completed SUCCESS. Five deterministic audit jobs `101458397552`, `101458397615`, `101458397623`, `101458397654`, `101458397734` remain queued on `[self-hosted, fast]`. Package/provenance is downstream and has not started.
+Blocking items: terminal success of the five deterministic jobs and downstream package/provenance.
 
 ### GATE-3 — Canonical PR
 Status: UNSATISFIED
@@ -98,7 +101,7 @@ Blocks: CP-2.
 Execution plane: HQ_DIRECT.
 Exact scope: planner, focused test, 0.7.5 manifest/package/workflow metadata and release-validation adapter.
 Acceptance condition: one 60-second non-extending grace per unauthenticated restart key; authenticated pages no grace; expiry remains fail-closed and fresh-revalidated.
-Evidence: exact branch head `30f0db2...`.
+Evidence: exact branch head `30f0db2532786b3e9d876d7a151afba3ba593ac7`.
 
 ### CP-2 — Validate frozen release branch
 Status: VERIFYING
@@ -107,9 +110,9 @@ Why critical: exact candidate must pass repository-native release gates.
 Depends on: CP-1.
 Blocks: CP-3.
 Execution plane: PROJECT_RUNNER.
-Exact scope: run `34022809958` on exact head `30f0db2...`.
-Acceptance condition: all five audits + Chromium E2E + reproducible package/provenance succeed.
-Evidence: active run `34022809958`.
+Exact scope: run `34022809958` on exact head `30f0db2532786b3e9d876d7a151afba3ba593ac7`.
+Acceptance condition: all five deterministic audits + Chromium E2E + reproducible package/provenance succeed.
+Evidence: browser E2E SUCCESS; five deterministic jobs queued; package pending.
 
 ### CP-3 — Validate and merge canonical PR
 Status: PENDING
@@ -133,55 +136,55 @@ Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: no active write; next action depends on branch CI result.
+HQ: no active write after this checkpoint; next action depends on branch CI result.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: GitHub Actions run `34022809958`, ref `release/0.7.5-post-open-auth-warmup`, SHA `30f0db2532786b3e9d876d7a151afba3ba593ac7`; expected evidence is five deterministic audit successes, Chromium E2E success and package/provenance success.
+CI/runtime: GitHub Actions run `34022809958`, ref `release/0.7.5-post-open-auth-warmup`, SHA `30f0db2532786b3e9d876d7a151afba3ba593ac7`. Browser E2E is SUCCESS. Five self-hosted deterministic audit jobs are queued. Expected next event: one or more queued jobs acquire `[self-hosted, fast]` runners and complete, followed by package/provenance when prerequisites are green.
 
 ## 7. Safe Parallel Work
 
-NONE — opening/merging the canonical PR before the frozen exact-head gate would violate release ordering; no independent critical slice remains while branch CI is active.
+NONE — opening/merging the canonical PR before the frozen exact-head gate would violate release ordering; changing runner routing solely to avoid a short external capacity wait would mutate the frozen candidate and add unnecessary CI/governance surface. Duplicate execution is prohibited while the canonical run is queued.
 
 ## 8. Current Blockers
 
-NONE. Current state is external CI wait, not BLOCKED.
+NONE. Current state is external CI wait, not `BLOCKED`.
 
 ## 9. Critical Path Audits
 
 Repository Coverage Audit: PASS — relevant planner, service-worker retry/alarm path, content auth gate, runtime state, focused tests, package metadata and release workflow inspected.
 
-Evidence Audit: PASS — owner runtime report plus exact main code/test evidence identified the timing-origin defect; branch diff and exact CI run are live.
+Evidence Audit: PASS — owner runtime report plus exact source/test evidence identified the timing-origin defect; exact frozen SHA and CI identities are recorded.
 
 Release Alignment Audit: PASS — patch changes only auth warm-up timing plus required release/test metadata.
 
 Dependency & Ordering Audit: PASS — implementation → exact frozen branch CI → PR → merge → exact main CI.
 
-Execution & Parallelism Audit: PASS — HQ direct bounded writes completed; repository runner now owns validation; no duplicate execution.
+Execution & Parallelism Audit: PASS — canonical run retained; no duplicate rerun or premature PR; self-hosted capacity wait is observed rather than bypassed.
 
 Adversarial Audit: PASS — delay cannot cause an unauthorized send, same restart key cannot extend/restart grace, authenticated pages bypass grace, expiry still routes through fresh GitHub Actions check and true logout remains fail-closed.
 
-Material findings and resolutions: the first r38 design considered carrying an explicit tab-open timestamp through the service worker, but the smaller verified repair is stronger against all load-duration races: the already-existing one-shot grace begins on the first unauthenticated watchdog observation. It changes no service-worker send path and remains bounded by restart key.
+Material findings and resolutions: browser E2E independently passed on exact candidate. Five deterministic audit cycles remain queued due to unavailable matching runner capacity. No product failure is evidenced and no governance-safe critical-path action is unblocked before those jobs finish.
 
 ## 10. Next Action
 
-Exact next action: live-reconcile run `34022809958`; on full success open the canonical 0.7.5 PR from exact head `30f0db2...` to current main.
+Exact next action: on next invocation or relevant Actions event, live-reconcile run `34022809958`; if all five deterministic jobs and package/provenance are green, create the canonical 0.7.5 PR from exact head `30f0db2532786b3e9d876d7a151afba3ba593ac7` to current main. If any job fails, inspect that exact failing job and repair only the evidenced cause.
 Executor: HQ.
-Expected evidence: terminal job conclusions and package/provenance.
-Acceptance condition: no PR created until frozen candidate is green.
+Expected evidence: terminal deterministic job conclusions and package/provenance.
+Acceptance condition: no PR created until frozen candidate is fully green.
 
 ## 11. Last Material Revision
 
-What changed: CP-1 completed; candidate frozen at `30f0db2...`; 0.7.5 release CI started.
-Why the critical path changed: implementation is complete and execution moved to validation.
-Evidence causing the change: exact branch commits and run `34022809958`.
+What changed: Chromium MV3 E2E on frozen candidate closed SUCCESS; deterministic audit jobs remain queued on self-hosted fast runners.
+Why the critical path changed: GATE-2 gained independent browser evidence but is not yet complete.
+Evidence causing the change: run `34022809958`, job `101458397716` SUCCESS; five exact deterministic job IDs remain queued.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: froze 0.7.5 candidate `30f0db2...` and launched repository-native release validation.
-Active external executions and exact refs: run `34022809958` on `release/0.7.5-post-open-auth-warmup` at `30f0db2532786b3e9d876d7a151afba3ba593ac7`.
+Last completed atomic action: live-reconciled frozen run and persisted browser-success/runner-wait evidence.
+Active external executions and exact refs: run `34022809958` on `release/0.7.5-post-open-auth-warmup` at `30f0db2532786b3e9d876d7a151afba3ba593ac7`; deterministic jobs `101458397552`, `101458397615`, `101458397623`, `101458397654`, `101458397734` queued; browser job `101458397716` SUCCESS.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r39 + exact branch run `34022809958`.
-Exact next action after recovery: inspect terminal CI; if fully green, create canonical PR; if red, inspect exact failing job and repair only the evidenced cause.
+Recovery entrypoint: live organizational master + r40 + exact run `34022809958`.
+Exact next action after recovery: inspect run `34022809958`; on full frozen-candidate success open canonical PR, otherwise diagnose exact red job only.
 Rotation blockers: NONE.
