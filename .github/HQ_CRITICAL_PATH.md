@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 50
-updated_at: 2026-09-07T11:08:00Z
+critical_path_revision: 51
+updated_at: 2026-09-07T11:09:00Z
 project_state: RELEASING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
@@ -37,34 +37,26 @@ Known explicit exclusions: no GitHub write API; no workflow dispatch; no token i
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch observed product SHA: `67ca333b6ed270652fb45fd6aede641ca31b04d6`.
+Default branch product SHA: `67ca333b6ed270652fb45fd6aede641ca31b04d6`; later HQ critical-path commits are state-only and do not change the release basis.
 Critical-path basis ref: `main`.
 Critical-path basis SHA: `67ca333b6ed270652fb45fd6aede641ca31b04d6`.
 Canonical integration branch: `release/0.7.6-global-github-pat`.
 Canonical PR / RC: PR #30 merged from exact head `9ed53d2d74b9cc20fb580d540e7d5ca3bb493597` as merge commit `67ca333b6ed270652fb45fd6aede641ca31b04d6`.
 Relevant open PRs: draft #17 unrelated/excluded; PR #30 closed/merged.
-Relevant CI / workflows: frozen run `34110957235` attempt 2 SUCCESS; PR release run `34113214516` SUCCESS; PR dependency run `34113214636` SUCCESS; exact-main release run `34115019057` IN_PROGRESS; exact-main dependency run `34115019009` IN_PROGRESS.
+Relevant CI / workflows: frozen run `34110957235` attempt 2 SUCCESS; PR release run `34113214516` SUCCESS; PR dependency run `34113214636` SUCCESS; exact-main dependency run `34115019009` SUCCESS; exact-main release run `34115019057` IN_PROGRESS.
 Relevant release/deployment state: product merge completed; exact-main release proof active.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner with optional GitHub Actions watchdog and Telegram notifications.
-
 Architecture / major components: credential boundary in `background/github-actions.js`; shared/individual token UI in `options/github-token-ui.js`; watchdog runtime remains outside credential storage.
-
 Build / packaging: Node audit suite plus deterministic Python ZIP/source-manifest packaging.
-
 Tests / validation: focused GitHub credential/UI tests, broader extension suite, static validator, loaded Chromium MV3 E2E.
-
 CI: five deterministic audit cycles, Chromium E2E, reproducible package/provenance; dependency policy in PR/main contexts.
-
 Release / deployment: frozen branch -> canonical PR -> merge -> exact-main validation.
-
 Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository.
-
 External release dependencies: GitHub Actions runners and artifact service.
-
-Material findings: frozen candidate inner ZIP SHA-256 is `5872b5ef4a4ea88eaaca2a49d4b668cc7eabd596bcff41971d86ad529593bae0`; source-manifest SHA-256 is `05af20c8c290a1c3425d4020895c168c37629543f86c1aaa723ee13235a4eabf`; frozen artifact ID `10015153424`. PR #30 contained exactly the expected 10 files, both PR checks passed, reviews/threads remained empty and mergeability remained clean. Main drift between PR creation and merge was one HQ-only `.github/HQ_CRITICAL_PATH.md` commit and did not alter product scope. Expected-head merge succeeded and current product main is `67ca333b...`.
+Material findings: frozen candidate inner ZIP SHA-256 is `5872b5ef4a4ea88eaaca2a49d4b668cc7eabd596bcff41971d86ad529593bae0`; source-manifest SHA-256 is `05af20c8c290a1c3425d4020895c168c37629543f86c1aaa723ee13235a4eabf`; frozen artifact ID `10015153424`. PR #30 had exactly the expected 10 files, both PR checks passed, reviews/threads remained empty and expected-head merge succeeded. Exact-main dependency policy `34115019009` is SUCCESS. Exact-main release run `34115019057` has Chromium MV3 E2E SUCCESS and audit cycles 3/5 SUCCESS; cycles 1/2 had completed their audit step and were finishing, cycle 4 remained active at checkpoint; package/provenance had not yet started.
 
 ## 4. Release Gates
 
@@ -85,8 +77,8 @@ Blocking items: NONE.
 
 ### GATE-4 — Post-merge main
 Status: UNSATISFIED
-Evidence: exact-main release run `34115019057` and dependency run `34115019009` are active on product merge SHA `67ca333b...`.
-Blocking items: terminal SUCCESS of both exact-main runs plus finalized artifact/provenance matching frozen candidate hashes.
+Evidence: dependency run `34115019009` SUCCESS; release run `34115019057` IN_PROGRESS on exact product SHA `67ca333b...`.
+Blocking items: terminal SUCCESS of exact-main release run plus finalized artifact/provenance matching frozen candidate hashes.
 
 ## 5. Current Critical Path
 
@@ -131,8 +123,8 @@ Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
 Exact scope: exact-main release gate, dependency policy and reproducible provenance on `67ca333b...`.
-Acceptance condition: both exact-main runs SUCCESS and finalized main package hashes equal frozen candidate hashes.
-Evidence: release run `34115019057` IN_PROGRESS; dependency run `34115019009` IN_PROGRESS.
+Acceptance condition: release run SUCCESS and finalized main package hashes equal frozen candidate hashes; dependency policy already SUCCESS.
+Evidence: dependency run `34115019009` SUCCESS; release run `34115019057` IN_PROGRESS.
 
 ## 6. Active Execution Registry
 
@@ -140,51 +132,45 @@ HQ: exact-main release verification owner; no product writes.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: `34115019057` ChatPulse 0.7.6 beta release gate IN_PROGRESS and `34115019009` Dependency runner policy IN_PROGRESS, both on exact main SHA `67ca333b6ed270652fb45fd6aede641ca31b04d6`.
+CI/runtime: `34115019057` ChatPulse 0.7.6 beta release gate IN_PROGRESS on exact product main SHA `67ca333b6ed270652fb45fd6aede641ca31b04d6`; dependency run `34115019009` SUCCESS. State-only HQ commits after `67ca333b...` are not release-basis changes.
 
 ## 7. Safe Parallel Work
 
-NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE: both exact-main release prerequisites are already running; duplicate execution would add no evidence.
+NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE: the sole remaining release prerequisite is already executing in exact-main CI; duplicate execution adds no evidence.
 
 ## 8. Current Blockers
 
-NONE. Exact-main CI is active external execution, not a blocker.
+NONE. Exact-main release CI is active external execution, not a blocker.
 
 ## 9. Critical Path Audits
 
 Repository Coverage Audit: PASS — product, credential boundary, tests, validators, package/provenance, PR/merge and exact-main surfaces covered.
-
-Evidence Audit: PASS — frozen, PR and merge evidence are exact and live-verified; remaining evidence is explicitly active exact-main CI.
-
+Evidence Audit: PASS — frozen, PR, merge and dependency evidence are exact and live-verified; remaining evidence is explicitly active exact-main release CI.
 Release Alignment Audit: PASS — only exact-main release proof remains.
-
 Dependency & Ordering Audit: PASS — branch validation preceded PR; PR checks preceded merge; exact-main proof follows merge.
-
-Execution & Parallelism Audit: PASS — both remaining main runs are already active; no duplicate runner or code work is useful.
-
+Execution & Parallelism Audit: PASS — the remaining exact-main release run is active; no duplicate runner or code work is useful.
 Adversarial Audit: PASS — strongest remaining failure modes are main-context CI failure, package/provenance mismatch or artifact finalization failure; CP-4 checks exactly these before DONE.
-
-Material findings and resolutions: PR merge used `expected_head_sha`, current main equals returned merge SHA, and pre-merge main drift was state-only governance content.
+Material findings and resolutions: PR merge used `expected_head_sha`; current product basis was verified as `67ca333b...`; state-only HQ commits do not invalidate product release evidence.
 
 ## 10. Next Action
 
-Exact next action: live-reconcile exact-main runs `34115019057` and `34115019009`; on SUCCESS verify finalized artifact/provenance and compare main ZIP/source-manifest hashes with frozen candidate hashes.
+Exact next action: live-reconcile exact-main release run `34115019057`; on SUCCESS verify finalized artifact/provenance and compare main ZIP/source-manifest hashes with frozen candidate hashes.
 Executor: HQ.
-Expected evidence: terminal main run conclusions, artifact ID/digest and canonical hashes.
-Acceptance condition: GATE-4 SATISFIED only if exact-main product SHA is fully green and hashes match frozen candidate.
+Expected evidence: terminal release-run conclusion, artifact ID/digest and canonical hashes.
+Acceptance condition: GATE-4 SATISFIED only if exact product SHA is fully green and hashes match frozen candidate.
 
 ## 11. Last Material Revision
 
-What changed: PR #30 passed both PR checks and was merged with expected head as `67ca333b...`; exact-main release and dependency runs started.
-Why the critical path changed: CP-3 is DONE and CP-4 is now the sole remaining release node.
-Evidence causing the change: PR run `34113214516` SUCCESS, dependency run `34113214636` SUCCESS, merge result `67ca333b...`, current main verification and main runs `34115019057`/`34115019009`.
+What changed: exact-main dependency policy completed SUCCESS while exact-main release validation continued; E2E and multiple audit cycles are already green.
+Why the critical path changed: dependency-policy portion of CP-4 is satisfied; release run/provenance is the sole remaining prerequisite.
+Evidence causing the change: run `34115019009` SUCCESS and current jobs of run `34115019057`.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: expected-head merge PR #30 and verification that current main product SHA is `67ca333b6ed270652fb45fd6aede641ca31b04d6`.
-Active external executions and exact refs: exact-main release run `34115019057` and dependency run `34115019009`, both on `67ca333b...`, IN_PROGRESS at checkpoint.
+Last completed atomic action: verified exact-main dependency policy SUCCESS and current partial green evidence of release run `34115019057`.
+Active external executions and exact refs: release run `34115019057` on exact product SHA `67ca333b6ed270652fb45fd6aede641ca31b04d6` IN_PROGRESS; dependency run `34115019009` SUCCESS.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r50 + main `67ca333b...` + runs `34115019057` and `34115019009`.
-Exact next action after recovery: live-check both main runs; if green verify artifact/provenance/hash equality and close release; if red inspect only exact failing job.
+Recovery entrypoint: live master + r51 + product basis `67ca333b...` + release run `34115019057`.
+Exact next action after recovery: live-check run `34115019057`; if green verify finalized artifact/provenance/hash equality and close release; if red inspect only exact failing job.
 Rotation blockers: NONE.
