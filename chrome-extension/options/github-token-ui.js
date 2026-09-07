@@ -121,7 +121,7 @@ function hydrateRow(row) {
   clearButton.hidden = !configured;
   if (!status.dataset.result) {
     status.textContent = configured
-      ? "Источник watchdog: отдельный token override. Он имеет приоритет над общим PAT; значение не показывается и не экспортируется."
+      ? "Отдельный token сохранён локально. Источник watchdog: отдельный token override. Он имеет приоритет над общим PAT; значение не показывается и не экспортируется."
       : globalTokenConfigured
         ? "Источник watchdog: общий PAT. При необходимости можно сохранить отдельный token-override для этого repository."
         : "Источник watchdog: без credentials. Для private repository используйте общий PAT либо fine-grained PAT этого repository с Actions: Read-only.";
