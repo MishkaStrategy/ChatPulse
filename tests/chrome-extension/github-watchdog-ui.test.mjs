@@ -76,12 +76,31 @@ test("Control Center exposes masked repository tokens plus one shared PAT for al
     "clearGlobalGithubToken",
     "verifyGlobalGithubTokenAccess",
     "Отдельный token всегда имеет приоритет",
-    "использован общий PAT"
+    "Источник watchdog: общий PAT"
   ]) {
     assert.ok(tokenUi.includes(required), `shared PAT UI missing ${required}`);
   }
   assert.ok(tokenUi.includes('type="password"'), "shared PAT must remain masked");
   assert.equal(tokenUi.includes("chrome.runtime.sendMessage"), false, "PAT must never cross runtime messages");
+});
+
+test("shared PAT verification covers every configured watchdog repository and exposes runtime credential source", () => {
+  for (const required of [
+    "Проверить все repositories",
+    "function globalTestRepositories()",
+    'document.querySelectorAll(".chat-row")',
+    ".profile-github-watch-enabled",
+    "async function verifyGlobalRepositories",
+    "for (const repository of repositories)",
+    "verifyGlobalGithubTokenAccess(repository, token)",
+    "runtime source:",
+    "отдельный override",
+    "общий PAT ❌",
+    "Проверено repositories:"
+  ]) {
+    assert.ok(tokenUi.includes(required), `multi-repository shared PAT verification missing ${required}`);
+  }
+  assert.ok(tokenUi.includes("configuredRepositories.has(key)"), "runtime source must reveal repository-specific override presence");
 });
 
 test("portable config includes watcher configuration but excludes all watcher runtime state and credentials", () => {
