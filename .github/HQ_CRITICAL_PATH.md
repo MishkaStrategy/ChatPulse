@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 59
-updated_at: 2026-09-07T12:26:00Z
+critical_path_revision: 60
+updated_at: 2026-09-07T12:33:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
@@ -16,62 +16,69 @@ basis_sha: 0fcb78f1149257bb7ea390e6d28e9d85a59e179c
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.7 beta — edit/rebind the concrete ChatGPT conversation URL of an already configured ChatPulse chat after recreation without configuring that ChatPulse chat again.
+Release target: ChatPulse 0.7.7 beta — (1) edit/rebind the concrete ChatGPT conversation URL of an already configured ChatPulse chat without reconfiguration, and (2) close the owner-reported shared-PAT verification gap so one saved shared PAT can be verified transparently against all configured GitHub-watch repositories rather than only one manually selected test repository.
 
-Release surface: safe chat-URL identity mutation, service-worker persistence, Control Center editor, focused safety tests, 0.7.7 release metadata, CI and reproducible package/provenance.
+Release surface: safe chat-URL identity mutation; service-worker persistence; Control Center URL editor; shared GitHub PAT verification/diagnostics UI; focused safety tests; 0.7.7 release metadata; CI; reproducible package/provenance.
 
-Definition of RELEASED: an existing configured chat can replace its concrete ChatGPT conversation URL while preserving ChatPulse chat ID, profile/configuration, task guards/counters and GitHub-watch state. Actual URL change clears only stale page-bound runtime state. Invalid/non-chat and duplicate URLs are rejected. Persistence is background-mediated.
+Definition of RELEASED:
+- an existing configured chat can replace its concrete ChatGPT conversation URL while preserving ChatPulse identity/configuration/task guards/GitHub-watch state and clearing only page-bound runtime state;
+- the shared/global PAT remains one extension-local credential, not bound to a chat;
+- saving/testing the shared PAT can validate every unique configured GitHub-watch repository and report per-repository success/failure;
+- the UI makes credential source explicit enough to distinguish shared-PAT use from a repository-specific override without exposing secrets;
+- watchdog runtime continues polling each unique configured repository independently;
+- invalid/duplicate chat URLs are rejected and credential secrets never enter state/export/messages/logs.
 
 Mandatory release gates:
 - [ ] safe atomic URL mutation + runtime reset implemented/tested;
 - [ ] Control Center URL editing preserves existing configuration;
+- [ ] shared PAT multi-repository verification/diagnostics implemented/tested without changing read-only GitHub API semantics;
 - [ ] frozen 0.7.7 branch passes 5/5 audits, Chromium MV3 E2E and reproducible package/provenance;
 - [ ] canonical PR checks/reviews/merge safety pass and exact validated head merges;
 - [ ] exact post-merge main release/dependency gates pass and hashes reproduce frozen candidate.
 
-Required release evidence: exact refs/SHAs, focused tests, audits, Chromium E2E, reproducible hashes/artifact, PR/merge and exact-main proof.
+Required release evidence: exact refs/SHAs; URL mutation tests; shared-PAT per-repository verification tests; credential-source diagnostics tests; audits; Chromium E2E; reproducible hashes/artifact; PR/merge and exact-main proof.
 
-Known explicit exclusions: no content migration/cloning; no task-limit reset; no GitHub credential semantic changes unless owner explicitly folds the newly reported credential-selection issue into this release; no GitHub write/workflow dispatch; no unrelated watchdog/Telegram/auth-grace changes; draft PR #17 excluded.
+Known explicit exclusions: no content migration/cloning; no task-limit reset; no GitHub write/workflow dispatch; no automatic token generation or permission escalation; no unrelated Telegram/auth-grace changes; draft PR #17 excluded.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch observed SHA before this state write: `8c9b2ed6cde3cda4d019de785d4babad8ee953c2`.
+Default branch observed SHA before this state write: `f32d6706fd92bfb70820b773b428277e5ff6a080`.
 Current release basis ref: `release/0.7.7-edit-chat-url`.
 Current release basis SHA: `0fcb78f1149257bb7ea390e6d28e9d85a59e179c`.
 Canonical integration branch: `release/0.7.7-edit-chat-url`.
 Canonical PR: NONE yet.
-Relevant CI/control execution: ai-control run `34117489614` attempt 2; prior executor job `101732751791` is terminal/unproductive and left target branch unchanged.
-Relevant release state: 0.7.6 DONE; 0.7.7 CP-1 remains unimplemented on the release branch.
+Relevant CI/control execution: prior ai-control executor `34117489614`/`101732751791` is terminal/unproductive and left target branch unchanged.
+Relevant release state: 0.7.6 DONE; 0.7.7 implementation pending.
 
 ## 3. Repository Scan Summary
 
 Project purpose: Chrome MV3 local ChatGPT task runner with optional GitHub Actions watchdog and Telegram notifications.
-Architecture: `lib/model-v2.js` chat state; `background/service-worker-v2.js` mutations/persistence; `background/github-actions.js` GitHub credential resolution/fetching; `options/github-token-ui.js` credential UI; `options/options.html` and `options.js` Control Center.
+Architecture: `lib/model-v2.js` chat/profile state; `background/service-worker-v2.js` chat/watchdog orchestration; `background/github-actions.js` GitHub credential resolution/fetching; `options/github-token-ui.js` credential UI; `options/options.html` and `options.js` Control Center.
 Build/package: Node validation plus deterministic Python ZIP/source manifest.
 Tests/CI: extension tests, static validator, five audit cycles, Chromium E2E, reproducible packaging and dependency policy.
 Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` is WORKING_REPOSITORY; `.github`/`ai-control` are control exceptions.
 
 Material findings:
-- Owner explicitly rejected the prior HQ conclusion that the repository link itself was wrong. That earlier diagnosis is withdrawn.
-- The target private repository Actions endpoint is live and returns workflow runs under authenticated access, so the repository/Actions service itself is healthy.
-- In shipped 0.7.6 credential resolution, `loadGithubToken(repository)` returns `store.tokens[key] || store.globalToken || null`. Therefore any repository-specific token saved now or retained from legacy v1 overrides the shared/global PAT.
-- The global-PAT test path is different: `verifyGlobalGithubTokenAccess` calls `loadGlobalGithubToken()` directly, while repository-row tests and watchdog fetching can resolve through the repository-specific override first. Thus a valid global PAT can coexist with a watchdog HTTP 404 if an obsolete or under-scoped repo-specific token shadows it.
-- GitHub intentionally uses HTTP 404 for private resources when authentication lacks access, so a 404 with a correct private repository does not distinguish nonexistent repo from wrong credential source/repository authorization.
-- HQ cannot inspect the user's extension-local credential store from GitHub. Exact confirmation requires local UI evidence: whether the row reports an individual token override, or whether the global-PAT test succeeds for the exact same repository while row/watchdog access fails.
-- 0.7.7 executor job `101732751791` did not mutate the target release branch. The release branch remains exactly `0fcb78f...`.
+- Owner clarified the observed behavior: one shared PAT was saved/tested successfully against another configured repository; that chat proceeded, while the Module-Strategy chat hit HTTP 404.
+- Shipped 0.7.6 stores exactly one shared/global PAT. The global test UI, however, accepts exactly one explicit repository (`#githubGlobalTestRepository`) and calls `verifyGlobalGithubTokenAccess` only for that repository. Therefore successful global-PAT verification proves access only to the repository chosen for that test, not to all repositories used by all chats.
+- Watchdog runtime independently groups eligible chats by `profile.githubRepository` and calls `fetchLatestGithubWorkflowRun(repository)` once for each unique repository. Thus repo A can succeed while repo B fails under the same shared credential.
+- `loadGithubToken(repository)` still resolves `repository-specific override -> shared/global PAT -> null`, so an old repository-specific override can also make one repository fail while others use the global PAT successfully.
+- The correct product fix is not to bind the shared PAT to a chat. It is to preserve one shared credential while adding multi-repository verification and explicit per-repository credential-source diagnostics.
+- Exact local cause of the Module-Strategy 404 is still either shared PAT authorization missing for that private repo or a repository-specific override shadowing the shared PAT; current UI does not expose enough evidence to distinguish these cleanly.
+- Release branch remains exactly `0fcb78f...`; no product mutation from prior failed executor.
 
 ## 4. Release Gates
 
 ### GATE-1 — Safe chat URL identity mutation
 Status: UNSATISFIED
-Evidence: failed prior executor left release branch unchanged.
-Blocking items: implementation + independent tests.
-
-### GATE-2 — Control Center URL editing
-Status: UNSATISFIED
 Evidence: no product diff yet.
-Blocking items: GATE-1 implementation.
+Blocking items: implementation + tests.
+
+### GATE-2 — Shared PAT multi-repository verification and diagnostics
+Status: UNSATISFIED
+Evidence: 0.7.6 global PAT test validates only one manually selected repository; watchdog polls repositories independently.
+Blocking items: implement per-repository verification results and credential-source visibility without exposing secrets.
 
 ### GATE-3 — Frozen 0.7.7 candidate
 Status: UNSATISFIED
@@ -87,20 +94,31 @@ Blocking items: GATE-4.
 
 ## 5. Current Critical Path
 
-### CP-1 — Implement editable chat URL with safe identity mutation
+### CP-1A — Implement editable chat URL with safe identity mutation
 Status: ACTIVE
-Release gate: GATE-1 + GATE-2.
-Why critical: requested feature and identity-safety boundary.
+Release gate: GATE-1.
+Why critical: explicit owner feature request.
 Depends on: none.
 Blocks: CP-2.
-Execution plane: reroute required; prior CODEX attempt is terminal/unproductive.
-Exact scope: model, service worker, options UI and focused tests; no credential/watchdog semantic changes unless release contract is explicitly amended.
-Acceptance condition: same chat identity/configuration; safe page-runtime reset only on actual URL change; invalid/duplicate rejection; active-check fail closed; unchanged URL no reset; background-only persistence; tests green.
-Evidence: release branch unchanged at `0fcb78f...`; failed executor run/job `34117489614`/`101732751791`.
+Execution plane: reroute required after failed Codex attempt.
+Exact scope: model, service worker, options URL UI and focused tests.
+Acceptance condition: same chat identity/configuration; page-runtime reset only on actual URL change; invalid/duplicate rejection; active-check fail closed; unchanged URL no reset; background-only persistence; tests green.
+Evidence: release branch unchanged at `0fcb78f...`.
+
+### CP-1B — Make shared PAT verification cover all configured repositories
+Status: ACTIVE
+Release gate: GATE-2.
+Why critical: owner runtime report exposed misleading global-verification semantics.
+Depends on: none.
+Blocks: CP-2.
+Execution plane: HQ_DIRECT/implementation route to be selected after exact patch scope inspection.
+Exact scope: `background/github-actions.js`, `options/github-token-ui.js`, focused tests; service-worker behavior remains per-repository read-only polling.
+Acceptance condition: one shared PAT is saved once; verification enumerates unique configured GitHub-watch repositories or offers an equivalent all-repositories check; result is shown per repo; repo-specific override presence/source is explicit; no secret exposure; existing per-repo override compatibility retained.
+Evidence: shipped global test accepts one repository only; runtime groups/polls repositories independently.
 
 ### CP-2 — Advance 0.7.7 release metadata and validate frozen branch
 Status: PENDING
-Depends on: CP-1.
+Depends on: CP-1A + CP-1B.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
 Acceptance: exact branch 5/5 audits + Chromium E2E + reproducible artifact/provenance.
 
@@ -118,48 +136,48 @@ Acceptance: exact-main release/dependency gates green and package hashes match f
 
 ## 6. Active Execution Registry
 
-HQ: release owner; CP-1 rerouting plus diagnosis of owner-reported 0.7.6 credential-selection behavior.
+HQ: release owner; CP-1A rerouting and CP-1B exact-scope implementation planning.
 Workers: NONE.
-Codex: prior task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z` remains orphaned-running in ai-control after terminal failed executor; it is not an active product writer.
+Codex: NONE active; prior task remains orphaned-running in ai-control after terminal failed executor but is not an active product writer.
 Zero-model control: no current product mutation.
 CI/runtime: no ChatPulse product CI active.
 
 ## 7. Safe Parallel Work
 
-Credential-source diagnosis is read-only and independent. Product write work remains serialized on CP-1 until the orphaned claim is safely terminalized/superseded.
+CP-1A and CP-1B are logically independent but both touch Control Center surfaces; execute in serialized commits on the same release branch unless exact file-level separation is proven before parallel dispatch.
 
 ## 8. Current Blockers
 
-No project-level blocker. Exact root cause of the owner's local 404 cannot be proven remotely because extension-local credential state is intentionally inaccessible; likely causes are repository-specific override shadowing the shared PAT or the shared PAT lacking authorization to the exact private repository.
+NONE at project level. Prior Codex route failed, but alternate implementation routing remains available.
 
 ## 9. Critical Path Audits
 
 Repository Coverage Audit: PASS.
-Evidence Audit: PASS — shipped credential resolution, UI paths, private Actions endpoint and owner correction live-reviewed.
-Release Alignment Audit: PASS — 0.7.7 remains URL-edit release unless owner explicitly broadens credential semantics.
-Dependency & Ordering Audit: PASS.
-Execution & Parallelism Audit: PASS — no active ChatPulse product writer.
-Adversarial Audit: PASS — prior false repo-slug inference is removed; correct private repo + HTTP 404 is treated as authentication/credential-source ambiguous until local evidence resolves it.
+Evidence Audit: PASS — global test path, credential precedence and per-repository watchdog grouping live-reviewed.
+Release Alignment Audit: PASS — owner-reported shared-PAT behavior is now explicitly part of 0.7.7.
+Dependency & Ordering Audit: PASS — both feature fixes precede release metadata/CI/PR/main proof.
+Execution & Parallelism Audit: PASS — no active product writer; potentially overlapping Control Center writes will be serialized unless proven disjoint.
+Adversarial Audit: PASS — release must not misrepresent one-repository PAT success as organization-wide/repository-wide authorization; repo-specific override shadowing must remain visible; no credential leakage or write API expansion.
 
 ## 10. Next Action
 
-Exact next action: for the owner-reported 404, use the existing global-PAT test against the exact repository and compare it to the per-chat row/watchdog result. If global test succeeds while row/watchdog fails, remove the stored repository-specific override or patch 0.7.7 to make credential source explicit. Separately, safely reroute CP-1 implementation.
-Executor: HQ + owner only for extension-local credential-state observation.
-Expected evidence: global-test result and row credential-source status; exact product commit/diff for CP-1.
-Acceptance: no further 404 diagnosis claim without credential-source evidence.
+Exact next action: implement CP-1A and CP-1B on the exact release branch, independently verify focused/full tests, then freeze the candidate for CP-2.
+Executor: HQ-selected bounded implementation route.
+Expected evidence: exact product commits/diffs and passing URL + shared-PAT multi-repository tests.
+Acceptance: both GATE-1 and GATE-2 satisfied before release metadata freeze.
 
 ## 11. Last Material Revision
 
-What changed: withdrew the incorrect repository-link diagnosis and replaced it with code-backed credential-resolution analysis.
-Why the critical path changed: owner feedback invalidated prior inference; shipped 0.7.6 code shows repo-specific credentials silently outrank the shared PAT.
-Evidence: owner correction; `github-actions.js` credential precedence; `github-token-ui.js` separate global-vs-row test paths; live private Actions endpoint.
+What changed: 0.7.7 release contract expanded to include shared PAT multi-repository verification/diagnostics.
+Why the critical path changed: owner runtime evidence showed the shared credential is global but its verification is currently single-repository, allowing one chat/repo to pass while another fails without clear diagnosis.
+Evidence causing the change: owner report; global PAT test code; watchdog repository-group polling code; credential precedence code.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: corrected the PAT 404 diagnosis and persisted r59.
-Active external executions and exact refs: NONE for ChatPulse product code; orphaned ai-control task remains persisted under running.
+Last completed atomic action: reconciled owner runtime observation with shipped credential/watchdog code and persisted r60.
+Active external executions and exact refs: NONE for ChatPulse product code.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r59 + release branch `release/0.7.7-edit-chat-url@0fcb78f...` + shipped 0.7.6 credential code.
-Exact next action after recovery: reconcile local credential-source evidence for 404 and reroute CP-1 safely.
+Recovery entrypoint: live master + r60 + release branch `release/0.7.7-edit-chat-url@0fcb78f...`.
+Exact next action after recovery: implement CP-1A + CP-1B, verify, then advance release.
 Rotation blockers: NONE.
