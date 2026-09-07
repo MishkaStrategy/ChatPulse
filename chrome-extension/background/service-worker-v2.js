@@ -37,6 +37,7 @@ import {
   stopChatRun,
   stopTaskMode
 } from "../lib/model-v2.js";
+import { replaceChatURLInState } from "../lib/chat-url-mutation.js";
 import {
   attachTelegramState,
   notifyTelegramEvent,
@@ -184,6 +185,19 @@ async function handleMessage(message) {
         void runCheck("github-watchdog-profile");
       }
       return { state };
+    }
+
+    case "UPDATE_CHAT_URL": {
+      assertIdentityMutationSafe();
+      let state = await loadState();
+      const result = replaceChatURLInState(state, message.chatId, message.url);
+      state = result.state;
+      if (result.changed) {
+        state = appendLog(state, "info", `Ссылка ChatGPT для «${result.chat.title}» обновлена`);
+      }
+      state = await configureAlarm(state);
+      await persistAndPublish(state);
+      return { state, changed: result.changed };
     }
 
     case "START_TASK": {
@@ -1378,7 +1392,7 @@ async function updateBadge(state) {
 
 function assertIdentityMutationSafe() {
   if (activeCheck) {
-    throw new Error("Дождитесь завершения текущей проверки перед удалением чата или импортом конфигурации.");
+    throw new Error("Дождитесь завершения текущей проверки перед изменением списка или ссылки чата либо импортом конфигурации.");
   }
 }
 
