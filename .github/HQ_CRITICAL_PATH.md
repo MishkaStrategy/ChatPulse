@@ -2,14 +2,14 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 53
-updated_at: 2026-09-07T11:34:00Z
+critical_path_revision: 54
+updated_at: 2026-09-07T11:39:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: main
-basis_sha: d32fd2f6699d8af26edcc8fd2096393503116101
+basis_ref: release/0.7.7-edit-chat-url
+basis_sha: 0fcb78f1149257bb7ea390e6d28e9d85a59e179c
 ---
 
 # HQ Critical Path
@@ -18,62 +18,62 @@ basis_sha: d32fd2f6699d8af26edcc8fd2096393503116101
 
 Release target: ChatPulse 0.7.7 beta — allow an already configured ChatPulse chat to be rebound to a new concrete ChatGPT conversation URL after chat recreation, without configuring that chat again.
 
-Release surface: chat identity mutation in the local state/model, service-worker message path, Control Center per-chat URL editor, focused URL-mutation safety tests, 0.7.7 beta metadata, repository-native release CI and reproducible package/provenance.
+Release surface: chat identity mutation in local model/state, service-worker background mutation, Control Center per-chat URL editor, focused safety tests, 0.7.7 beta metadata, release CI and reproducible package/provenance.
 
-Definition of RELEASED: from the existing chat profile in Control Center the user can replace its ChatGPT conversation URL with another valid concrete chat URL and save it. The same ChatPulse chat ID and its user configuration/profile remain intact; task/guard counters and GitHub-watch state are not silently reset. Stale page identity/runtime state (tab binding, page fingerprints/dispatch checkpoint, observation/recovery/error state) is cleared so the new conversation cannot inherit unsafe old-page dedup state. Invalid/non-chat URLs and a URL already owned by another configured ChatPulse chat are rejected. Existing add/remove/open/watchdog/Telegram behavior remains compatible.
+Definition of RELEASED: the user can edit the existing configured chat URL in Control Center and save another valid concrete ChatGPT conversation URL while preserving the same ChatPulse chat ID, profile/configuration, task guards/counters and GitHub-watch state. An actual URL change clears stale page-bound tab/fingerprint/dispatch/observation/recovery/error runtime, increments control revision and becomes eligible for the new conversation. Invalid/non-chat URLs and a target URL already owned by another configured chat are rejected. Existing add/remove/open/watchdog/Telegram behavior remains compatible.
 
 Mandatory release gates:
 - [ ] atomic URL replacement semantics and runtime-reset safety are implemented and tested;
-- [ ] Control Center exposes an editable per-chat URL and saving preserves the existing profile/configuration;
-- [ ] 0.7.7 beta metadata/package/workflow are coherent and the exact frozen release branch passes 5/5 audits, Chromium MV3 E2E and finalized reproducible package/provenance;
+- [ ] Control Center exposes an editable per-chat URL and save preserves existing profile/configuration;
+- [ ] 0.7.7 beta metadata/package/workflow are coherent and frozen release branch passes 5/5 audits, Chromium MV3 E2E and finalized reproducible package/provenance;
 - [ ] canonical 0.7.7 PR is validated and exact validated head is merged;
-- [ ] exact post-merge main release gate/dependency policy pass and package/provenance reproduce frozen candidate hashes.
+- [ ] exact post-merge main release gate/dependency policy pass and package/provenance reproduce frozen hashes.
 
-Required release evidence: exact SHAs/run IDs, focused URL mutation tests, static/UI/service-worker assertions, five audit cycles, Chromium MV3 E2E, reproducible package hashes/artifact, canonical PR state and exact-main validation.
+Required release evidence: exact refs/SHAs/run IDs, focused URL mutation tests, UI/background/static assertions, 5 audit cycles, Chromium MV3 E2E, reproducible artifact hashes, PR/merge state and exact-main proof.
 
-Known explicit exclusions: no automatic ChatGPT conversation cloning/migration; no content transfer between old/new conversations; no profile recreation; no GitHub write API/workflow dispatch; no credential changes; no unrelated watchdog polling/Telegram/auth-grace changes; draft PR #17 excluded.
+Known explicit exclusions: no automatic ChatGPT content migration; no conversation cloning; no profile recreation; no GitHub write API/workflow dispatch; no credential changes; no unrelated watchdog/Telegram/auth-grace changes; draft PR #17 excluded.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch observed SHA before this state write: `d32fd2f6699d8af26edcc8fd2096393503116101`.
-Critical-path basis ref: `main`.
-Critical-path basis SHA: `d32fd2f6699d8af26edcc8fd2096393503116101`.
-Canonical integration branch: planned `release/0.7.7-edit-chat-url`.
+Default branch state checkpoint before r54: `0fcb78f1149257bb7ea390e6d28e9d85a59e179c`; later HQ commits are state-only and do not alter release branch source.
+Critical-path basis ref: `release/0.7.7-edit-chat-url`.
+Critical-path basis SHA: `0fcb78f1149257bb7ea390e6d28e9d85a59e179c`.
+Canonical integration branch: `release/0.7.7-edit-chat-url`.
 Canonical PR / RC: NONE yet.
 Relevant open PRs: draft #17 only; unrelated/excluded.
-Relevant Issues: none required for this explicit owner release objective.
-Relevant CI / workflows: current 0.7.6 release workflow is the established template and will be advanced to 0.7.7 on the release branch.
-Relevant release/deployment state: 0.7.6 is terminal DONE; 0.7.7 is a new explicit patch-release objective.
+Relevant Issues: none required.
+Relevant CI / workflows: no 0.7.7 release run yet; current 0.7.6 workflow is the release template.
+Relevant release/deployment state: 0.7.6 DONE; 0.7.7 implementation active.
 
 ## 3. Repository Scan Summary
 
 Project purpose: local Chrome MV3 ChatGPT task runner with optional GitHub Actions watchdog and Telegram notifications.
-Architecture / major components: `chrome-extension/lib/model-v2.js` owns normalized chat identity/state; `background/service-worker-v2.js` owns mutations and persisted state; `options/options.html` + `options/options.js` own Control Center chat profile editing.
-Build / packaging: Node test/static audit plus deterministic Python ZIP/source-manifest packaging.
-Tests / validation: model/service-worker/profile/configuration tests, static validator, loaded Chromium MV3 E2E.
-CI: five audit cycles + Chromium E2E + reproducible package/provenance; separate dependency runner policy.
+Architecture / major components: `lib/model-v2.js` owns normalized chat state; `background/service-worker-v2.js` owns identity mutations/persistence; `options/options.html` and `options/options.js` own Control Center editing.
+Build / packaging: Node tests/static validator + deterministic Python ZIP/source-manifest.
+Tests / validation: model/service-worker/profile/configuration suites, static validator, loaded Chromium MV3 E2E.
+CI: five audit cycles + Chromium E2E + reproducible package/provenance; dependency runner policy separately.
 Release / deployment: frozen release branch -> canonical PR -> merge -> exact-main validation.
-Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` is the sole WORKING_REPOSITORY.
-External release dependencies: GitHub Actions runners and artifact service.
-Material findings: chat URL is already normalized by `normalizeChatURL` and stored separately from `profile`. Existing profile save uses `UPDATE_CHAT_PROFILE`. Identity mutations such as remove/import are prohibited while an active check is running. URL replacement therefore can preserve the existing chat/profile while atomically changing `url`, incrementing `controlRevision`, clearing `tabId` and stale page fingerprints/dispatch/observation/recovery/error state, and leaving task/profile/GitHub-watch configuration intact. Duplicate normalized URL ownership must be rejected.
+Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository.
+External release dependencies: GitHub Actions runners/artifact service and current bounded Codex code execution task.
+Material findings: URL is currently normalized/stored on chat while profile is separate. Existing UI only displays `.chat-url`; existing profile save calls background `UPDATE_CHAT_PROFILE`. Remove/import already fail closed during `activeCheck`. The correct mutation is same chat identity/config plus page-runtime reset only; task counters and GitHub-watch state must survive.
 
 ## 4. Release Gates
 
 ### GATE-1 — Safe chat URL identity mutation
 Status: UNSATISFIED
-Evidence: model normalization and existing state shape inspected; no URL mutation exists yet.
-Blocking items: implement atomic validated replacement, duplicate guard and stale page-runtime reset.
+Evidence: bounded implementation task queued; no resulting product commit yet.
+Blocking items: verified Codex implementation/tests.
 
 ### GATE-2 — Control Center URL editing
 Status: UNSATISFIED
-Evidence: current UI displays `.chat-url` as read-only text and profile save only submits profile fields.
-Blocking items: editable URL field integrated into existing profile save path with clear validation feedback.
+Evidence: same bounded task covers UI wiring; no resulting product commit yet.
+Blocking items: verified Codex implementation/tests.
 
 ### GATE-3 — Frozen 0.7.7 candidate
 Status: UNSATISFIED
-Evidence: no 0.7.7 release branch/candidate yet.
-Blocking items: GATE-1 and GATE-2 plus coherent release metadata and exact release CI.
+Evidence: release branch exists at pre-implementation SHA `0fcb78f...`; no 0.7.7 metadata/run yet.
+Blocking items: GATE-1/GATE-2, release metadata and release CI.
 
 ### GATE-4 — Canonical PR integration
 Status: UNSATISFIED
@@ -90,34 +90,34 @@ Blocking items: GATE-4.
 ### CP-1 — Implement editable chat URL with safe identity mutation
 Status: ACTIVE
 Release gate: GATE-1 + GATE-2.
-Why critical: this is the requested feature and safety boundary.
+Why critical: requested feature and identity safety boundary.
 Depends on: none.
 Blocks: CP-2.
-Execution plane: CODEX for bounded multi-file local code patch after placement gate; HQ owns exact semantics and verification.
-Exact scope: model URL-rebind helper/reset semantics, service-worker atomic mutation path, Control Center URL input/save integration, focused tests. Preserve chat ID/profile/task guards/counters/GitHub-watch state; reset only stale page-bound runtime; reject invalid/duplicate URLs; no unrelated refactor.
-Acceptance condition: focused tests prove normalization, preservation, reset and duplicate rejection; UI submits the edited URL through background mutation, never writes storage directly.
-Evidence: pending implementation.
+Execution plane: CODEX, bounded existing-ref local code patch after passed placement gate.
+Exact scope: `model-v2.js`, `service-worker-v2.js`, `options.html`, `options.js`, focused `chat-url-update.test.mjs`; max 5 files/220 lines; no workflows/dependencies.
+Acceptance condition: same ID/profile/task/GitHub state preserved; invalid/duplicate targets rejected; actual URL change resets only page-bound runtime and increments revision; unchanged URL does not reset; UI uses background mutation path; tests and full extension audit pass.
+Evidence: task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z` queued in `MishkaStrategy/ai-control` at exact source SHA `0fcb78f...`.
 
-### CP-2 — Advance release metadata and validate frozen branch
+### CP-2 — Advance metadata and validate frozen branch
 Status: PENDING
 Release gate: GATE-3.
-Why critical: exact release artifact/provenance is required.
+Why critical: exact 0.7.7 release artifact/provenance required.
 Depends on: CP-1.
 Blocks: CP-3.
-Execution plane: HQ_DIRECT for deterministic metadata changes + PROJECT_RUNNER for validation.
-Exact scope: 0.7.7 manifest/package/validator/package/workflow metadata; exact release branch CI.
+Execution plane: HQ_DIRECT + PROJECT_RUNNER.
+Exact scope: deterministic 0.7.7 manifest/package/validator/package/workflow metadata, then exact branch CI.
 Acceptance condition: 5/5 audits + Chromium E2E + reproducible finalized 0.7.7 artifact.
 Evidence: pending.
 
 ### CP-3 — Validate and merge canonical 0.7.7 PR
 Status: PENDING
 Release gate: GATE-4.
-Why critical: integration into current main must be independently validated.
+Why critical: integration proof required.
 Depends on: CP-2.
 Blocks: CP-4.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
-Exact scope: exact changed-file scope/head/base, PR release CI, dependency policy, reviews/threads, mergeability and expected-head merge.
-Acceptance condition: only exact validated release head is merged after all PR evidence is green.
+Exact scope: changed files/head/base, PR release CI/dependency policy, reviews/threads/mergeability and expected-head merge.
+Acceptance condition: exact validated head merged after all evidence green.
 Evidence: pending.
 
 ### CP-4 — Validate exact post-merge main
@@ -128,60 +128,54 @@ Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
 Exact scope: exact-main release gate, dependency policy and reproducible provenance.
-Acceptance condition: exact product merge passes all jobs and reproduces frozen candidate inner hashes.
+Acceptance condition: all jobs green and inner artifact hashes equal frozen candidate.
 Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: owner of 0.7.7 release contract, release branch, metadata, integration and verification.
+HQ: release contract/routing/integration owner; no write to release branch while Codex source freshness is active.
 Workers: NONE.
-Codex: NONE at this persisted checkpoint; placement preparation follows immediately.
+Codex: `chatpulse-0-7-7-edit-chat-url-20260907T1137Z` — QUEUED; source `release/0.7.7-edit-chat-url@0fcb78f...`; write surface exactly five CP-1 files; delivery existing_ref; expected evidence commit + tests.
 Zero-model control: NONE.
-CI/runtime: NONE release-critical active yet.
+CI/runtime: ai-control event-driven executor expected to claim the queued task; no project CI yet.
 
 ## 7. Safe Parallel Work
 
-NONE — CP-1 is a compact identity/UI mutation sharing model/service-worker/UI semantics; splitting writes would increase conflict and safety risk. Release metadata follows once feature behavior is frozen.
+NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE: changing release branch before the exact-source Codex task completes would make its freshness precondition stale. Release metadata can safely follow immediately after CP-1 verification.
 
 ## 8. Current Blockers
 
-NONE.
+NONE. Queued event-driven execution is active external work, not a blocker.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — model/state identity, background mutation, Control Center, tests, release metadata, CI/package and PR/main validation surfaces are covered.
-
-Evidence Audit: PASS — live main, r52, current model/service-worker/options source, current 0.7.6 metadata and open PR set were checked; no feature claim is treated as implemented yet.
-
-Release Alignment Audit: PASS — every CP node is necessary to deliver and prove the requested editable-link patch release; unrelated PR #17 remains excluded.
-
-Dependency & Ordering Audit: PASS — safe identity semantics/UI must be frozen before release metadata/candidate validation; branch validation precedes PR; exact-main proof follows merge.
-
-Execution & Parallelism Audit: PASS — implementation is bounded but spans large code files where exact local patching is safer than connector whole-file replacement; normal project runner only validates and cannot author the patch. No useful non-overlapping worker slice currently shortens the critical path.
-
-Adversarial Audit: PASS — strongest failure hypotheses are stale old-page dispatch state causing skipped/duplicate commands, duplicate URL ownership, bypass of task limits by resetting task runtime, or direct UI storage mutation. Contract explicitly requires page-runtime-only reset, duplicate rejection, task/guard/GitHub runtime preservation and background-owned atomic mutation.
-
-Material findings and resolutions: URL change is treated as identity mutation and must fail while a background check is active, just like remove/import, preventing concurrent check/write races.
+Repository Coverage Audit: PASS — model/background/UI/tests/release metadata/CI/PR/main proof covered.
+Evidence Audit: PASS — live master, main/release refs, r53, source surfaces, allowlist/schema and exact queued task verified.
+Release Alignment Audit: PASS — no unrelated work on the release path.
+Dependency & Ordering Audit: PASS — CP-1 branch source must remain immutable while claimed/queued; metadata and release CI follow feature verification.
+Execution & Parallelism Audit: PASS — HQ connector patch-level capability is unsupported for large code files; runner is validation-only; one bounded Codex task owns all overlapping implementation writes.
+Adversarial Audit: PASS — page-runtime leakage, duplicate URL ownership, task-limit bypass, direct storage mutation and concurrent identity mutation are explicit acceptance/fail-closed constraints.
+Material findings and resolutions: ChatPulse was absent from ai-control lazy allowlist and was safely added as `enabled: true` with live default branch `main`; canonical microtask schema was read before enqueue.
 
 ## 10. Next Action
 
-Exact next action: create `release/0.7.7-edit-chat-url` from the persisted-main head, pass Codex placement gate for the bounded multi-file implementation slice, enqueue exact existing-ref code task, then continue HQ with deterministic release metadata preparation only after the feature patch is verified.
-Executor: HQ + CODEX bounded code plane.
-Expected evidence: exact branch SHA, ai-control task identity/placement evidence, then bounded commit and focused tests.
-Acceptance condition: CP-1 advances only after HQ live-verifies diff/test evidence against the preserved/reset semantics above.
+Exact next action: live-reconcile Codex task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`; if DONE, live-verify release-branch diff/tests and integrate CP-1; if BLOCKED/STALE, diagnose exact cause before any retry; if still active, do not duplicate execution.
+Executor: HQ.
+Expected evidence: task terminal state and exact branch SHA/commit/test result.
+Acceptance condition: only a verified bounded five-file implementation can advance GATE-1/GATE-2.
 
 ## 11. Last Material Revision
 
-What changed: owner opened a new explicit release objective after terminal 0.7.6 — editable chat URL/rebinding without reconfiguring that ChatPulse chat.
-Why the critical path changed: previous release is complete; the new request creates a new 0.7.7 patch-release contract and four-node implementation/integration/proof chain.
-Evidence causing the change: explicit owner request plus live source inspection showing URL is currently read-only in Control Center and no mutation path exists.
+What changed: created exact release branch, registered ChatPulse in ai-control lazy allowlist, passed Codex placement gate and queued one bounded existing-ref implementation task.
+Why critical path changed: CP-1 is now executing externally on an immutable exact branch source.
+Evidence causing the change: release branch `0fcb78f...`; ai-control repos entry; schema `codex-microtask/v1`; queued task file.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: established and audited the new 0.7.7 release contract/critical path before code writes.
-Active external executions and exact refs: NONE yet.
+Last completed atomic action: queued the bounded Codex CP-1 task and verified its exact persisted YAML/source SHA.
+Active external executions and exact refs: Codex task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`, known state QUEUED, source `release/0.7.7-edit-chat-url@0fcb78f1149257bb7ea390e6d28e9d85a59e179c`.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r53 + main basis `d32fd2f6699d8af26edcc8fd2096393503116101` and owner objective editable chat URL.
-Exact next action after recovery: verify r53 persistence/current main, create exact release branch, then perform Codex placement/enqueue for CP-1 without changing semantics.
+Recovery entrypoint: live master + r54 + task ID above + exact release branch source.
+Exact next action after recovery: reconcile queued/running/done/blocked task and branch head; do not mutate release branch until task state is resolved.
 Rotation blockers: NONE.
