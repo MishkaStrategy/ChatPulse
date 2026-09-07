@@ -55,18 +55,40 @@ export async function listGithubTokenRepositories() {
   return Object.keys(store.tokens).sort();
 }
 
+export async function hasGlobalGithubToken() {
+  const store = await loadGithubCredentialStore();
+  return Boolean(store.globalToken);
+}
+
+export async function saveGlobalGithubToken(token) {
+  const normalizedToken = normalizeGithubToken(token);
+  if (!normalizedToken) throw new Error("GitHub token выглядит некорректно.");
+  const store = await loadGithubCredentialStore();
+  await persistGithubCredentialStore({
+    globalToken: normalizedToken,
+    tokens: store.tokens
+  });
+  return { tokenConfigured: true };
+}
+
+export async function clearGlobalGithubToken() {
+  const store = await loadGithubCredentialStore();
+  await persistGithubCredentialStore({
+    globalToken: null,
+    tokens: store.tokens
+  });
+  return { tokenConfigured: false };
+}
+
 export async function saveGithubToken(repository, token) {
   const key = githubCredentialKey(repository);
   const normalizedToken = normalizeGithubToken(token);
   if (!key) throw new Error("Укажите repository в формате owner/repo.");
   if (!normalizedToken) throw new Error("GitHub token выглядит некорректно.");
   const store = await loadGithubCredentialStore();
-  await protectGithubCredentialStorage();
-  await chrome.storage.local.set({
-    [GITHUB_CREDENTIALS_KEY]: {
-      version: 1,
-      tokens: { ...store.tokens, [key]: normalizedToken }
-    }
+  await persistGithubCredentialStore({
+    globalToken: store.globalToken,
+    tokens: { ...store.tokens, [key]: normalizedToken }
   });
   return { repository: key, tokenConfigured: true };
 }
@@ -77,9 +99,9 @@ export async function clearGithubToken(repository) {
   const store = await loadGithubCredentialStore();
   const tokens = { ...store.tokens };
   delete tokens[key];
-  await protectGithubCredentialStorage();
-  await chrome.storage.local.set({
-    [GITHUB_CREDENTIALS_KEY]: { version: 1, tokens }
+  await persistGithubCredentialStore({
+    globalToken: store.globalToken,
+    tokens
   });
   return { repository: key, tokenConfigured: false };
 }
@@ -151,8 +173,23 @@ export async function verifyGithubTokenAccess(repository, token = undefined, fet
     ? await loadGithubToken(normalizedRepository)
     : normalizeGithubToken(token);
   if (!candidate) {
-    throw new Error("Вставьте GitHub token или сначала сохраните его для этого repository.");
+    throw new Error("Вставьте GitHub token или сохраните общий/отдельный PAT.");
   }
+  const activity = await fetchLatestGithubWorkflowRun(normalizedRepository, fetchImpl, candidate);
+  return {
+    repository: normalizedRepository,
+    permission: "actions:read",
+    ...activity
+  };
+}
+
+export async function verifyGlobalGithubTokenAccess(repository, token = undefined, fetchImpl = fetch) {
+  const normalizedRepository = normalizeGithubRepository(repository);
+  if (!normalizedRepository) throw new Error("Укажите repository в формате owner/repo.");
+  const candidate = token === undefined || token === ""
+    ? await loadGlobalGithubToken()
+    : normalizeGithubToken(token);
+  if (!candidate) throw new Error("Вставьте или сохраните общий GitHub PAT.");
   const activity = await fetchLatestGithubWorkflowRun(normalizedRepository, fetchImpl, candidate);
   return {
     repository: normalizedRepository,
@@ -165,13 +202,18 @@ async function loadGithubToken(repository) {
   const key = githubCredentialKey(repository);
   if (!key) return null;
   const store = await loadGithubCredentialStore();
-  return store.tokens[key] || null;
+  return store.tokens[key] || store.globalToken || null;
+}
+
+async function loadGlobalGithubToken() {
+  const store = await loadGithubCredentialStore();
+  return store.globalToken || null;
 }
 
 async function loadGithubCredentialStore() {
   await protectGithubCredentialStorage();
   const local = globalThis.chrome?.storage?.local;
-  if (!local?.get) return { version: 1, tokens: {} };
+  if (!local?.get) return { version: 2, globalToken: null, tokens: {} };
   const stored = await local.get(GITHUB_CREDENTIALS_KEY);
   const raw = stored?.[GITHUB_CREDENTIALS_KEY];
   const tokens = {};
@@ -183,7 +225,22 @@ async function loadGithubCredentialStore() {
       }
     }
   }
-  return { version: 1, tokens };
+  return {
+    version: 2,
+    globalToken: normalizeGithubToken(raw?.globalToken),
+    tokens
+  };
+}
+
+async function persistGithubCredentialStore({ globalToken = null, tokens = {} } = {}) {
+  await protectGithubCredentialStorage();
+  await chrome.storage.local.set({
+    [GITHUB_CREDENTIALS_KEY]: {
+      version: 2,
+      globalToken: normalizeGithubToken(globalToken),
+      tokens: { ...tokens }
+    }
+  });
 }
 
 function githubApiError(response, authenticated) {
