@@ -64,20 +64,20 @@ function ensureGlobalTokenUI() {
     <label class="field">
       <span>Общий PAT</span>
       <input id="githubGlobalToken" type="password" autocomplete="new-password" spellcheck="false" placeholder="Fine-grained PAT">
-      <small>Используется всеми GitHub Actions watchdog, если для конкретного repository не сохранён отдельный token. Отдельный token всегда имеет приоритет.</small>
+      <small>Один PAT используется всеми GitHub Actions watchdog, если для конкретного repository не сохранён отдельный token. Отдельный token всегда имеет приоритет.</small>
     </label>
     <label class="field">
-      <span>Repository для проверки PAT</span>
+      <span>Дополнительный repository для проверки (необязательно)</span>
       <input id="githubGlobalTestRepository" type="text" autocomplete="off" spellcheck="false" placeholder="MishkaStrategy/ChatPulse">
-      <small>Нужен только для кнопки «Проверить доступ» и не сохраняется как часть PAT. Формат: <code>owner/repo</code>.</small>
+      <small>ChatPulse автоматически проверит общий PAT для всех уникальных repositories, включённых в GitHub-watchdog. Здесь можно добавить ещё один repository только для проверки.</small>
     </label>
     <div class="button-row">
       <button id="saveGlobalGithubToken" class="secondary-button" type="button">Сохранить общий PAT</button>
-      <button id="testGlobalGithubToken" class="secondary-button" type="button">Проверить доступ</button>
+      <button id="testGlobalGithubToken" class="secondary-button" type="button">Проверить все repositories</button>
       <button id="clearGlobalGithubToken" class="secondary-button danger-soft" type="button" hidden>Удалить общий PAT</button>
     </div>
     <small id="githubGlobalTokenStatus">Общий PAT не сохранён.</small>
-    <p class="integration-note">PAT хранится только локально в защищённом хранилище расширения, не показывается после сохранения и не попадает в экспорт. ChatPulse отправляет его только в read-only GET-запрос последних GitHub Actions runs.</p>
+    <p class="integration-note">PAT хранится только локально в защищённом хранилище расширения, не показывается после сохранения и не попадает в экспорт. Проверка и watchdog отправляют его только в read-only GET-запрос последних GitHub Actions runs.</p>
   `;
   portable.before(section);
 }
@@ -94,7 +94,7 @@ function hydrateGlobalTokenUI() {
   if (clearButton) clearButton.hidden = !globalTokenConfigured;
   if (status && !status.dataset.result) {
     status.textContent = globalTokenConfigured
-      ? "Общий PAT сохранён локально и будет использоваться как fallback для всех GitHub-watchdog чатов."
+      ? "Общий PAT сохранён локально. Нажмите «Проверить все repositories», чтобы проверить доступ ко всем настроенным GitHub-watchdog repositories."
       : "Общий PAT не сохранён. Public repositories продолжат работать без credentials; для private repository можно сохранить общий или отдельный PAT.";
   }
 }
@@ -120,10 +120,10 @@ function hydrateRow(row) {
   clearButton.hidden = !configured;
   if (!status.dataset.result) {
     status.textContent = configured
-      ? "Отдельный token сохранён локально для этого repository и имеет приоритет над общим PAT. Его значение не показывается и не экспортируется."
+      ? "Источник watchdog: отдельный token override. Он имеет приоритет над общим PAT; значение не показывается и не экспортируется."
       : globalTokenConfigured
-        ? "Для этого repository будет использован общий PAT. При необходимости можно сохранить отдельный token-override."
-        : "Для public repository token не нужен. Для private repository используйте общий PAT либо fine-grained PAT этого repository с Actions: Read-only.";
+        ? "Источник watchdog: общий PAT. При необходимости можно сохранить отдельный token-override для этого repository."
+        : "Источник watchdog: без credentials. Для private repository используйте общий PAT либо fine-grained PAT этого repository с Actions: Read-only.";
   }
 }
 
@@ -140,7 +140,7 @@ function onInput(event) {
 
   const row = input.closest(".chat-row");
   if (!row) return;
-  if (!input.matches(".profile-github-repository, .profile-github-token")) return;
+  if (!input.matches(".profile-github-repository, .profile-github-token, .profile-github-watch-enabled")) return;
   const status = row.querySelector(".profile-github-token-status");
   if (status) delete status.dataset.result;
   hydrateRow(row);
@@ -209,9 +209,14 @@ async function saveGlobalToken(button) {
     await saveGlobalGithubToken(token);
     globalTokenConfigured = true;
     input.value = "";
-    setStatus(status, "Общий PAT сохранён локально. Он будет применяться ко всем GitHub-watchdog чатам без отдельного token-override.", "success");
     hydrateGlobalTokenUI();
     hydrateRows(document);
+    const repositories = globalTestRepositories();
+    if (repositories.length) {
+      await verifyGlobalRepositories(status, repositories);
+    } else {
+      setStatus(status, "Общий PAT сохранён локально. Настроенных GitHub-watchdog repositories для автоматической проверки пока нет.", "success");
+    }
   } catch (error) {
     setStatus(status, errorMessage(error), "error");
   } finally {
@@ -221,23 +226,75 @@ async function saveGlobalToken(button) {
 }
 
 async function testGlobalToken(button) {
-  const repository = document.querySelector("#githubGlobalTestRepository")?.value.trim() || "";
   const input = document.querySelector("#githubGlobalToken");
   const token = input?.value.trim() || undefined;
   const status = document.querySelector("#githubGlobalTokenStatus");
-  if (!repository) return setStatus(status, "Укажите repository для проверки в формате owner/repo.", "error");
   if (!(await ensureGithubPermission(status))) return;
+
+  const repositories = globalTestRepositories();
+  if (!repositories.length) {
+    return setStatus(
+      status,
+      "Нет настроенных GitHub-watchdog repositories. Включите watchdog хотя бы для одного чата или укажите дополнительный repository для проверки.",
+      "error"
+    );
+  }
 
   setGlobalTokenBusy(true);
   try {
-    const result = await verifyGlobalGithubTokenAccess(repository, token);
-    setStatus(status, `Доступ общего PAT подтверждён: ${result.repository} · Actions: read.`, "success");
-  } catch (error) {
-    setStatus(status, errorMessage(error), "error");
+    await verifyGlobalRepositories(status, repositories, token);
   } finally {
     setGlobalTokenBusy(false);
     button.disabled = false;
   }
+}
+
+async function verifyGlobalRepositories(status, repositories, token = undefined) {
+  const results = [];
+  for (const repository of repositories) {
+    const source = repositoryCredentialSource(repository);
+    try {
+      const result = await verifyGlobalGithubTokenAccess(repository, token);
+      results.push({
+        ok: true,
+        text: `${result.repository}: общий PAT ✅ · Actions: read · runtime source: ${source}`
+      });
+    } catch (error) {
+      results.push({
+        ok: false,
+        text: `${repository}: общий PAT ❌ · ${errorMessage(error)} · runtime source: ${source}`
+      });
+    }
+  }
+  const failures = results.filter((result) => !result.ok).length;
+  const summary = `Проверено repositories: ${results.length} · успешно: ${results.length - failures} · ошибок: ${failures}`;
+  setStatus(status, `${summary}\n${results.map((result) => result.text).join("\n")}`, failures ? "error" : "success");
+  return failures === 0;
+}
+
+function globalTestRepositories() {
+  const repositories = new Map();
+  for (const row of document.querySelectorAll(".chat-row")) {
+    const enabled = row.querySelector(".profile-github-watch-enabled")?.checked === true;
+    if (!enabled) continue;
+    const repository = repositoryValue(row);
+    const key = githubCredentialKey(repository);
+    if (key && !repositories.has(key)) repositories.set(key, repository);
+  }
+
+  const manual = document.querySelector("#githubGlobalTestRepository")?.value.trim() || "";
+  const manualKey = githubCredentialKey(manual);
+  if (manualKey && !repositories.has(manualKey)) repositories.set(manualKey, manual);
+  return [...repositories.values()];
+}
+
+function repositoryCredentialSource(repository) {
+  const key = githubCredentialKey(repository);
+  return key && configuredRepositories.has(key)
+    ? "отдельный override"
+    : globalTokenConfigured
+      ? "общий PAT"
+      : "без сохранённого credential";
 }
 
 async function clearGlobalToken(button) {
@@ -271,7 +328,7 @@ async function testToken(row, button) {
     const result = await verifyGithubTokenAccess(repository, token);
     setStatus(
       status,
-      `Доступ подтверждён: ${result.repository} · Actions: read · workflow runs доступны. Нажмите «Сохранить профиль», чтобы сохранить новый отдельный token локально.`,
+      `Доступ подтверждён: ${result.repository} · Actions: read · workflow runs доступны. Runtime source: ${repositoryCredentialSource(repository)}. Нажмите «Сохранить профиль», чтобы сохранить новый отдельный token локально.`,
       "success"
     );
   } catch (error) {
@@ -297,7 +354,7 @@ async function verifySaveTokenThenContinue(row, saveButton) {
     const key = githubCredentialKey(repository);
     if (key) configuredRepositories.add(key);
     tokenInput.value = "";
-    setStatus(status, `Отдельный token проверен и сохранён локально · ${result.repository} · Actions: read.`, "success");
+    setStatus(status, `Отдельный token проверен и сохранён локально · ${result.repository} · Actions: read · runtime source: отдельный override.`, "success");
     hydrateRow(row);
 
     saveButton.dataset.githubTokenBypass = "true";
@@ -326,7 +383,7 @@ async function clearToken(row, button) {
     setStatus(
       status,
       globalTokenConfigured
-        ? "Отдельный token удалён. Теперь этот repository будет использовать общий PAT."
+        ? "Отдельный token удалён. Runtime source для этого repository: общий PAT."
         : "Сохранённый GitHub token удалён. Public repository продолжит работать без token; private repository станет недоступен watchdog до общего или нового отдельного PAT.",
       "success"
     );
@@ -372,6 +429,7 @@ function setRowTokenBusy(row, busy) {
 function setStatus(element, message, result) {
   if (!element) return;
   element.dataset.result = result;
+  element.style.whiteSpace = message.includes("\n") ? "pre-line" : "";
   element.textContent = message;
 }
 
