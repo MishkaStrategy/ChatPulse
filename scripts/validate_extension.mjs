@@ -323,7 +323,7 @@ for (const token of [
   "listGithubTokenRepositories",
   "githubTokenBypass",
   "stopImmediatePropagation",
-  "Token сохранён локально"
+  "Отдельный token сохранён локально"
 ]) {
   assert.ok(githubTokenUI.includes(token), `GitHub token UI missing ${token}`);
 }
