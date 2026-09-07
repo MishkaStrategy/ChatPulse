@@ -2,8 +2,8 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 56
-updated_at: 2026-09-07T11:56:00Z
+critical_path_revision: 57
+updated_at: 2026-09-07T11:57:00Z
 project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
@@ -35,15 +35,15 @@ Known explicit exclusions: no ChatGPT content migration/cloning; no profile recr
 
 ## 2. Repository Basis
 
-Default branch: `main`.
-Default branch observed SHA before this state write: `d32cb225f413330275ddd542ab89cf35dbbb0efc`; state-only.
+Default branch: `main`; HQ commits after branch creation are state-only.
+Default branch observed SHA before this state write: `87b91f4f26795e17dfd125f7030875a081f07f0a`.
 Critical-path basis ref: `release/0.7.7-edit-chat-url`.
 Critical-path basis SHA: `0fcb78f1149257bb7ea390e6d28e9d85a59e179c`.
 Canonical integration branch: `release/0.7.7-edit-chat-url`.
 Canonical PR / RC: NONE yet.
 Relevant open PRs: draft #17 only, unrelated/excluded.
-Relevant CI / workflows: ai-control Codex executor run `34117489614`, attempt 2, coordinator job `101732616577` in progress after exact capacity recovery.
-Relevant release/deployment state: 0.7.6 DONE; 0.7.7 CP-1 active.
+Relevant CI / workflows: ai-control run `34117489614` attempt 2; coordinator job `101732616577` SUCCESS; ChatPulse model executor job `101732751791` IN_PROGRESS.
+Relevant release/deployment state: 0.7.6 DONE; 0.7.7 CP-1 actively executing.
 
 ## 3. Repository Scan Summary
 
@@ -53,26 +53,26 @@ Build / packaging: Node audits + deterministic Python ZIP/source manifest.
 Tests / validation: model/service-worker/profile/config tests, static validator, loaded Chromium E2E.
 CI: five audit cycles + Chromium E2E + reproducible package/provenance and dependency policy.
 Release / deployment: frozen branch -> canonical PR -> merge -> exact-main proof.
-Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository; `MishkaStrategy/ai-control` used only as authorized execution-control exception.
-External release dependencies: ai-control Codex pool, then GitHub Actions runners/artifact service.
-Material findings: the previous pool-capacity wait was caused by stale `tasks/running` records, not active executors. NoDelete task `nodely-phase-a-core-20260906-1400` had executor run `34038126279` / job `101499907240` complete FAILURE after model invocation, with terminal persistence failing (`CODEX_POOL_FAIL_CLOSED`) and live target branch still exactly `b08eb458...`, proving zero product commits. HQ recovered that exact orphan into a BLOCKED terminal record and removed its stale running claim. One slot is now free; ChatPulse coordinator attempt 2 is active. The unrelated cp orphan remains untouched because one recovered slot is sufficient.
+Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository; `MishkaStrategy/ai-control` authorized execution-control exception.
+External release dependencies: current Codex executor, then GitHub Actions runners/artifact service.
+Material findings: the prior capacity wait was caused by an orphaned NoDelete running record. Exact recovery was safe because its model job had ended, terminal persistence failed, and target branch remained unchanged. After freeing one slot and rerunning only the coordinator under changed state, ChatPulse task moved `queued -> running` while release source remained exactly `0fcb78f...`. The exact model executor job `101732751791` is now executing step 9; no competing writer exists.
 
 ## 4. Release Gates
 
 ### GATE-1 — Safe chat URL identity mutation
 Status: UNSATISFIED
-Evidence: exact bounded task remains source-fresh; coordinator attempt 2 is active after capacity recovery.
+Evidence: exact bounded implementation task is actively executing on source-fresh branch.
 Blocking items: terminal implementation result and HQ diff/test verification.
 
 ### GATE-2 — Control Center URL editing
 Status: UNSATISFIED
-Evidence: same bounded task owns UI wiring; no branch patch yet.
-Blocking items: GATE-1 implementation result.
+Evidence: same active task owns UI wiring.
+Blocking items: terminal implementation result.
 
 ### GATE-3 — Frozen 0.7.7 candidate
 Status: UNSATISFIED
-Evidence: branch remains pre-implementation at `0fcb78f...`.
-Blocking items: GATE-1/GATE-2, release metadata and branch CI.
+Evidence: release branch remains pre-implementation until executor writes/commits.
+Blocking items: GATE-1/GATE-2, metadata and branch CI.
 
 ### GATE-4 — Canonical PR integration
 Status: UNSATISFIED
@@ -95,12 +95,11 @@ Blocks: CP-2.
 Execution plane: CODEX bounded existing-ref patch; placement gate passed.
 Exact scope: model, service worker, options HTML/JS and one focused test; max 5 files/220 changed lines; no workflow/dependency changes.
 Acceptance condition: preserved config/task/GitHub fields; page-bound runtime reset only on actual URL change; invalid/duplicate rejected; active check fails closed; unchanged URL does not reset; background-only persistence; syntax/focused/full tests/static validator pass.
-Evidence: task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`; source `release/0.7.7-edit-chat-url@0fcb78f...`; run `34117489614` attempt 2 / coordinator job `101732616577` active.
+Evidence: task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z` RUNNING; ai-control run `34117489614` attempt 2; executor job `101732751791` IN_PROGRESS; source `release/0.7.7-edit-chat-url@0fcb78f...`.
 
 ### CP-2 — Advance release metadata and validate frozen branch
 Status: PENDING
 Release gate: GATE-3.
-Why critical: exact 0.7.7 artifact/provenance required.
 Depends on: CP-1.
 Blocks: CP-3.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
@@ -111,7 +110,6 @@ Evidence: pending.
 ### CP-3 — Validate and merge canonical PR
 Status: PENDING
 Release gate: GATE-4.
-Why critical: integration proof required.
 Depends on: CP-2.
 Blocks: CP-4.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
@@ -122,7 +120,6 @@ Evidence: pending.
 ### CP-4 — Validate exact post-merge main
 Status: PENDING
 Release gate: GATE-5.
-Why critical: merge is not release proof.
 Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
@@ -132,49 +129,49 @@ Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: release owner; release branch write-frozen while exact Codex task owns source SHA.
+HQ: release owner; no release-branch write while exact Codex executor owns source freshness.
 Workers: NONE.
-Codex: task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`; exact source `release/0.7.7-edit-chat-url@0fcb78f...`; coordinator attempt 2 active.
-Zero-model control: recovered one proven orphaned NoDelete running record to terminal BLOCKED after verifying zero target commits; coordinator job `101732616577` now re-evaluates live pool state.
-CI/runtime: ai-control run `34117489614` attempt 2 active; unrelated cp stale running record still present but no longer consumes all capacity.
+Codex: task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`; job `101732751791` IN_PROGRESS; exact source `release/0.7.7-edit-chat-url@0fcb78f...`; expected existing-ref commit + tests + terminal task result.
+Zero-model control: coordinator attempt 2 SUCCESS after one exact orphan recovery.
+CI/runtime: ai-control run `34117489614` attempt 2 active. No ChatPulse project CI yet.
 
 ## 7. Safe Parallel Work
 
-NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE. Release-branch mutation would invalidate Codex source freshness; metadata follows verified CP-1.
+NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE. Any release-branch mutation would conflict with the active bounded writer; metadata work follows verified CP-1.
 
 ## 8. Current Blockers
 
-NONE. Active coordinator execution is not BLOCKED. If coordinator claims ChatPulse, model execution proceeds. If it rejects/blocks, HQ diagnoses exact changed evidence.
+NONE. Active Codex execution is not BLOCKED.
 
 ## 9. Critical Path Audits
 
 Repository Coverage Audit: PASS.
-Evidence Audit: PASS — branch, r55, queued task, pool source, stale executor runs/logs, zero target drift and coordinator attempt 2 are live-verified.
-Release Alignment Audit: PASS — orphan recovery changes only shared execution control and is necessary to advance requested release.
-Dependency & Ordering Audit: PASS — branch remains immutable until CP-1 resolves; metadata/CI follow implementation.
-Execution & Parallelism Audit: PASS — no duplicate ChatPulse task/model execution; one stale shared-pool claim recovered from exact terminal evidence.
-Adversarial Audit: PASS — stale dispatch inheritance, duplicate URL, task-limit bypass, direct storage mutation, concurrent identity mutation and duplicate executor risk remain fail-closed acceptance constraints.
-Material findings and resolutions: prior capacity diagnosis was incomplete; NoDelete `running` state was an orphan after terminal workflow failure. Exact orphan recovery freed one slot without touching target product code.
+Evidence Audit: PASS — source ref, state, pool recovery, claim, coordinator and exact executor job live-verified.
+Release Alignment Audit: PASS — only requested patch-release work is active.
+Dependency & Ordering Audit: PASS — implementation precedes metadata/CI/PR/main proof.
+Execution & Parallelism Audit: PASS — exactly one ChatPulse writer; no duplicate task or competing branch write.
+Adversarial Audit: PASS — stale dispatch inheritance, duplicate URL, task-limit bypass, direct storage mutation, concurrent identity mutation and stale-source risks are explicit acceptance/stop conditions.
+Material findings and resolutions: external capacity wait was repaired without product mutation; CP-1 is now real active model execution.
 
 ## 10. Next Action
 
-Exact next action: reconcile ai-control run `34117489614` attempt 2 and ChatPulse task path. On claim/DONE, verify branch diff and test evidence; on BLOCKED, diagnose exact cause; never create duplicate implementation work.
+Exact next action: reconcile terminal state of executor job `101732751791`, task running/done/blocked path and release branch head. On DONE, independently inspect diff and test evidence before CP-2; on BLOCKED/FAILURE, repair only the evidence-proven cause.
 Executor: HQ.
-Expected evidence: task moves queued -> running -> done/blocked and/or release branch advances from exact source SHA.
-Acceptance condition: CP-1 state changes only from live execution evidence.
+Expected evidence: terminal task result and exact release-branch SHA/diff.
+Acceptance condition: no CP-1 completion claim until independent live verification passes.
 
 ## 11. Last Material Revision
 
-What changed: one proven orphaned shared-pool running claim was terminalized safely, freeing executor capacity; coordinator run `34117489614` attempt 2 is now active against live pool state.
-Why the critical path changed: external capacity wait became active execution after exact recovery.
-Evidence causing the change: NoDelete run `34038126279`, job `101499907240`, target branch `b08eb458...`, ai-control recovery commits `41e716e7...` and `416d7f89...`, coordinator job `101732616577`.
+What changed: ChatPulse moved from queued capacity wait to exact active model execution.
+Why the critical path changed: one stale shared-pool claim was safely recovered, coordinator attempt 2 issued the ChatPulse claim, and executor step 9 started.
+Evidence causing the change: recovery commits `41e716e7...`/`416d7f89...`; run `34117489614` attempt 2; coordinator job `101732616577`; running task path; executor job `101732751791`.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: recovered one exact orphaned pool claim and started live coordinator attempt 2.
-Active external executions and exact refs: ai-control run `34117489614` attempt 2 / job `101732616577`; ChatPulse task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`; release branch `0fcb78f...`.
+Last completed atomic action: verified exact ChatPulse claim and active model executor, then persisted r57.
+Active external executions and exact refs: ai-control run `34117489614` attempt 2 / executor job `101732751791`; task `chatpulse-0-7-7-edit-chat-url-20260907T1137Z`; release branch source `0fcb78f...`.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r56 + task ID + run `34117489614` attempt 2 + release branch `0fcb78f...`.
-Exact next action after recovery: reconcile current task/run/branch state; integrate only verified result.
+Recovery entrypoint: live master + r57 + task ID + run/job IDs + release branch.
+Exact next action after recovery: reconcile terminal executor/task/branch state and independently verify result.
 Rotation blockers: NONE.
