@@ -2,154 +2,151 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 44
-updated_at: 2026-09-06T12:44:00Z
-project_state: DONE
+critical_path_revision: 45
+updated_at: 2026-09-07T07:15:00Z
+project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
 basis_ref: main
-basis_sha: 8cff97b4651ed32810ef7783815b49175432ad66
+basis_sha: 03ed036ef58437f8474eaaf9e1e0aa761b469605
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.5 beta — eliminate the shipped watchdog auth race that can log `restart отложен: в профиле Chrome не выполнен вход` immediately after ChatPulse opens a fresh ChatGPT tab.
+Release target: ChatPulse 0.7.6 beta — add one optional shared GitHub PAT that can be configured once and used by GitHub Actions watchdog across all chats.
 
-Release surface: bounded GitHub-watchdog auth-grace planner, focused regressions, 0.7.5 extension/package metadata and repository-native release CI.
+Release surface: protected GitHub credential storage/resolution, Control Center token UI, focused credential/security/UI tests, 0.7.6 beta metadata, repository-native release CI and reproducible package.
 
-Definition of RELEASED: whenever an eligible watchdog restart first observes `authenticated: false`, that restart episode receives exactly one non-extending 60-second warm-up from that first unauthenticated observation. Time already spent loading/hydrating cannot consume that minute. During grace no command is sent. The same `restartKey` cannot receive a second grace after expiry. At expiry the targeted watchdog performs a fresh GitHub Actions read before send eligibility. If ChatGPT still reports unauthenticated, restart remains fail-closed. New workflow activity, successful restart, watcher reset and global Stop retain existing invalidation behavior; at-most-once dispatch remains intact.
+Definition of RELEASED: the user can save one shared GitHub PAT once in Control Center. For every GitHub Actions watchdog request, an existing repository-specific token remains the highest-priority override; otherwise the shared PAT is used; if neither exists, current unauthenticated public-repository behavior remains unchanged. The shared PAT is stored only in trusted extension-local credential storage, is never returned to UI/state as plaintext, never enters `chatpulseState`, portable export, content script, logs or runtime messages, and is sent only as Bearer auth to the existing read-only `api.github.com/repos/<owner>/<repo>/actions/runs` GET endpoint. The user can remove the shared PAT and can test it against an explicit `owner/repo` without exposing its value.
 
 Mandatory release gates:
-- [x] full 60 seconds from first unauthenticated watchdog observation;
-- [x] focused timing/non-extension/authenticated-bypass regressions;
-- [x] 0.7.5 beta release metadata;
-- [x] exact frozen branch release gate;
-- [x] canonical PR #29 merge-ref/reviews/threads/dependency/release gates;
-- [x] canonical PR #29 merged from exact frozen head;
-- [x] exact post-merge main release gate and reproducible provenance are green with canonical hashes.
+- [ ] shared PAT storage + repository-specific override + fallback resolution implemented with v1 credential-store compatibility;
+- [ ] Control Center can save/test/remove shared PAT and clearly shows shared-vs-repository token precedence;
+- [ ] credential/privacy/read-only invariants covered by focused tests and static validation;
+- [ ] 0.7.6 beta release metadata/package/workflow updated;
+- [ ] exact frozen release branch passes 5/5 deterministic audits, Chromium MV3 E2E and reproducible package/provenance;
+- [ ] canonical PR merge-context and dependency policy pass, then exact validated head is merged;
+- [ ] exact post-merge main release gate and package/provenance are green.
 
-Required release evidence: exact SHAs/run IDs, five deterministic audit cycles, Chromium MV3 E2E, reproducible package/provenance, PR review/thread state and exact post-merge main evidence.
+Required release evidence: exact SHAs/run IDs, focused token-store/fallback tests, UI/static assertions, five deterministic audit cycles, Chromium MV3 E2E, reproducible package hashes, canonical PR review/thread/mergeability state and exact-main validation.
 
-Known explicit exclusions: no weakening of authenticated send gate; no GitHub poll cadence, inactivity threshold, scheduler, credential boundary, Telegram, tab-recovery or unrelated draft PR #17 changes.
+Known explicit exclusions: no GitHub write API; no workflow dispatch; no token in portable config/runtime state/content script; no change to watchdog polling/idle/restart semantics; no Telegram/auth-grace/tab-recovery change; unrelated draft PR #17 excluded.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Release product SHA: `8cff97b4651ed32810ef7783815b49175432ad66`.
-Current default-branch HEAD before this final state-only checkpoint: `01751e0b9eb6b8a18069f78074651082875b3451`; the only commit after the release product SHA is r43 updating `.github/HQ_CRITICAL_PATH.md`, so product release evidence remains current.
-Validated frozen branch: `release/0.7.5-post-open-auth-warmup` at `1f400040b4ca0c985f52f8dc2a5775dd8bba607e`.
-Frozen branch run: `34024655868` SUCCESS.
-Canonical PR: #29, merged from exact frozen head as product merge `8cff97b4651ed32810ef7783815b49175432ad66`.
-Validated PR merge-ref: `7583fe5a0104bf9170cc4b9154ad4b9659e5d664`.
-PR release run: `34026030803` SUCCESS; dependency policy run `34026030922` SUCCESS.
-Exact post-merge release run: `34026201623` SUCCESS on product merge SHA.
-Exact post-merge dependency policy run: `34026201698` SUCCESS on product merge SHA.
-Exact post-merge artifact: `9987139589`, outer upload digest `sha256:c5fba1783e567a2c312f606fe2ff043a2578549a92c690b625356d7242dfebab`.
-Relevant open PRs: unrelated draft #17 excluded.
-Relevant Issues: retired #14 excluded.
+Default branch observed SHA: `03ed036ef58437f8474eaaf9e1e0aa761b469605` before this state-only r45 write.
+Critical-path basis ref: `main`.
+Critical-path basis SHA: `03ed036ef58437f8474eaaf9e1e0aa761b469605`.
+Canonical integration branch, if any: planned `release/0.7.6-global-github-pat` from the current main product/state checkpoint.
+Canonical PR / RC, if any: none yet.
+Relevant open PRs: draft #17 only; unrelated and excluded.
+Relevant Issues: no issue required for the explicit owner request.
+Relevant CI / workflows: `.github/workflows/extension-ci.yml`, dependency runner policy, five audit cycles, Chromium MV3 E2E, reproducible package/provenance.
+Relevant release/deployment state: 0.7.5 beta is closed and verified; this owner decision opens the next bounded release.
 
 ## 3. Repository Scan Summary
 
-Project purpose: local Chrome MV3 ChatGPT task runner with optional GitHub Actions watchdog.
+Project purpose: local Chrome MV3 ChatGPT task runner with optional GitHub Actions watchdog and Telegram notifications.
 
-Architecture / major components: watchdog restart in `service-worker-v2.js`; bounded grace planning in `github-restart-grace.js`; auth state from content snapshot; durable runtime state; Node and loaded-Chromium validation.
+Architecture / major components: GitHub credential boundary in `background/github-actions.js`; per-chat Control Center token UI in `options/github-token-ui.js`; watchdog runtime consumes only repository identity/profile settings through `service-worker-v2.js`; secrets remain outside model/chat state.
 
-Build / packaging: Node static/test audit plus deterministic Python ZIP/source-manifest packaging.
+Build / packaging: Node audit suite plus deterministic Python extension ZIP/source-manifest packaging.
 
-Tests / validation: deterministic extension suite, focused auth-grace regressions, service-worker integration and Chromium MV3 browser E2E.
+Tests / validation: `github-actions-client.test.mjs`, `github-token-security.test.mjs`, `github-watchdog-ui.test.mjs`, broader extension tests, loaded Chromium MV3 watchdog E2E and static validator.
 
-CI: five deterministic audit cycles, Chromium MV3 E2E, reproducible package/provenance; workflow changes also trigger dependency-runner policy validation.
+CI: release gate has five deterministic audit cycles, Chromium MV3 E2E and downstream reproducible package/provenance; workflow changes also trigger dependency-runner policy.
 
-Release / deployment: ChatPulse 0.7.5 beta release contract completed on exact merged main product SHA `8cff97b4...`.
+Release / deployment: established beta flow is frozen release branch → canonical PR merge-context validation → merge → exact-main validation.
 
-Governance: live organizational HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository. State-only HQ commits after product merge do not invalidate release evidence.
+Governance: live organizational HQ master v1.2; `MishkaStrategy/ChatPulse` is the sole working repository. State-only HQ commits do not invalidate product basis.
 
-External release dependencies: none remaining for the current release contract.
+External release dependencies: GitHub Actions runners only.
 
-Material findings: 0.7.4 anchored grace to document age; 0.7.5 starts the existing bounded one-shot grace at first unauthenticated watchdog observation. A superseded candidate exposed a 2 ms timing-test jitter and was repaired test-only. Frozen branch, PR merge context and exact-main validation all passed. Exact-main package hashes match the frozen canonical package hashes.
+Material findings: current credential store is version 1 and repository-keyed (`tokens[owner/repo]`); token values are protected via `TRUSTED_CONTEXTS`, omitted from portable/runtime state and sent only to the read-only Actions endpoint. Current UI duplicates a PAT field inside every chat profile. A schema-compatible v2 store can preserve repository tokens while adding a shared token fallback without touching service-worker runtime state.
 
 ## 4. Release Gates
 
-### GATE-1 — Behavior implementation
-Status: SATISFIED
-Evidence: frozen head `1f400040...`; runtime planner fix plus focused regressions; authenticated send path unchanged.
-Blocking items: none.
+### GATE-1 — Shared credential behavior
+Status: UNSATISFIED
+Evidence: live main currently supports only repository-keyed tokens.
+Blocking items: implement shared token storage/resolution, override precedence and backward compatibility.
 
-### GATE-2 — Frozen branch validation
-Status: SATISFIED
-Evidence: run `34024655868` SUCCESS; 5/5 audits, Chromium E2E and package/provenance. Canonical ZIP SHA-256 `b6d42cf0788fd9c6e20965cfae1c1a8890f8b1c9d859edde1270499fd9013b43`; source-manifest SHA-256 `f5ef775f60f4993617b78fc1267ace08dfbfd3b946ec0b525c75dc17de9d8d68`; artifact `9986673651`; file count 18; timestamp `2020-01-01T00:00:00`.
-Blocking items: none.
+### GATE-2 — Control Center + security tests
+Status: UNSATISFIED
+Evidence: current UI has only per-chat token controls; existing tests assert repository-keyed storage and privacy boundary.
+Blocking items: shared PAT UI, focused tests and static validation.
 
-### GATE-3 — Canonical PR #29
-Status: SATISFIED
-Evidence: exact 8 expected files; clean mergeability; reviews none; review threads none; dependency run `34026030922` SUCCESS; release run `34026030803` SUCCESS with 5/5 audits, Chromium E2E and package/provenance on exact merge-ref `7583fe5a...`; merged from expected head `1f400040...` as product merge `8cff97b4...`.
-Blocking items: none.
+### GATE-3 — Frozen candidate and canonical PR
+Status: UNSATISFIED
+Evidence: no 0.7.6 release branch/PR exists yet.
+Blocking items: CP-1/CP-2 completion and exact candidate CI.
 
 ### GATE-4 — Post-merge main
-Status: SATISFIED
-Evidence: exact release run `34026201623` completed SUCCESS on product SHA `8cff97b4651ed32810ef7783815b49175432ad66`. All five deterministic audit cycles SUCCESS, Chromium MV3 E2E SUCCESS, reproducible beta package/provenance SUCCESS. ZIP SHA-256 `b6d42cf0788fd9c6e20965cfae1c1a8890f8b1c9d859edde1270499fd9013b43` and source-manifest SHA-256 `f5ef775f60f4993617b78fc1267ace08dfbfd3b946ec0b525c75dc17de9d8d68` exactly match frozen canonical hashes; file count 18 and timestamp `2020-01-01T00:00:00` also match. Artifact ID `9987139589`; dependency policy run `34026201698` SUCCESS.
-Blocking items: none.
+Status: UNSATISFIED
+Evidence: no 0.7.6 product merge exists yet.
+Blocking items: GATE-3.
 
 ## 5. Current Critical Path
 
-### CP-1 — Implement full restart auth warm-up
-Status: DONE
-Release gate: GATE-1.
-Why critical: fixed the reported fresh-tab auth race without changing authorization semantics.
+### CP-1 — Implement shared PAT and 0.7.6 release candidate
+Status: ACTIVE
+Release gate: GATE-1 + GATE-2.
+Why critical: the requested capability cannot exist without credential resolution and UI while preserving the credential boundary.
 Depends on: none.
 Blocks: CP-2.
 Execution plane: HQ_DIRECT.
-Exact scope: planner, focused tests and required 0.7.5 release metadata.
-Acceptance condition: one full, non-extending minute per unauthenticated restart episode; authenticated pages bypass; expiry remains fresh-revalidated and fail-closed.
-Evidence: frozen head `1f400040...`.
+Exact scope: `github-actions.js`, `github-token-ui.js`, focused token/security/UI tests, and required 0.7.6 manifest/package/workflow metadata only.
+Acceptance condition: repository token overrides shared PAT; shared PAT otherwise serves all repositories; absent tokens preserve unauthenticated behavior; v1 credentials remain readable; shared PAT can be saved/tested/removed without plaintext exposure; no secret enters model/export/content/runtime messages; release metadata is internally consistent.
+Evidence: pending branch commits and repository-native tests.
 
-### CP-2 — Validate frozen release branch
-Status: DONE
-Release gate: GATE-2.
-Why critical: exact candidate required repository-native validation before integration.
+### CP-2 — Validate frozen 0.7.6 branch
+Status: PENDING
+Release gate: GATE-3.
+Why critical: exact candidate must pass repository-native deterministic/browser/package gates before integration.
 Depends on: CP-1.
 Blocks: CP-3.
 Execution plane: PROJECT_RUNNER.
-Exact scope: run `34024655868`.
-Acceptance condition: full branch gate success and reproducible provenance.
-Evidence: SUCCESS and canonical hashes above.
+Exact scope: one exact push run on `release/0.7.6-global-github-pat`.
+Acceptance condition: 5/5 audit cycles + Chromium MV3 E2E + reproducible package/provenance SUCCESS.
+Evidence: pending.
 
-### CP-3 — Validate and merge canonical PR #29
-Status: DONE
+### CP-3 — Validate and merge canonical 0.7.6 PR
+Status: PENDING
 Release gate: GATE-3.
-Why critical: validated integration into main context before merge.
+Why critical: integration into current main must be independently validated before merge.
 Depends on: CP-2.
 Blocks: CP-4.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
-Exact scope: head/base/diff/merge-ref/reviews/threads/dependency/release CI/mergeability and expected-head merge.
-Acceptance condition: merge only from validated frozen head.
-Evidence: PR #29 merged; product merge `8cff97b4...`.
+Exact scope: exact diff/head/base, PR CI, dependency policy, reviews/threads, mergeability and expected-head merge.
+Acceptance condition: only the frozen validated head is merged after all required evidence is green.
+Evidence: pending.
 
 ### CP-4 — Validate exact post-merge main
-Status: DONE
+Status: PENDING
 Release gate: GATE-4.
-Why critical: independent exact-main evidence was required instead of treating merge as release proof.
+Why critical: merge alone is not release evidence.
 Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
-Exact scope: run `34026201623` on `8cff97b4...`, reproducible provenance and dependency run `34026201698`.
-Acceptance condition: 5/5 audits + Chromium E2E + package/provenance SUCCESS with canonical package hashes.
-Evidence: all acceptance evidence satisfied exactly.
+Exact scope: exact-main release gate, dependency policy and reproducible provenance.
+Acceptance condition: exact product merge passes all release jobs and reproduces canonical candidate package hashes.
+Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: current release closed; no active product write or release-critical action.
+HQ: implementing CP-1 on planned branch `release/0.7.6-global-github-pat`; write surface limited to credential/UI/tests/release metadata.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: no unresolved critical execution. Exact-main release run `34026201623` SUCCESS; exact-main dependency policy `34026201698` SUCCESS.
+CI/runtime: none active yet.
 
 ## 7. Safe Parallel Work
 
-NONE — CURRENT RELEASE CONTRACT is complete; additional work would belong to a future release/backlog, not this critical path.
+NONE — COORDINATION_OVERHEAD_EXCEEDS_BENEFIT: credential schema, UI semantics and focused tests are a tightly coupled bounded slice; release metadata follows the same candidate and independent worker work would not shorten the critical path materially.
 
 ## 8. Current Blockers
 
@@ -157,39 +154,39 @@ NONE.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — planner, service-worker alarm/revalidation path, auth/send boundary, tests, packaging, release CI, dependency routing and PR integration are covered.
+Repository Coverage Audit: PASS — credential storage, token UI, watchdog consumer boundary, model/export/content isolation, focused tests, static validator, packaging, release CI and open PR surface were inspected.
 
-Evidence Audit: PASS — branch, PR merge-ref and exact-main release evidence are independently green with exact SHAs, run IDs and hashes.
+Evidence Audit: PASS — current repository-keyed store, protected storage, per-chat UI and release machinery are verified from live main files; owner request is explicit.
 
-Release Alignment Audit: PASS — every mandatory gate in the explicit 0.7.5 release contract is satisfied; no new gates are added after completion.
+Release Alignment Audit: PASS — shared PAT behavior, safety tests and release packaging are the minimum work required; unrelated watchdog/Telegram/tab behavior and draft PR #17 are excluded.
 
-Dependency & Ordering Audit: PASS — implementation → frozen validation → PR merge-context validation → merge → exact-main validation completed in order.
+Dependency & Ordering Audit: PASS — credential/UI implementation must precede frozen validation; frozen candidate must precede PR integration; merge must precede exact-main validation.
 
-Execution & Parallelism Audit: PASS — no duplicate execution or overlapping product writes; repository-native runners provided final deterministic evidence.
+Execution & Parallelism Audit: PASS — CP-1 has exact files/acceptance and HQ_DIRECT is supported; later deterministic validation belongs to PROJECT_RUNNER; no useful non-overlapping worker slice exists.
 
-Adversarial Audit: PASS — final exact-main evidence confirms the intended bounded semantics; grace remains one-shot/non-extending, expiry fresh-revalidates, true logout remains fail-closed and credential/at-most-once boundaries remain unchanged.
+Adversarial Audit: PASS — strongest failure modes are secret leakage, replacing least-privilege repository override semantics, breaking legacy v1 store, sending PAT outside GitHub API, or weakening unauthenticated public behavior; release contract explicitly tests/forbids each.
 
-Material findings and resolutions: final post-merge run reproduced the exact frozen package hashes, eliminating the last release-evidence uncertainty. Main drift after the product merge was verified state-only (`.github/HQ_CRITICAL_PATH.md`) and does not invalidate the product release.
+Material findings and resolutions: shared PAT will be a fallback, not a replacement for per-repository tokens; stored plaintext remains inaccessible to normal UI/state surfaces; no service-worker model schema change is required.
 
 ## 10. Next Action
 
-Exact next action: NONE for ChatPulse 0.7.5 beta — CURRENT RELEASE CONTRACT is complete. A future invocation should establish the next release target only when new owner/project evidence creates one.
+Exact next action: create `release/0.7.6-global-github-pat` from the live main checkpoint, implement CP-1, then live-verify exact branch diff and allow repository-native release CI to validate it.
 Executor: HQ.
-Expected evidence: none for this closed release.
-Acceptance condition: already satisfied; project state remains DONE until a new release contract is established.
+Expected evidence: bounded branch commits, focused tests/static validation and exact release-run identity.
+Acceptance condition: CP-1 acceptance satisfied with no out-of-scope changes.
 
 ## 11. Last Material Revision
 
-What changed: exact post-merge release run `34026201623` completed SUCCESS on product SHA `8cff97b4...`; all five audits, Chromium E2E and reproducible provenance are green; exact-main package hashes match frozen canonical hashes; dependency policy `34026201698` is green.
-Why the critical path changed: CP-4 and GATE-4 closed, completing every mandatory release gate.
-Evidence causing the change: run `34026201623`, package job `101467610196`, artifact `9987139589`, canonical matching hashes and dependency run `34026201698`.
+What changed: owner explicitly requested one PAT configurable once for all chats, opening ChatPulse 0.7.6 beta.
+Why the critical path changed: previous 0.7.5 release was DONE; new owner feature request creates a new bounded release contract.
+Evidence causing the change: live current credential/UI implementation plus explicit owner request.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: verified final exact-main release evidence and persisted ChatPulse 0.7.5 beta as DONE.
-Active external executions and exact refs: NONE release-critical.
+Last completed atomic action: reconstructed live 0.7.5 DONE state, inspected credential/UI/test/release surfaces, defined and audited the 0.7.6 critical path.
+Active external executions and exact refs: NONE yet.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live organizational master + r44 + release product SHA `8cff97b4651ed32810ef7783815b49175432ad66`.
-Exact next action after recovery: confirm DONE remains current; if a new owner/project signal establishes another release target, begin a new release contract and critical path.
+Recovery entrypoint: live organizational master + r45 + main basis `03ed036e...` + owner shared-PAT release contract.
+Exact next action after recovery: create/live-check `release/0.7.6-global-github-pat` from the current main state checkpoint and implement CP-1.
 Rotation blockers: NONE.
