@@ -14,6 +14,7 @@ import {
 let configuredRepositories = new Set();
 let globalTokenConfigured = false;
 
+void import("./chat-url-ui.js");
 void initializeGithubTokenUI();
 
 async function initializeGithubTokenUI() {
