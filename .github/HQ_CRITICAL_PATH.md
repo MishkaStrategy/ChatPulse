@@ -2,13 +2,13 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 48
-updated_at: 2026-09-07T10:46:00Z
+critical_path_revision: 49
+updated_at: 2026-09-07T10:49:00Z
 project_state: VALIDATING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: release/0.7.6-global-github-pat
+basis_ref: pull/30/head
 basis_sha: 9ed53d2d74b9cc20fb580d540e7d5ca3bb493597
 ---
 
@@ -23,28 +23,28 @@ Release surface: protected GitHub credential storage/resolution, Control Center 
 Definition of RELEASED: one shared PAT can be saved once and used by all GitHub-watchdog chats. A repository-specific PAT remains the highest-priority override; otherwise the shared PAT is used; if neither exists, current unauthenticated public-repository behavior remains unchanged. Secrets remain only in trusted extension-local storage and are never exposed through chatpulseState, portable export, content script, logs or runtime messages. GitHub access remains read-only Actions GET only.
 
 Mandatory release gates:
-- [x] shared PAT storage + repository-specific override + fallback resolution implemented with v1 credential-store compatibility and validated by 5/5 audit cycles;
-- [x] Control Center can save/test/remove shared PAT and clearly shows precedence, validated by focused/static tests and Chromium MV3 E2E;
-- [x] 0.7.6 beta release metadata/package/workflow updated;
-- [ ] exact frozen release branch has complete reproducible package/provenance artifact upload evidence;
-- [ ] canonical PR merge-context and dependency policy pass, then exact validated head is merged;
+- [x] shared PAT behavior + v1 compatibility validated;
+- [x] Control Center shared-PAT UI/security validated;
+- [x] 0.7.6 beta metadata/package/workflow updated;
+- [x] exact frozen release branch passed 5/5 audits, Chromium MV3 E2E and finalized reproducible package/provenance;
+- [ ] canonical PR #30 release gate and dependency policy pass, then exact validated head is merged;
 - [ ] exact post-merge main release gate and package/provenance are green.
 
-Required release evidence: exact SHAs/run IDs, focused credential tests, UI/static assertions, five audit cycles, Chromium MV3 E2E, reproducible package hashes and successfully finalized artifact, canonical PR state and exact-main validation.
+Required release evidence: exact SHAs/run IDs, focused credential tests, UI/static assertions, five audit cycles, Chromium MV3 E2E, reproducible package hashes/artifact, canonical PR state and exact-main validation.
 
 Known explicit exclusions: no GitHub write API; no workflow dispatch; no token in portable config/runtime state/content script; no watchdog polling/idle/restart changes; no Telegram/auth-grace/tab-recovery changes; draft PR #17 excluded.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Default branch observed SHA before this state-only r48 write: `d3d486589614695897ab8fa93025552731072131`.
-Critical-path basis ref: `release/0.7.6-global-github-pat`.
+Default branch observed SHA before this state-only r49 write: `d405ef45ce373e460168e9c39e41da65fa54f5ae`.
+Critical-path basis ref: `pull/30/head`.
 Critical-path basis SHA: `9ed53d2d74b9cc20fb580d540e7d5ca3bb493597`.
 Canonical integration branch: `release/0.7.6-global-github-pat`.
-Canonical PR / RC: frozen candidate `9ed53d2d74b9cc20fb580d540e7d5ca3bb493597`; PR waits for finalized branch provenance artifact.
-Relevant open PRs: draft #17 only, unrelated and excluded.
-Relevant CI / workflows: superseded product-validation failure run `34095691707`; repaired candidate run `34110957235`, attempt 1 completed with all product/audit/package validation green but artifact finalization failed transiently; attempt 2 is queued after targeted package-job rerun.
-Relevant release/deployment state: 0.7.5 DONE; 0.7.6 frozen candidate product validation is green and provenance upload is being retried.
+Canonical PR / RC: PR #30, head `9ed53d2d...`, base `main` at creation SHA `d405ef45...`, non-draft, mergeable=true.
+Relevant open PRs: #30 canonical; draft #17 unrelated/excluded.
+Relevant CI / workflows: frozen run `34110957235` attempt 2 SUCCESS; PR dependency policy `34113214636` SUCCESS; PR release gate `34113214516` IN_PROGRESS.
+Relevant release/deployment state: frozen candidate fully validated; integration validation active.
 
 ## 3. Repository Scan Summary
 
@@ -62,26 +62,26 @@ Release / deployment: frozen branch → canonical PR → merge → exact-main va
 
 Governance: live HQ master v1.2; `MishkaStrategy/ChatPulse` sole working repository.
 
-External release dependencies: GitHub Actions runners and GitHub artifact service.
+External release dependencies: GitHub Actions runners and artifact service.
 
-Material findings: repaired candidate `9ed53d2d...` passed 5/5 audit cycles, Chromium MV3 E2E, reproducible package generation twice, static/security validation and local hash verification. Canonical candidate hashes are ZIP `5872b5ef4a4ea88eaaca2a49d4b668cc7eabd596bcff41971d86ad529593bae0` and source manifest `05af20c8c290a1c3425d4020895c168c37629543f86c1aaa723ee13235a4eabf`. Run `34110957235` failed only after artifact bytes uploaded, when `actions/upload-artifact@v4` finalization returned `ECONNRESET`. This is external transport failure, not product/package failure. The exact failed package job `101711262356` was rerun; run attempt 2 is queued on the unchanged frozen SHA.
+Material findings: frozen run `34110957235` attempt 2 is SUCCESS. Final artifact ID `10015153424`, uploaded artifact digest `sha256:e18d16d6cc48dcf0ae0f5f5f82d6f8e0a8d5de629d8331c3f42feea785ae520b`. Canonical inner ZIP SHA-256 `5872b5ef4a4ea88eaaca2a49d4b668cc7eabd596bcff41971d86ad529593bae0`; source-manifest SHA-256 `05af20c8c290a1c3425d4020895c168c37629543f86c1aaa723ee13235a4eabf`. PR #30 contains exactly 10 expected files: workflow, GitHub credential module, manifest, token UI, package metadata/scripts, validator adapter/base validator, and two focused tests. Reviews and review threads are empty; PR is mergeable.
 
 ## 4. Release Gates
 
 ### GATE-1 — Shared credential behavior
 Status: SATISFIED
-Evidence: exact repaired candidate passed all five full extension audits; focused shared-PAT, repository override and v1 compatibility tests are green.
+Evidence: frozen candidate 5/5 audits and focused shared-PAT tests green.
 Blocking items: NONE.
 
 ### GATE-2 — Control Center + security validation
 Status: SATISFIED
-Evidence: all five audits and Chromium MV3 E2E succeeded on `9ed53d2d...`; static validator also succeeded in package job.
+Evidence: frozen audits + Chromium E2E + static validation green.
 Blocking items: NONE.
 
 ### GATE-3 — Frozen candidate and canonical PR
 Status: UNSATISFIED
-Evidence: product validation and reproducible hashes are green; artifact upload attempt 1 failed only at FinalizeArtifact with `ECONNRESET`. Exact package job rerun is queued as run attempt 2.
-Blocking items: successful finalized provenance artifact, then canonical PR validation/merge.
+Evidence: frozen candidate/provenance fully satisfied; PR #30 exact head/base/diff verified; dependency policy SUCCESS; release gate `34113214516` in progress.
+Blocking items: terminal SUCCESS of PR release gate, then final merge-readiness recheck and expected-head merge.
 
 ### GATE-4 — Post-merge main
 Status: UNSATISFIED
@@ -93,35 +93,35 @@ Blocking items: GATE-3.
 ### CP-1 — Implement shared PAT and 0.7.6 release candidate
 Status: DONE
 Release gate: GATE-1 + GATE-2.
-Why critical: requested capability requires credential fallback and UI with credential-boundary preservation.
+Why critical: requested feature implementation.
 Depends on: none.
 Blocks: CP-2.
 Execution plane: HQ_DIRECT.
-Exact scope: credential module, token UI, focused tests and 0.7.6 release metadata; validator repair was test-only.
-Acceptance condition: repository PAT overrides shared PAT; shared PAT otherwise serves all repositories; absent tokens preserve public behavior; v1 store readable; secrets never escape protected storage; release metadata consistent.
-Evidence: candidate `9ed53d2d...`; 5/5 audits + Chromium E2E + package/static/hash validation green.
+Exact scope: credential module, token UI, focused tests, validators and 0.7.6 release metadata.
+Acceptance condition: shared PAT fallback with repository override, v1 compatibility, protected secret boundary and consistent release metadata.
+Evidence: frozen candidate and full branch validation.
 
-### CP-2 — Complete frozen 0.7.6 provenance validation
-Status: VERIFYING
+### CP-2 — Validate frozen 0.7.6 branch
+Status: DONE
 Release gate: GATE-3.
-Why critical: release contract requires finalized reproducible provenance artifact before integration.
+Why critical: exact candidate required branch proof before integration.
 Depends on: CP-1.
 Blocks: CP-3.
 Execution plane: PROJECT_RUNNER.
-Exact scope: targeted rerun of package job from run `34110957235` on exact SHA `9ed53d2d74b9cc20fb580d540e7d5ca3bb493597`.
-Acceptance condition: reproducible package/provenance job succeeds and artifact is finalized with candidate hashes recorded.
-Evidence: attempt 1 generated/verified exact hashes but FinalizeArtifact failed with `ECONNRESET`; targeted rerun accepted and run attempt 2 queued.
+Exact scope: run `34110957235` attempt 2 on exact SHA `9ed53d2d...`.
+Acceptance condition: 5/5 audits + Chromium E2E + reproducible finalized artifact.
+Evidence: SUCCESS; artifact ID/digests recorded above.
 
 ### CP-3 — Validate and merge canonical 0.7.6 PR
-Status: PENDING
+Status: VERIFYING
 Release gate: GATE-3.
-Why critical: merge-context validation is required before integration.
+Why critical: integration into current main must be independently validated.
 Depends on: CP-2.
 Blocks: CP-4.
 Execution plane: HQ_DIRECT + PROJECT_RUNNER.
-Exact scope: exact diff/head/base, PR CI, dependency policy, reviews/threads, mergeability and expected-head merge.
-Acceptance condition: only validated frozen head merged.
-Evidence: pending.
+Exact scope: PR #30 exact 10-file diff/head/base, PR release CI, dependency policy, reviews/threads, mergeability and expected-head merge.
+Acceptance condition: only head `9ed53d2d...` merged after all PR evidence green.
+Evidence: dependency policy `34113214636` SUCCESS; release gate `34113214516` IN_PROGRESS; reviews/threads empty; mergeable=true.
 
 ### CP-4 — Validate exact post-merge main
 Status: PENDING
@@ -131,60 +131,60 @@ Depends on: CP-3.
 Blocks: release closure.
 Execution plane: PROJECT_RUNNER.
 Exact scope: exact-main release gate, dependency policy and reproducible provenance.
-Acceptance condition: exact product merge passes all jobs and reproduces candidate package hashes.
+Acceptance condition: exact product merge passes all jobs and reproduces candidate hashes.
 Evidence: pending.
 
 ## 6. Active Execution Registry
 
-HQ: no product write; candidate remains frozen at `9ed53d2d...`.
+HQ: PR #30 merge-readiness owner; no product write while PR CI runs.
 Workers: NONE.
 Codex: NONE.
 Zero-model control: NONE.
-CI/runtime: run `34110957235`, attempt 2, targeted package-job rerun on exact branch `release/0.7.6-global-github-pat` SHA `9ed53d2d74b9cc20fb580d540e7d5ca3bb493597`; queued after successful rerun request. Successful attempt-1 jobs remain evidence: Chromium E2E and audit cycles 1–5 all SUCCESS.
+CI/runtime: PR release run `34113214516` at exact head `9ed53d2d...` IN_PROGRESS. PR dependency policy `34113214636` SUCCESS. Frozen branch run `34110957235` SUCCESS.
 
 ## 7. Safe Parallel Work
 
-NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE: finalized provenance artifact is the sole prerequisite before canonical PR creation; no product change is justified and duplicate CI is forbidden.
+NONE — ALL_USEFUL_SLICES_ALREADY_ACTIVE: PR release gate is the only unsatisfied integration prerequisite; merge before it completes is forbidden.
 
 ## 8. Current Blockers
 
-NONE. The artifact upload retry is active external execution, not a blocker.
+NONE. PR CI is active external execution, not a blocker.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS — credential storage/UI, runtime boundary, focused tests, static validator, packaging, artifact upload, CI and PR surface covered.
+Repository Coverage Audit: PASS — product, credential boundary, tests, validators, package/provenance, PR/CI/review/merge surface covered.
 
-Evidence Audit: PASS — all product/test/package claims come from exact run/job logs on the frozen SHA; artifact finalization failure is explicit `ECONNRESET` after byte upload.
+Evidence Audit: PASS — frozen evidence, exact PR head/base/diff, review state and PR run identities are live-verified.
 
-Release Alignment Audit: PASS — no code change is needed for a transport-only artifact finalization failure; only exact provenance upload remains before PR.
+Release Alignment Audit: PASS — remaining actions are strictly PR validation/merge and exact-main proof.
 
-Dependency & Ordering Audit: PASS — finalized branch provenance must precede canonical PR; PR precedes merge; merge precedes exact-main validation.
+Dependency & Ordering Audit: PASS — PR release gate must finish before merge; exact-main validation follows merge.
 
-Execution & Parallelism Audit: PASS — targeted rerun of the single failed package job is the cheapest reliable route; it preserves successful prior jobs and exact candidate identity.
+Execution & Parallelism Audit: PASS — PR CI is active; no duplicate execution or conflicting write is useful.
 
-Adversarial Audit: PASS — strongest alternative hypothesis, a product/package defect, is contradicted by 5/5 audits, Chromium E2E, two identical deterministic package builds, static validation and exact hash verification; only GitHub artifact finalization transport failed.
+Adversarial Audit: PASS — strongest remaining failure modes are PR-context-only CI failure, head/base drift, review/thread emergence or mergeability change; each is explicitly rechecked before merge.
 
-Material findings and resolutions: candidate remains unchanged; retry is justified by changed execution condition/evidence — the failed action is an external transient `ECONNRESET`, not a deterministic project failure.
+Material findings and resolutions: initial mergeable=false immediately after PR creation resolved to mergeable=true once GitHub computed mergeability; no conflict exists. Base-only HQ state commits do not alter product diff.
 
 ## 10. Next Action
 
-Exact next action: live-reconcile run `34110957235` attempt 2. On successful package/provenance finalization, verify artifact metadata and create canonical PR from exact frozen head `9ed53d2d...`; if artifact upload fails again, reassess runner/artifact transport route without changing product code.
+Exact next action: live-reconcile PR release run `34113214516`. On SUCCESS, re-fetch PR #30 head/base/diff/reviews/threads/mergeability and merge with expected head `9ed53d2d...`; then immediately validate exact main.
 Executor: HQ.
-Expected evidence: terminal package-job conclusion, artifact ID/digest and candidate hashes.
-Acceptance condition: CP-2 DONE only after finalized artifact exists for the exact frozen candidate.
+Expected evidence: terminal PR CI result, unchanged PR context and merge SHA.
+Acceptance condition: CP-3 advances only after all PR evidence green and expected-head merge succeeds.
 
 ## 11. Last Material Revision
 
-What changed: run `34110957235` attempt 1 proved all product/test/package gates green but failed only in `actions/upload-artifact` finalization with `ECONNRESET`; HQ issued targeted rerun of exact failed package job, creating run attempt 2 without changing candidate SHA.
-Why the critical path changed: CP-1 is now proven DONE; CP-2 narrows to provenance artifact finalization only.
-Evidence causing the change: jobs from run `34110957235`, package job `101711262356`, reproducible hashes and FinalizeArtifact transport error.
+What changed: frozen provenance completed successfully; canonical PR #30 was created from exact frozen head; dependency policy passed and PR release gate is active.
+Why the critical path changed: CP-2 is DONE and CP-3 is now the sole active integration node.
+Evidence causing the change: run `34110957235` SUCCESS, artifact `10015153424`, PR #30 metadata/diff, dependency run `34113214636`, release run `34113214516`.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: classified attempt-1 failure as external artifact-finalization transport failure and successfully requested targeted package-job rerun.
-Active external executions and exact refs: run `34110957235`, attempt 2, exact SHA `9ed53d2d74b9cc20fb580d540e7d5ca3bb493597`, queued at checkpoint.
+Last completed atomic action: created and fully inspected canonical PR #30, verifying exact 10-file scope, mergeability and empty review/thread state.
+Active external executions and exact refs: PR release run `34113214516` at head `9ed53d2d...` IN_PROGRESS; dependency run `34113214636` SUCCESS.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r48 + branch `release/0.7.6-global-github-pat` + frozen candidate `9ed53d2d...` + run `34110957235` attempt 2.
-Exact next action after recovery: live-check attempt 2 package job; if successful verify artifact then create canonical PR; if failed inspect exact transport failure and choose a non-product retry/route change only with new evidence.
+Recovery entrypoint: live master + r49 + PR #30 + head `9ed53d2d...` + run `34113214516`.
+Exact next action after recovery: live-check run `34113214516`; if SUCCESS perform full premerge revalidation and expected-head merge, otherwise diagnose exact failing PR job.
 Rotation blockers: NONE.
