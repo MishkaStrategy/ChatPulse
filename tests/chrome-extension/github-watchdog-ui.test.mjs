@@ -50,7 +50,7 @@ test("Control Center shows concrete owner/repo guidance and active-run restart r
   assert.ok(optionsHtml.includes("Обычный автоматический интервал для этого чата будет отключён"));
 });
 
-test("Control Center exposes a masked private-repository token field and explicit permission check", () => {
+test("Control Center exposes masked repository tokens plus one shared PAT for all chats", () => {
   assert.ok(optionsHtml.includes('class="profile-github-token" type="password"'));
   assert.ok(optionsHtml.includes('class="test-github-token secondary-button"'));
   assert.ok(optionsHtml.includes("Проверить токен"));
@@ -62,6 +62,26 @@ test("Control Center exposes a masked private-repository token field and explici
   assert.ok(tokenUi.includes("saveGithubToken"));
   assert.ok(tokenUi.includes("clearGithubToken"));
   assert.ok(tokenUi.includes("githubTokenBypass"));
+
+  for (const required of [
+    "Общий GitHub PAT для всех чатов",
+    'id = "githubGlobalTokenBox"',
+    'id="githubGlobalToken"',
+    'id="githubGlobalTestRepository"',
+    'id="saveGlobalGithubToken"',
+    'id="testGlobalGithubToken"',
+    'id="clearGlobalGithubToken"',
+    "hasGlobalGithubToken",
+    "saveGlobalGithubToken",
+    "clearGlobalGithubToken",
+    "verifyGlobalGithubTokenAccess",
+    "Отдельный token всегда имеет приоритет",
+    "использован общий PAT"
+  ]) {
+    assert.ok(tokenUi.includes(required), `shared PAT UI missing ${required}`);
+  }
+  assert.ok(tokenUi.includes('type="password"'), "shared PAT must remain masked");
+  assert.equal(tokenUi.includes("chrome.runtime.sendMessage"), false, "PAT must never cross runtime messages");
 });
 
 test("portable config includes watcher configuration but excludes all watcher runtime state and credentials", () => {
@@ -96,7 +116,7 @@ test("portable config includes watcher configuration but excludes all watcher ru
     "githubLastRunId", "githubLastActivityAt", "githubLastAttemptAt", "githubLastCheckedAt",
     "githubActiveRunCount", "githubLastRestartAt", "githubLastRestartKey", "githubRestartCount",
     "githubRestartGraceKey", "githubRestartGraceUntil", "githubLastError",
-    "githubToken", "github_pat_", "secret-ish runtime diagnostic", "run:999"
+    "githubToken", "globalGithubToken", "github_pat_", "secret-ish runtime diagnostic", "run:999"
   ]) {
     assert.equal(serialized.includes(forbidden), false, forbidden);
   }
