@@ -78,7 +78,7 @@ test("активная вкладка не перезагружается авт
   );
 });
 
-test("пользовательский черновик защищён даже при ошибке страницы", () => {
+test("черновик больше не защищает фоновую вкладку от восстановления ошибки", () => {
   assert.deepEqual(
     planTabRecovery({
       tab: tab(),
@@ -87,19 +87,19 @@ test("пользовательский черновик защищён даже 
       intervalMinutes: 1,
       now
     }),
-    { refresh: false, reason: null }
+    { refresh: true, reason: "page-error" }
   );
 });
 
-test("активная вкладка и пользовательский черновик не перезагружаются планово", () => {
+test("активная вкладка защищена, но черновик фоновой вкладки не блокирует плановое обновление", () => {
   const old = chat({ lastHardRefreshAt: "2026-07-22T20:00:00.000Z" });
   assert.equal(
     planTabRecovery({ tab: tab({ active: true }), snapshot: snapshot(), chat: old, intervalMinutes: 1, now }).refresh,
     false
   );
-  assert.equal(
-    planTabRecovery({ tab: tab(), snapshot: snapshot({ hasDraft: true }), chat: old, intervalMinutes: 1, now }).refresh,
-    false
+  assert.deepEqual(
+    planTabRecovery({ tab: tab(), snapshot: snapshot({ hasDraft: true }), chat: old, intervalMinutes: 1, now }),
+    { refresh: true, reason: "periodic-freshness" }
   );
 });
 
