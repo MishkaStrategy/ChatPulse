@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ChatPulse",
-  "version": "0.7.8",
-  "version_name": "0.7.8 beta",
+  "version": "0.7.9",
+  "version_name": "0.7.9 beta",
   "description": "Локально продолжает выбранные чаты ChatGPT, независимо отслеживает GitHub Actions и поддерживает Actions-only режим.",
   "minimum_chrome_version": "120",
   "permissions": [
