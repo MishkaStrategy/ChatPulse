@@ -127,7 +127,7 @@
       authenticated: isAuthenticated(),
       messageCount: messages.length,
       hasComposer: Boolean(input),
-      hasDraft: Boolean(input && normalize(readInputValue(input))),
+      hasDraft: false,
       observedAt: new Date(now).toISOString(),
       documentStartedAt: new Date(performance.timeOrigin || now).toISOString(),
       lastDomMutationAt,
@@ -146,9 +146,6 @@
 
     const input = findInput();
     if (!input) throw new Error("Поле ввода ChatGPT не найдено.");
-    if (normalize(readInputValue(input))) {
-      throw new Error("Поле ввода содержит пользовательский черновик; автоматическая отправка отменена.");
-    }
 
     fillInput(input, command);
     const sendButton = await waitForSendButton(4_000);

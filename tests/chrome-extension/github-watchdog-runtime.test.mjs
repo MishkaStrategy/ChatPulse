@@ -43,13 +43,13 @@ test("GitHub API failures are recorded and never mapped directly to a restart", 
   assert.ok(block.includes("successfulRepositories.has(profile.githubRepository)"), "failed API polls must never select restart candidates");
 });
 
-test("watchdog restart preserves run counters and uses durable dispatch checkpoint", () => {
+test("watchdog restart preserves run counters, ignores drafts and uses durable dispatch checkpoint", () => {
   const start = worker.indexOf("async function attemptGithubWatchdogRestart");
   const end = worker.indexOf("async function persistSingleRuntimeChat", start);
   const block = worker.slice(start, end);
   assert.equal(block.includes("startChatRun("), false, "watchdog restart must not reset runStartedAt/counter");
   assert.ok(block.includes("completionGuardReason"));
-  assert.ok(block.includes("hasDraft"));
+  assert.equal(block.includes("hasDraft"), false, "watchdog restart must never stop because composer contains text");
   assert.ok(block.includes('"already-continued"'));
   assert.ok(block.includes("recordDispatch("));
   assert.ok(block.includes("recordGithubRestart("));
