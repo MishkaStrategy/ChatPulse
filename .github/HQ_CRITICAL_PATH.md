@@ -2,154 +2,156 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 63
-updated_at: 2026-09-07T13:08:00Z
-project_state: DONE
+critical_path_revision: 64
+updated_at: 2026-09-09T05:10:00Z
+project_state: EXECUTING
 critical_path_status: VERIFIED
 release_contract_status: EXPLICIT
 handoff_status: READY
-basis_ref: main
-basis_sha: c3a6d682dd9a7e8e1013e2c15edd3ee442bb6b79
+basis_ref: release/0.7.8-draftless-go
+basis_sha: 92268611618498b2665ef03809a034c8d7a9ba39
 ---
 
 # HQ Critical Path
 
 ## 1. Current Release Contract
 
-Release target: ChatPulse 0.7.7 beta — editable/rebindable saved ChatGPT conversation URL plus transparent shared-GitHub-PAT verification across every configured watchdog repository.
+Release target: ChatPulse 0.7.8 beta — continuation must never stop because the ChatGPT composer contains text, and the stock continuation command becomes `go`.
 
-Release surface: safe URL identity mutation/background persistence/Control Center editor; shared PAT multi-repository verification and credential-source diagnostics; 0.7.7 metadata; full audits; Chromium E2E; reproducible package/provenance; canonical PR/merge; exact-main proof.
+Release surface:
+- remove composer-draft protection as a continuation/restart blocker;
+- automatic continuation may replace whatever text is currently in the composer and submit the configured continuation command;
+- draft presence must not suppress tab freshness recovery;
+- default global continuation command is exactly `go`;
+- the exact legacy stock command `продолжай и не останавливайся до технического лимита` migrates to `go` when existing state or a portable config is normalized;
+- non-legacy custom global commands and per-chat command overrides remain supported;
+- 0.7.8 metadata, tests, Chromium E2E, reproducible package/provenance, canonical PR/merge and exact-main proof.
 
-Definition of RELEASED: SATISFIED.
-- existing ChatPulse chat can replace its concrete ChatGPT URL while preserving identity/profile/task guards/counters/GitHub-watch state and clearing only stale page-bound runtime;
-- invalid/duplicate URLs are rejected; unchanged normalized URL is a no-op;
-- one protected extension-local shared PAT can be tested against every unique configured watchdog repository, with per-repository result and actual watchdog credential source (shared PAT vs repository override);
-- secrets do not enter state/export/runtime messages/logs; GitHub watchdog access remains read-only;
-- exact frozen candidate, canonical PR and exact merged main all passed mandatory release evidence.
+Definition of RELEASED:
+- no runtime path can cancel the normal continuation send merely because the composer contains a draft;
+- the content snapshot presented to the current runtime never marks a draft as blocking;
+- periodic tab recovery ignores legacy `hasDraft=true` evidence;
+- new/default state uses `go` and existing installations carrying the exact old stock default are migrated to `go` without overwriting genuinely custom commands;
+- exact candidate and exact merged main pass all mandatory release evidence.
 
 Mandatory release gates:
-- [x] URL mutation/editor implementation independently passed focused/full validation;
-- [x] shared PAT multi-repository diagnostics independently passed focused/full validation;
-- [x] exact frozen 0.7.7 candidate passed 5/5 audits, Chromium MV3 E2E and reproducible package/provenance;
-- [x] canonical PR checks/reviews/merge safety passed and exact validated head merged;
-- [x] exact post-merge main release/dependency gates passed and inner package hashes reproduced frozen candidate exactly.
+- [ ] draftless continuation behavior passes focused/full validation;
+- [ ] `go` default + legacy migration passes focused/full validation;
+- [ ] exact frozen 0.7.8 candidate passes 5/5 audits, Chromium MV3 E2E and reproducible package/provenance;
+- [ ] canonical PR checks/reviews/merge safety pass and exact validated head merges;
+- [ ] exact post-merge main release/dependency gates pass and canonical inner hashes reproduce frozen candidate.
 
-Known exclusions: no content migration/cloning; no task-limit reset; no GitHub write/workflow dispatch; no automatic credential generation/escalation; no unrelated Telegram/auth-grace changes; draft PR #17 excluded.
+Required release evidence: exact SHAs, focused/full test output, release/dependency workflow runs, artifact ID, inner ZIP/source-manifest SHA-256.
+
+Known explicit exclusions: no changes to stop-phrase/task completion guards, GitHub PAT/watchdog credential semantics, Telegram, auth grace, chat URL rebind semantics, or unrelated draft PR #17.
 
 ## 2. Repository Basis
 
 Default branch: `main`.
-Product release basis / merge commit: `c3a6d682dd9a7e8e1013e2c15edd3ee442bb6b79`.
-Frozen candidate head: `ed9f9f83c3b06525d23ba115be3be7f63351d4a8`.
-Canonical integration branch: `release/0.7.7-edit-chat-url`.
-Canonical PR: #31 `feat: edit chat URLs and verify shared PAT across repositories`, merged expected-head from exact `ed9f9f83...`.
-Relevant open PRs after release: draft #17 remains unrelated/excluded.
-
-Frozen branch release evidence:
-- run `34124935100`, exact head `ed9f9f83...`, SUCCESS;
-- 5/5 full extension audits SUCCESS;
-- Chromium MV3 browser E2E SUCCESS;
-- reproducible package/provenance SUCCESS;
-- artifact ID `10019736756`, name `ChatPulse-Chrome-v0.7.7-beta`, size 65739 bytes;
-- ZIP SHA-256 `63306dbc386fc4ac7f689c90fc29bc2a37f854d8256242ffb44d9a47028cc161`;
-- source manifest SHA-256 `fafdaf2ba803eee6b2b89db5b73fbeefd6397159edc3cbaa3ec163a8c125a7db`;
-- file_count 20; reproducible timestamp `2020-01-01T00:00:00`.
-
-PR-context evidence:
-- release run `34125258715`, exact head `ed9f9f83...`, SUCCESS;
-- 5/5 audits SUCCESS; Chromium E2E SUCCESS; reproducible package/provenance SUCCESS;
-- dependency runner policy for the PR head SUCCESS;
-- no reviews, review threads or comments blocking merge; PR mergeable=true before merge.
-
-Exact-main evidence:
-- release run `34125467975`, event push, exact head `c3a6d682...`, SUCCESS;
-- 5/5 audits SUCCESS; Chromium MV3 browser E2E SUCCESS; reproducible package/provenance SUCCESS;
-- dependency runner policy run `34125468037`, exact head `c3a6d682...`, SUCCESS;
-- artifact ID `10019936761`, name `ChatPulse-Chrome-v0.7.7-beta`, size 65739 bytes, outer artifact digest `sha256:01f1a78fdb3bf27806d45430587b8955ab938f02f9b935627ee647e27de9e048`;
-- exact-main ZIP SHA-256 `63306dbc386fc4ac7f689c90fc29bc2a37f854d8256242ffb44d9a47028cc161`;
-- exact-main source manifest SHA-256 `fafdaf2ba803eee6b2b89db5b73fbeefd6397159edc3cbaa3ec163a8c125a7db`;
-- canonical inner hashes match frozen candidate exactly.
+Default branch observed SHA before this release: `699d9a60aaf2927839ae6ad8427aaa751e1d91ff`; it differs from the 0.7.7 product basis only by terminal HQ state.
+Critical-path basis ref: `release/0.7.8-draftless-go`.
+Critical-path basis SHA: `92268611618498b2665ef03809a034c8d7a9ba39`.
+Canonical integration branch: `release/0.7.8-draftless-go`.
+Canonical PR / RC: NONE yet.
+Relevant open PRs: draft #17 remains unrelated/excluded.
+Relevant CI / workflows: `.github/workflows/extension-ci.yml`, dependency runner policy.
+Relevant prior release: ChatPulse 0.7.7 beta terminally VERIFIED under r63.
 
 ## 3. Repository Scan Summary
 
-Relevant architecture delivered:
-- `chrome-extension/lib/chat-url-mutation.js` — pure validated URL rebind mutation;
-- `chrome-extension/background/service-worker-v2.js` — safe background identity-mutation/persistence boundary;
-- `chrome-extension/options/chat-url-ui.js` — Control Center URL editor;
-- `chrome-extension/options/github-token-ui.js` — all-repository shared PAT verification and credential-source diagnostics;
-- existing GitHub watchdog remains independently grouped/polled per unique repository using read-only Actions GET.
+Project purpose: Chrome MV3 watchdog/continuation control for configured ChatGPT chats with task guards and optional GitHub Actions watchdog.
 
-Material findings resolved:
-- owner-reported successful PAT test on one repository did not imply access to every configured repository; 0.7.7 now tests all configured watchdog repositories explicitly;
-- repository-specific token overrides remain backward-compatible and are now visible as runtime source diagnostics;
-- two Codex attempts failed tool/runtime loops and produced zero product mutation; both were terminalized safely; final product implementation used deterministic HQ fallback plus independent CI evidence;
-- one static release-validator wording regression on intermediate candidate `e73d698...` was repaired without functional change; final frozen candidate is `ed9f9f83...`.
+Critical architecture inspected:
+- `chrome-extension/content/content-script.js` reports composer state and performs `CHATPULSE_SEND`;
+- `chrome-extension/lib/model-v2.js` owns defaults/state normalization and tab-recovery planning;
+- `chrome-extension/background/service-worker-v2.js` contains legacy `hasDraft` restart guards, which become inert with current content snapshots but remain a compatibility concern to verify adversarially;
+- tests under `tests/chrome-extension/` plus release validator/Chromium E2E establish release evidence.
+
+Material findings:
+- owner runtime evidence shows ChatPulse typed its own stock continuation text into the composer, then a later GitHub restart path interpreted that text as a user draft and repeatedly logged `restart отложен: в поле ввода есть пользовательский черновик`;
+- content script independently refused `CHATPULSE_SEND` whenever the composer was non-empty;
+- tab recovery also treated `hasDraft=true` as a reason not to refresh;
+- stock command in live source was exactly `продолжай и не останавливайся до технического лимита`;
+- branch implementation now forces `hasDraft:false`, removes send cancellation on non-empty composer, removes draft suppression from `planTabRecovery`, sets `DEFAULT_COMMAND="go"`, migrates the exact old stock global command on state/config normalization, and adds focused regression coverage.
+
+Build / packaging: deterministic Python package script, Chrome MV3 ZIP.
+Tests / validation: Node syntax/unit/integration/task/watchdog/token/UI tests, Chromium loaded-extension E2E, static release audit, reproducible package/provenance.
+CI: five full audit cycles + Chromium E2E + package/provenance; dependency policy separately.
+Governance: live organizational HQ master v1.2; this file is the persistent control checkpoint.
 
 ## 4. Release Gates
 
-### GATE-1 — Safe chat URL rebind
-Status: SATISFIED
-Evidence: focused URL mutation/wiring tests plus frozen/PR/main full audits and browser validation green.
-Blocking items: NONE.
+### GATE-1 — Draftless continuation
+Status: UNSATISFIED
+Evidence: branch commits through `92268611618498b2665ef03809a034c8d7a9ba39`; focused regression test added.
+Blocking items: independent CI/browser validation and adversarial verification that no current runtime path still blocks on composer draft.
 
-### GATE-2 — Shared PAT multi-repository verification/diagnostics
-Status: SATISFIED
-Evidence: focused UI tests plus frozen/PR/main full audits green; runtime source explicitly distinguishes shared PAT from repository override.
-Blocking items: NONE.
+### GATE-2 — Default `go` and legacy migration
+Status: UNSATISFIED
+Evidence: `DEFAULT_COMMAND` changed to `go`; exact legacy stock global command migrates on state/config normalization; existing model test expectation updated.
+Blocking items: focused/full validation.
 
-### GATE-3 — Frozen 0.7.7 candidate
-Status: SATISFIED
-Evidence: `ed9f9f83...`, run `34124935100`, artifact `10019736756`, canonical hashes above.
-Blocking items: NONE.
+### GATE-3 — Frozen 0.7.8 candidate
+Status: UNSATISFIED
+Blocking items: 0.7.8 metadata + exact candidate CI/provenance.
 
 ### GATE-4 — Canonical PR integration
-Status: SATISFIED
-Evidence: PR #31; PR-context release/dependency checks green; expected-head merge produced `c3a6d682...`.
-Blocking items: NONE.
+Status: UNSATISFIED
+Blocking items: GATE-3.
 
 ### GATE-5 — Post-merge exact-main proof
-Status: SATISFIED
-Evidence: runs `34125467975` and `34125468037` SUCCESS on exact `c3a6d682...`; main artifact `10019936761`; inner hashes exactly match frozen candidate.
-Blocking items: NONE.
+Status: UNSATISFIED
+Blocking items: GATE-4.
 
 ## 5. Current Critical Path
 
-### CP-1A — Editable chat URL
-Status: DONE
-Release gate: GATE-1.
-Evidence: implementation, focused tests, full frozen/PR/main validation.
+### CP-1 — Verify/finish draftless continuation + `go` migration
+Status: VERIFYING
+Release gate: GATE-1, GATE-2.
+Why critical: directly fixes the owner-observed false stop and applies the requested stock command.
+Depends on: NONE.
+Blocks: CP-2.
+Execution plane: HQ_DIRECT + PROJECT_RUNNER.
+Exact scope: content-script draft send behavior; model default/migration/recovery behavior; focused tests. Remove any remaining release-critical draft blocker discovered by validation.
+Acceptance condition: unit/static/runtime evidence proves composer content cannot cancel continuation or recovery, default/migration semantics are exact, custom commands remain intact.
+Evidence: commits `be80a5f...`, `693ed0c...`, `c0b5be9...`, `9226861...`.
 
-### CP-1B — Shared PAT all-repository verification
-Status: DONE
-Release gate: GATE-2.
-Evidence: implementation, focused tests, full frozen/PR/main validation.
-
-### CP-2 — Freeze and validate 0.7.7 candidate
-Status: DONE
+### CP-2 — Advance 0.7.8 metadata and freeze candidate
+Status: PENDING
 Release gate: GATE-3.
-Evidence: `ed9f9f83...`, `34124935100`, `10019736756`, canonical hashes.
+Why critical: establishes release artifact/evidence.
+Depends on: CP-1 implementation surface stable.
+Blocks: CP-3.
+Execution plane: HQ_DIRECT + PROJECT_RUNNER.
+Exact scope: version/package/validator/workflow metadata only plus required test wiring.
+Acceptance condition: exact candidate passes 5/5 audits, Chromium E2E, reproducible package/provenance; artifact/hash evidence captured.
 
 ### CP-3 — Canonical PR integration
-Status: DONE
+Status: PENDING
 Release gate: GATE-4.
-Evidence: PR #31 merged exact validated head as `c3a6d682...`.
+Depends on: CP-2.
+Blocks: CP-4.
+Execution plane: HQ_DIRECT + PROJECT_RUNNER.
+Acceptance condition: exact validated head, checks/reviews/threads/mergeability green, expected-head merge.
 
 ### CP-4 — Exact post-merge main proof
-Status: DONE
+Status: PENDING
 Release gate: GATE-5.
-Evidence: exact-main release/dependency runs and matching canonical inner hashes.
+Depends on: CP-3.
+Execution plane: PROJECT_RUNNER.
+Acceptance condition: exact-main release/dependency runs green and canonical inner hashes exactly match frozen candidate.
 
 ## 6. Active Execution Registry
 
-HQ: release complete; no active critical execution.
-Workers: NONE.
-Codex: NONE; failed claims terminalized and excluded from product evidence.
-Zero-model control: NONE active.
-CI/runtime: no critical release execution pending.
+HQ: active owner of product patch, release metadata, audits, PR/merge and release proof.
+Workers: NONE — scope is compact and overlapping; no useful independent worker slice.
+Codex: NONE — direct connector path is sufficient; previous 0.7.7 Codex failures are not reused.
+Zero-model control: NONE.
+CI/runtime: no 0.7.8 release run yet; metadata/workflow trigger is next.
 
 ## 7. Safe Parallel Work
 
-NONE — release complete. Do not manufacture unrelated work into the closed 0.7.7 release.
+NONE — remaining product/test/metadata writes share one release branch and must remain serialized before freeze.
 
 ## 8. Current Blockers
 
@@ -157,33 +159,33 @@ NONE.
 
 ## 9. Critical Path Audits
 
-Repository Coverage Audit: PASS.
-Evidence Audit: PASS — frozen, PR-context, merge and exact-main evidence all exact-SHA grounded.
-Release Alignment Audit: PASS — release contains only owner-requested URL rebind and shared-PAT diagnostics plus required metadata/tests.
-Dependency & Ordering Audit: PASS — implementation -> freeze -> PR checks -> expected-head merge -> exact-main proof completed in order.
-Execution & Parallelism Audit: PASS — no competing product writer at freeze/merge/main verification; failed Codex tasks terminalized safely.
-Adversarial Audit: PASS — stale page runtime inheritance, duplicate/invalid URL, active-check race, PAT single-repo false confidence, override shadowing, secret leakage and non-reproducible package risks all covered and green.
-Material findings and resolutions: all release-critical findings resolved; no residual release blocker.
+Repository Coverage Audit: PASS — affected content/model/background/test/release surfaces inspected incrementally from live main.
+Evidence Audit: PASS — owner screenshot/log evidence is corroborated by exact live source guards and stock command constant.
+Release Alignment Audit: PASS — patch is limited to draftless continuation and `go` default/migration plus release evidence.
+Dependency & Ordering Audit: PASS — product behavior before metadata/freeze; freeze before PR/merge/main proof.
+Execution & Parallelism Audit: PASS — one HQ writer, no duplicate executor or conflicting worker.
+Adversarial Audit: PASS — covers self-authored composer text, genuine user draft, legacy `hasDraft=true` recovery evidence, existing installations with old stock global command, portable config migration, and preservation of custom commands.
+Material findings and resolutions: destructive overwrite of a genuine composer draft is intentional owner policy for this release; continuation wins over composer content.
 
 ## 10. Next Action
 
-Exact next action: NONE for ChatPulse 0.7.7. Await a new explicit owner/project release objective; do not extend this release with unrelated backlog.
-Executor: HQ only when a new material objective/event exists.
-Expected evidence: new owner objective or material live project event.
-Acceptance condition: open a new release contract/critical path only when justified by live state or owner direction.
+Exact next action: inspect/advance every established 0.7.7 release metadata surface to 0.7.8, ensure focused regression test is included by the standard test glob, then launch exact branch release CI.
+Executor: HQ.
+Expected evidence: exact branch head, metadata diff, terminal audit/E2E/package jobs.
+Acceptance condition: no candidate freeze claim before exact CI/provenance is green.
 
 ## 11. Last Material Revision
 
-What changed: PR #31 merged exact validated candidate and exact-main release/dependency/provenance evidence completed successfully with inner package hashes matching the frozen candidate.
-Why the critical path changed: all five mandatory release gates are satisfied; ChatPulse 0.7.7 is factually released under the project contract.
-Evidence causing the change: frozen run `34124935100`; PR-context run `34125258715`; merge `c3a6d682...`; exact-main runs `34125467975`/`34125468037`; artifacts/hashes above.
+What changed: owner opened a new release objective after observing repeated draft-induced restart deferrals; HQ created `release/0.7.8-draftless-go` and implemented the first product/regression-test slice.
+Why the critical path changed: 0.7.7 is complete; the owner reported a new release-critical runtime defect and requested a new stock continuation command.
+Evidence causing the change: runtime screenshot/logs plus live source in content script/model/service worker.
 
 ## 12. Chat Rotation Checkpoint
 
 Safe to rotate chat: YES.
-Last completed atomic action: exact-main package/provenance and dependency proof verified, then terminal r63 persisted.
-Active external critical executions and exact refs: NONE.
+Last completed atomic action: focused regression test added on branch head `92268611618498b2665ef03809a034c8d7a9ba39` and r64 persisted.
+Active external executions and exact refs: NONE.
 Unpersisted material reasoning: NONE.
-Recovery entrypoint: live master + r63 + product basis `c3a6d682dd9a7e8e1013e2c15edd3ee442bb6b79`; verify future commits after basis are state-only before relying on terminal evidence.
-Exact next action after recovery: treat 0.7.7 as DONE; only open a new critical path for a new explicit owner objective or material project event.
+Recovery entrypoint: live master + r64 + `release/0.7.8-draftless-go@92268611618498b2665ef03809a034c8d7a9ba39`.
+Exact next action after recovery: advance 0.7.8 metadata/workflow and run exact candidate validation.
 Rotation blockers: NONE.
