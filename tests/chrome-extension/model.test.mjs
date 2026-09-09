@@ -28,7 +28,7 @@ const snapshot = (overrides = {}) => ({
 });
 
 test("точная команда по умолчанию сохранена", () => {
-  assert.equal(DEFAULT_COMMAND, "продолжай и не останавливайся до технического лимита");
+  assert.equal(DEFAULT_COMMAND, "go");
   assert.equal(defaultState().commandText, DEFAULT_COMMAND);
   assert.equal(defaultState().stopPhrase, "");
 });
