@@ -1,4 +1,5 @@
-export const DEFAULT_COMMAND = "продолжай и не останавливайся до технического лимита";
+export const DEFAULT_COMMAND = "go";
+const LEGACY_DEFAULT_COMMAND = "продолжай и не останавливайся до технического лимита";
 export const MAX_STOP_PHRASE_LENGTH = 500;
 export const MIN_INTERVAL_MINUTES = 0.5;
 export const MAX_INTERVAL_MINUTES = 1_440;
@@ -317,9 +318,7 @@ export function normalizeState(raw) {
     taskOnly: raw?.taskOnly === true,
     checkInProgress: raw?.checkInProgress === true,
     intervalMinutes: clampInterval(raw?.intervalMinutes ?? fallback.intervalMinutes),
-    commandText: typeof raw?.commandText === "string" && raw.commandText.trim()
-      ? raw.commandText.trim()
-      : DEFAULT_COMMAND,
+    commandText: normalizeGlobalCommand(raw?.commandText),
     stopPhrase: normalizeStopPhrase(raw?.stopPhrase),
     theme: raw?.theme === "preview" ? "preview" : "macos",
     sessionId: typeof raw?.sessionId === "string" && raw.sessionId ? raw.sessionId : fallback.sessionId,
@@ -493,8 +492,6 @@ export function planTabRecovery({ tab, snapshot, chat, intervalMinutes, now = Da
   if (tab.active === true) return { refresh: false, reason: null };
   if (!snapshot) return { refresh: true, reason: "content-unreachable" };
 
-  const hasDraft = snapshot.hasDraft === true;
-  if (hasDraft) return { refresh: false, reason: null };
   if (snapshot.errorDetected) return { refresh: true, reason: "page-error" };
 
   const generationAgeMs = finiteNonNegative(snapshot.generationAgeMs);
@@ -788,9 +785,7 @@ export function applyPortableConfig(raw, at = new Date().toISOString()) {
   const next = defaultState();
   next.enabled = false;
   next.intervalMinutes = clampInterval(raw.defaults?.intervalMinutes ?? next.intervalMinutes);
-  next.commandText = typeof raw.defaults?.commandText === "string" && raw.defaults.commandText.trim()
-    ? raw.defaults.commandText.trim().slice(0, 4_000)
-    : DEFAULT_COMMAND;
+  next.commandText = normalizeGlobalCommand(raw.defaults?.commandText);
   next.stopPhrase = normalizeStopPhrase(raw.defaults?.stopPhrase);
   next.theme = raw.defaults?.theme === "preview" ? "preview" : "macos";
   next.sessionId = createSessionId();
@@ -870,6 +865,11 @@ function boundedInteger(value, maximum) {
 function nonNegativeInteger(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function normalizeGlobalCommand(value) {
+  const command = typeof value === "string" ? value.trim().slice(0, 4_000) : "";
+  return !command || command === LEGACY_DEFAULT_COMMAND ? DEFAULT_COMMAND : command;
 }
 
 function stringOrNull(value) {
