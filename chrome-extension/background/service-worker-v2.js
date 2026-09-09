@@ -691,6 +691,7 @@ async function performGithubWatchdog(source, onlyChatId = null) {
   const permissionGranted = await hasGithubApiPermission();
   const now = new Date().toISOString();
   let touched = false;
+  let polledRepositories = 0;
   const successfulRepositories = new Set();
 
   for (const [repository, chatIds] of groups) {
@@ -700,6 +701,7 @@ async function performGithubWatchdog(source, onlyChatId = null) {
     if (!forcePoll && !groupChats.some((chat) => shouldPollGithubRepository(chat))) continue;
 
     touched = true;
+    polledRepositories += 1;
     if (!permissionGranted) {
       for (const chatId of chatIds) {
         const index = observedState.chats.findIndex((chat) => chat.id === chatId);
@@ -739,6 +741,11 @@ async function performGithubWatchdog(source, onlyChatId = null) {
   }
 
   if (!touched) return;
+  observedState = appendLog(
+    observedState,
+    "info",
+    `GitHub Actions watchdog: poll · repositories ${polledRepositories} · success ${successfulRepositories.size} · errors ${polledRepositories - successfulRepositories.size}`
+  );
   const latestAfterFetch = await loadState();
   let merged = mergeRuntimeState({ ...observedState, lastCheckAt: latestAfterFetch.lastCheckAt }, latestAfterFetch);
   merged = await configureAlarm(merged);

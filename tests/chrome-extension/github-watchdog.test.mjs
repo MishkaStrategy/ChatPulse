@@ -154,7 +154,7 @@ test("new workflow run resets inactivity episode", () => {
   assert.equal(githubWatchdogDecision(next, 10, Date.parse("2026-09-02T07:30:00.000Z")).decision, "active");
 });
 
-test("one inactivity marker can produce at most one successful restart", () => {
+test("same inactivity marker retries after each configured cooldown", () => {
   let chat = recordGithubActionsObservation(
     createChat({ title: "A", url: "https://chatgpt.com/c/a" }),
     { runId: "100", createdAt: "2026-09-02T07:00:00.000Z" },
@@ -163,9 +163,18 @@ test("one inactivity marker can produce at most one successful restart", () => {
   const stalled = githubWatchdogDecision(chat, 10, Date.parse("2026-09-02T07:11:00.000Z"));
   assert.equal(stalled.decision, "restart");
   assert.equal(stalled.restartKey, "run:100");
-  chat = recordGithubRestart(chat, stalled.restartKey, "2026-09-02T07:11:10.000Z");
+
+  const firstRestartAt = Date.parse("2026-09-02T07:11:10.000Z");
+  chat = recordGithubRestart(chat, stalled.restartKey, new Date(firstRestartAt).toISOString());
   assert.equal(chat.githubRestartCount, 1);
-  assert.equal(githubWatchdogDecision(chat, 10, Date.parse("2026-09-02T08:00:00.000Z")).decision, "already-restarted");
+  assert.equal(githubWatchdogDecision(chat, 10, firstRestartAt + 10 * 60_000 - 1).decision, "already-restarted");
+  assert.equal(githubWatchdogDecision(chat, 10, firstRestartAt + 10 * 60_000).decision, "restart");
+
+  const secondRestartAt = firstRestartAt + 10 * 60_000;
+  chat = recordGithubRestart(chat, stalled.restartKey, new Date(secondRestartAt).toISOString());
+  assert.equal(chat.githubRestartCount, 2);
+  assert.equal(githubWatchdogDecision(chat, 10, secondRestartAt + 10 * 60_000 - 1).decision, "already-restarted");
+  assert.equal(githubWatchdogDecision(chat, 10, secondRestartAt + 10 * 60_000).decision, "restart");
 });
 
 test("post-open restart grace runtime is preserved locally but cleared by activity, restart and reset", () => {

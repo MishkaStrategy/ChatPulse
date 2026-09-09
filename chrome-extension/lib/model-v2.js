@@ -596,7 +596,10 @@ export function githubWatchdogDecision(chat, idleMinutes, now = Date.now()) {
   const thresholdMs = clampGithubIdleMinutes(idleMinutes) * 60_000;
   if (idleMs < thresholdMs) return { decision: "active", restartKey, idleMs };
   if (chat.githubLastRestartKey === restartKey) {
-    return { decision: "already-restarted", restartKey, idleMs };
+    const lastRestartAt = Date.parse(String(chat.githubLastRestartAt || ""));
+    if (Number.isFinite(lastRestartAt) && now - lastRestartAt < thresholdMs) {
+      return { decision: "already-restarted", restartKey, idleMs };
+    }
   }
   return { decision: "restart", restartKey, idleMs };
 }

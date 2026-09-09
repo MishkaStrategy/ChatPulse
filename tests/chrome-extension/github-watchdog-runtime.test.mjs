@@ -43,6 +43,19 @@ test("GitHub API failures are recorded and never mapped directly to a restart", 
   assert.ok(block.includes("successfulRepositories.has(profile.githubRepository)"), "failed API polls must never select restart candidates");
 });
 
+test("real due GitHub watchdog polls emit one aggregate heartbeat", () => {
+  const start = worker.indexOf("async function performGithubWatchdog");
+  const end = worker.indexOf("async function attemptGithubWatchdogRestart", start);
+  const block = worker.slice(start, end);
+  const heartbeat = "GitHub Actions watchdog: poll";
+  assert.ok(block.includes("let polledRepositories = 0"));
+  assert.ok(block.includes("polledRepositories += 1"));
+  assert.equal(block.split(heartbeat).length - 1, 1);
+  assert.ok(block.indexOf(heartbeat) > block.indexOf("if (!touched) return;"));
+  assert.ok(block.includes("successfulRepositories.size"));
+  assert.ok(block.includes("polledRepositories - successfulRepositories.size"));
+});
+
 test("watchdog restart preserves run counters, ignores drafts and uses durable dispatch checkpoint", () => {
   const start = worker.indexOf("async function attemptGithubWatchdogRestart");
   const end = worker.indexOf("async function persistSingleRuntimeChat", start);
