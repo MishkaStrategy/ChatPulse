@@ -52,3 +52,15 @@ test("content script never reports or rejects a composer draft", async () => {
   assert.doesNotMatch(source, /автоматическая отправка отменена/);
   assert.doesNotMatch(source, /if \(normalize\(readInputValue\(input\)\)\)/);
 });
+
+test("watchdog restart has no composer-draft stop path", async () => {
+  const source = await readFile(
+    new URL("../../chrome-extension/background/service-worker-v2.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.doesNotMatch(source, /github-restart-user-draft/);
+  assert.doesNotMatch(source, /restart отложен: в поле ввода есть пользовательский черновик/);
+  assert.doesNotMatch(source, /restart отложен после preflight: обнаружен пользовательский черновик/);
+  assert.doesNotMatch(source, /snapshot\?\.hasDraft === true/);
+});
