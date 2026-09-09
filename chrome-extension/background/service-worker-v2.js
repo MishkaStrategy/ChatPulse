@@ -821,11 +821,6 @@ async function attemptGithubWatchdogRestart(chatId) {
       return;
     }
 
-    if (freshness.snapshot?.hasDraft === true) {
-      await persistSingleRuntimeChat({ ...runtimeChat, lastDecision: "github-restart-user-draft" }, sessionId);
-      await appendGithubRestartLog(chatId, "restart отложен: в поле ввода есть пользовательский черновик", "info");
-      return;
-    }
     if (!["send-continuation", "already-continued"].includes(firstDecision.decision)) {
       await persistSingleRuntimeChat(runtimeChat, sessionId);
       await appendGithubRestartLog(chatId, `restart отложен: ${decisionDescription(firstDecision.decision)}`, "info");
@@ -863,10 +858,6 @@ async function attemptGithubWatchdogRestart(chatId) {
       stopPhrase: profile.stopPhrase,
       allowPeriodicRefresh: false
     });
-    if (preflight.snapshot?.hasDraft === true) {
-      await appendGithubRestartLog(chatId, "restart отложен после preflight: обнаружен пользовательский черновик", "info");
-      return;
-    }
     const preflightDecision = decide(chat, preflight.snapshot, sessionId);
     if (preflightDecision.decision === "not-authenticated") {
       const deferred = await deferGithubRestartForAuthWarmup({
@@ -1384,7 +1375,7 @@ async function updateBadge(state) {
   await chrome.action.setTitle({
     title: !state.enabled
       ? "ChatPulse остановлен"
-      : state.taskOnly
+      : state.enabled && state.taskOnly
         ? `ChatPulse: работают только задачи · ${activeTasks}`
         : `ChatPulse работает · ${state.chats.filter((chat) => chat.enabled).length} чатов · ${activeTasks} задач`
   });
