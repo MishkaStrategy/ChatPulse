@@ -183,7 +183,7 @@ function queuePulse2Check(source) {
 async function performPulse2Check(source) {
   let state = await loadPulse2State();
   if (!state.enabled || state.phase !== "monitoring") return;
-  if (source !== "manual") {
+  if (source === "alarm") {
     const nextAt = Date.parse(String(state.nextCheckAt || ""));
     if (Number.isFinite(nextAt) && nextAt > Date.now() + 1_000) return;
   }
