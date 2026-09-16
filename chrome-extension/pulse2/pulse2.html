@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatPulse — Pulse 2.0</title>
+  <link rel="stylesheet" href="pulse2.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="topbar">
+      <div class="brand">
+        <img src="../assets/logo.svg" alt="">
+        <div>
+          <span class="eyebrow">Автономный режим</span>
+          <h1>Pulse 2.0</h1>
+          <p>Циклическое продолжение чатов с автоматическим переходом в новый чат проекта.</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="openPulse1Button" class="secondary-button" type="button">Pulse 1.0</button>
+        <button id="toggleButton" class="primary-button" type="button">Запустить Pulse 2.0</button>
+      </div>
+    </header>
+
+    <section class="metrics">
+      <article class="metric">
+        <span>Статус</span>
+        <strong id="statusValue">Загрузка…</strong>
+        <small id="statusDetail">Подключение к автономному engine</small>
+      </article>
+      <article class="metric">
+        <span>Цикл</span>
+        <strong id="cycleValue">—</strong>
+        <small id="cycleDetail">—</small>
+      </article>
+      <article class="metric">
+        <span>Автоответы</span>
+        <strong id="responseValue">—</strong>
+        <small id="responseDetail">—</small>
+      </article>
+      <article class="metric">
+        <span>Следующее действие</span>
+        <strong id="nextValue">—</strong>
+        <small id="phaseDetail">—</small>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel settings-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Отдельные настройки</span>
+            <h2>Маршрут Pulse 2.0</h2>
+          </div>
+          <span class="isolation-badge">isolated state</span>
+        </div>
+
+        <label class="field">
+          <span>Текущий чат</span>
+          <input id="chatUrlField" type="url" autocomplete="off" spellcheck="false" placeholder="https://chatgpt.com/c/…">
+          <small>После каждой ротации ссылка автоматически заменяется на новый созданный чат.</small>
+        </label>
+        <div class="button-row compact-row">
+          <button id="useCurrentButton" class="secondary-button" type="button">Взять открытый чат</button>
+          <button id="openCurrentButton" class="secondary-button" type="button">Открыть текущий чат</button>
+        </div>
+
+        <label class="field">
+          <span>Проект ChatGPT</span>
+          <input id="projectUrlField" type="url" autocomplete="off" spellcheck="false" placeholder="https://chatgpt.com/g/g-p-…/project">
+          <small>Используется только для создания следующего чата после завершения очередного цикла.</small>
+        </label>
+
+        <label class="field">
+          <span>Текст автоответа</span>
+          <textarea id="commandField" rows="3" maxlength="4000" placeholder="go"></textarea>
+          <small>Отправляется в текущий чат после стабильного ответа ассистента и заданной задержки.</small>
+        </label>
+
+        <label class="field">
+          <span>Стартовое сообщение нового чата</span>
+          <textarea id="startMessageField" rows="3" maxlength="4000" placeholder="Пусто = использовать текст автоответа"></textarea>
+          <small>Отправляется один раз при создании нового чата внутри проекта. Пустое поле наследует текст автоответа.</small>
+        </label>
+
+        <div class="field-grid">
+          <label class="field">
+            <span>Задержка автоответа</span>
+            <select id="intervalField">
+              <option value="0.5">30 секунд</option>
+              <option value="1">1 минута</option>
+              <option value="2">2 минуты</option>
+              <option value="5">5 минут</option>
+              <option value="10">10 минут</option>
+              <option value="15">15 минут</option>
+              <option value="30">30 минут</option>
+              <option value="60">1 час</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Автоответов на цикл</span>
+            <input id="messagesPerCycleField" type="number" min="1" max="1000" step="1" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>Количество циклов</span>
+            <input id="maxCyclesField" type="number" min="1" max="1000" step="1" inputmode="numeric">
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button id="saveButton" class="primary-button" type="button">Сохранить настройки</button>
+          <button id="checkButton" class="secondary-button" type="button">Проверить сейчас</button>
+        </div>
+        <div id="messageBar" class="message-bar" hidden></div>
+      </article>
+
+      <article class="panel flow-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Логика цикла</span>
+            <h2>Что делает режим</h2>
+          </div>
+        </div>
+        <ol class="steps">
+          <li><span>1</span><p>Наблюдает только за текущей ссылкой Pulse 2.0 в собственной фоновой вкладке.</p></li>
+          <li><span>2</span><p>После завершённого ответа ждёт заданный интервал и отправляет автоответ ровно один раз этому ответу.</p></li>
+          <li><span>3</span><p>После заданного количества автоответов дожидается ответа на последний из них и открывает ссылку проекта.</p></li>
+          <li><span>4</span><p>Создаёт новый чат проекта, отправляет стартовое сообщение и ждёт 2 минуты, чтобы адрес стал постоянным <code>/c/…</code>.</p></li>
+          <li><span>5</span><p>Сохраняет новый URL как текущий и запускает следующий цикл. После последнего заданного цикла останавливается.</p></li>
+        </ol>
+        <div class="note">
+          Pulse 2.0 хранит состояние, alarm и счётчики отдельно от Pulse 1.0. Один и тот же чат одновременно в двух режимах запускать нельзя — это блокируется перед стартом.
+        </div>
+      </article>
+    </section>
+
+    <section class="panel runtime-panel">
+      <div class="panel-heading split-heading">
+        <div>
+          <span class="eyebrow">Runtime</span>
+          <h2>Текущий маршрут</h2>
+        </div>
+        <span id="currentUrlLabel" class="url-pill">—</span>
+      </div>
+      <div class="runtime-grid">
+        <div><span>Фаза</span><strong id="phaseValue">—</strong></div>
+        <div><span>Всего автоответов</span><strong id="totalResponsesValue">0</strong></div>
+        <div><span>Последняя проверка</span><strong id="lastCheckValue">—</strong></div>
+        <div><span>Ошибка</span><strong id="errorValue">—</strong></div>
+      </div>
+    </section>
+
+    <section class="panel history-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">История ротаций</span>
+          <h2>Чаты Pulse 2.0</h2>
+        </div>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+
+    <footer>
+      <span id="versionLabel"></span>
+      <span>Pulse 2.0 · отдельный storage + scheduler · Chrome Manifest V3</span>
+    </footer>
+  </main>
+  <script type="module" src="pulse2.js"></script>
+</body>
+</html>
