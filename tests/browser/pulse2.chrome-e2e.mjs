@@ -69,6 +69,26 @@ try {
 
   await pulse2Page.locator("#toggleButton").click();
 
+  await waitFor(async () => {
+    const state = await getPulse2State(pulse2Page);
+    return state?.enabled && Number.isInteger(state.tabId) ? state : null;
+  }, "Pulse 2.0 did not create its autonomous managed tab");
+
+  const initialChatPage = await waitForManagedChatGPTPage(context);
+  await initialChatPage.route(PROJECT_URL, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html; charset=utf-8",
+      body: projectFixtureHtml()
+    });
+  });
+  await initialChatPage.goto(CHAT_URL, { waitUntil: "domcontentloaded" });
+  await waitFor(
+    async () => await initialChatPage.locator("[data-testid='profile-button']").count() === 1,
+    "authenticated ChatGPT fixture was not installed in the managed tab"
+  );
+
+  await pulse2Page.locator("#checkButton").click();
   const baseline = await waitFor(async () => {
     const state = await getPulse2State(pulse2Page);
     if (state.lastError) throw new Error(`Pulse 2.0 baseline failed: ${state.lastError}`);
@@ -79,7 +99,6 @@ try {
   assert.equal(baseline.cycleNumber, 1);
   assert.equal(baseline.cycleContinuationCount, 0);
 
-  const initialChatPage = await waitForPage(context, CHAT_URL);
   await agePulse2Observation(pulse2Page);
   await pulse2Page.locator("#checkButton").click();
 
@@ -215,11 +234,14 @@ async function projectNewChatClickCount(page) {
   return page.evaluate(() => Number(globalThis.__pulse2ProjectNewChatClicks || 0));
 }
 
-async function waitForPage(context, url) {
-  return waitFor(
-    async () => context.pages().find((page) => page.url() === url) || null,
-    `page not found: ${url}`
-  );
+async function waitForManagedChatGPTPage(context) {
+  return waitFor(async () => context.pages().find((page) => {
+    try {
+      return new URL(page.url()).hostname === "chatgpt.com";
+    } catch {
+      return false;
+    }
+  }) || null, "Pulse 2.0 managed ChatGPT page was not exposed to Playwright");
 }
 
 async function waitFor(check, message, timeoutMs = WAIT_MS) {
