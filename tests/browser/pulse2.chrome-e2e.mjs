@@ -244,6 +244,7 @@ function chatFixtureHtml() {
 <html>
 <head><meta charset="utf-8"><title>Pulse 2.0 E2E - ChatGPT</title></head>
 <body>
+  <button data-testid="profile-button" type="button" style="width:40px;height:40px">Profile</button>
   <main>
     <section id="messages">
       <article data-message-author-role="assistant" data-message-id="assistant-baseline">Initial assistant response complete.</article>
@@ -274,6 +275,7 @@ function projectFixtureHtml() {
 <html>
 <head><meta charset="utf-8"><title>Pulse 2.0 Project E2E - ChatGPT</title></head>
 <body>
+  <button data-testid="profile-button" type="button" style="width:40px;height:40px">Profile</button>
   <main>
     <h1>Project E2E</h1>
     <button id="new-chat" aria-label="New chat" type="button" style="width:120px;height:40px">New chat</button>
