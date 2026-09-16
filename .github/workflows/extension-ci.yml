@@ -72,7 +72,7 @@ jobs:
         run: npm run audit:extension
 
   browser-e2e:
-    name: Chromium MV3 browser E2E — retained GitHub watchdog
+    name: Chromium MV3 browser E2E — Pulse 1.0 + Pulse 2.0
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -111,6 +111,9 @@ jobs:
           CHATPULSE_E2E_REPOSITORY: MishkaStrategy/ChatPulse
           CHATPULSE_E2E_RUN_ID: ${{ github.run_id }}
         run: node tests/browser/github-watchdog.chrome-e2e.mjs
+
+      - name: Run loaded-extension Pulse 2.0 project rotation browser E2E
+        run: node tests/browser/pulse2.chrome-e2e.mjs
 
   package:
     name: Reproducible beta package and provenance
