@@ -11,6 +11,7 @@ const elements = {
   lastLog: document.querySelector("#lastLog"),
   themeButton: document.querySelector("#themeButton"),
   openOptionsButton: document.querySelector("#openOptionsButton"),
+  openPulse2Button: document.querySelector("#openPulse2Button"),
   chatTemplate: document.querySelector("#chatTemplate"),
   versionLabel: document.querySelector("#versionLabel")
 };
@@ -42,6 +43,10 @@ elements.themeButton.addEventListener("click", () => runAction("UPDATE_SETTINGS"
   patch: { theme: currentState?.theme === "preview" ? "macos" : "preview" }
 }));
 elements.openOptionsButton.addEventListener("click", () => chrome.runtime.openOptionsPage());
+elements.openPulse2Button.addEventListener("click", async () => {
+  await chrome.tabs.create({ url: chrome.runtime.getURL("pulse2/pulse2.html"), active: true });
+  window.close();
+});
 
 async function refresh() {
   try {
@@ -123,7 +128,7 @@ function render() {
 
 function statusSummary(state) {
   if (state.checkInProgress) return "Идёт последовательная проверка";
-  if (!state.enabled) return "Master-stop активен · фоновые отправки выключены";
+  if (!state.enabled) return "Master-stop Pulse 1.0 активен · Pulse 2.0 управляется отдельно";
   const enabledCount = state.chats.filter((chat) => chat.enabled).length;
   const activeTasks = state.chats.filter((chat) => chat.taskActive).length;
   if (state.taskOnly) {
