@@ -161,8 +161,9 @@ async function startPulse2() {
   const createdTabIds = [];
   try {
     for (const route of state.routes) {
-      if (!route.currentChatUrl) continue;
-      const tab = await chrome.tabs.create({ url: route.currentChatUrl, active: false, pinned: false });
+      if (!route.projectUrl) throw new Error(`Укажите ссылку проекта для «${route.name}».`);
+      const targetUrl = route.currentChatUrl || route.projectUrl;
+      const tab = await chrome.tabs.create({ url: targetUrl, active: false, pinned: false });
       if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
       tabIds[route.id] = tab.id;
       createdTabIds.push(tab.id);
