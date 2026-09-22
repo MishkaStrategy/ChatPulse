@@ -7,7 +7,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, "..");
 const sourcePath = path.join(scriptsDir, "validate_extension.mjs");
 const runtimePath = path.join(scriptsDir, ".validate_extension_release.runtime.mjs");
-const releaseVersion = "0.8.3";
+const releaseVersion = "0.8.4";
 
 const source = await readFile(sourcePath, "utf8");
 const releaseSource = source
@@ -67,6 +67,9 @@ assert.ok(engine.includes("performPulse2RotationSweep"), "rotating routes need a
 assert.ok(engine.includes("ROTATION_RECOVERY_PERIOD_MINUTES = 0.5"), "rotation recovery watchdog must remain bounded");
 assert.ok(engine.includes("recoverPulse2RotationAfterDispatch"), "rotation recovery must adopt a concrete chat URL after a lost post-send checkpoint");
 assert.ok(engine.includes("targetUrl = route.currentChatUrl || route.projectUrl"), "START must synchronously create a managed tab even when current chat is empty");
+assert.ok(engine.includes("activatePulse2ManagedTab"), "Project rotation must explicitly foreground its managed tab");
+assert.ok(engine.includes("chrome.tabs.update(tabId, { active: true })"), "managed Project tab must become the active Chrome tab before composer lookup");
+assert.ok(engine.includes("chrome.windows.update(tab.windowId, { focused: true })"), "managed Project tab window should be focused when possible");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
 assert.ok(!engine.includes('chrome.storage.local.set({ [PULSE1_STORAGE_KEY]'), "Pulse 2.0 must never write Pulse 1 state");
 assert.ok(engine.includes("enqueueEngineOperation"), "multi-route writes must be serialized");
