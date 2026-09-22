@@ -7,7 +7,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, "..");
 const sourcePath = path.join(scriptsDir, "validate_extension.mjs");
 const runtimePath = path.join(scriptsDir, ".validate_extension_release.runtime.mjs");
-const releaseVersion = "0.8.2";
+const releaseVersion = "0.8.3";
 
 const source = await readFile(sourcePath, "utf8");
 const releaseSource = source
@@ -62,6 +62,10 @@ assert.ok(engine.includes('const STORAGE_KEY = "chatpulse2State"'));
 assert.ok(engine.includes('export const PULSE2_PORT_NAME = "chatpulse-pulse2"'));
 assert.ok(engine.includes('export const PULSE2_ALARM_NAME = "chatpulse-pulse2-monitor"'));
 assert.ok(engine.includes('export const PULSE2_CAPTURE_ALARM_NAME = "chatpulse-pulse2-capture"'));
+assert.ok(engine.includes('export const PULSE2_ROTATION_ALARM_NAME = "chatpulse-pulse2-rotation"'));
+assert.ok(engine.includes("performPulse2RotationSweep"), "rotating routes need an alarm-recoverable sweep");
+assert.ok(engine.includes("ROTATION_RECOVERY_PERIOD_MINUTES = 0.5"), "rotation recovery watchdog must remain bounded");
+assert.ok(engine.includes("recoverPulse2RotationAfterDispatch"), "rotation recovery must adopt a concrete chat URL after a lost post-send checkpoint");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
 assert.ok(!engine.includes('chrome.storage.local.set({ [PULSE1_STORAGE_KEY]'), "Pulse 2.0 must never write Pulse 1 state");
 assert.ok(engine.includes("enqueueEngineOperation"), "multi-route writes must be serialized");
