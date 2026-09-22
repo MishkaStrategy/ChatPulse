@@ -54,6 +54,15 @@ test("multi-project UI can add and remove routes without mutating running settin
   assert.match(ui, /running \|\| busy/);
 });
 
+test("project entry supports the new direct composer shell as well as legacy New chat actions", () => {
+  assert.match(helper, /PROJECT_ENTRY_TIMEOUT_MS = 12_000/);
+  assert.match(helper, /findProjectComposerSurface/);
+  assert.match(helper, /project-composer-activated/);
+  assert.match(helper, /новый чат в\|new chat in/);
+  assert.match(helper, /findProjectChatControl/);
+  assert.match(helper, /project-new-chat-opened/);
+});
+
 test("Pulse 2.0 retains bounded URL capture and common safe sender", () => {
   assert.match(model, /PULSE2_CAPTURE_DELAY_MS = 2 \* 60_000/);
   assert.match(model, /PULSE2_CAPTURE_RETRY_MS = 30_000/);
