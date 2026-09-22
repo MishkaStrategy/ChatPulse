@@ -97,7 +97,16 @@ try {
   }, "Pulse 2.0 blank single route was not saved for rotation recovery E2E");
   const routeId = blankSingleSaved.routes[0].id;
 
-  await seedPersistedRotationAndTriggerRecovery(pulse2Page, routeId);
+  const recoveryProjectPage = await context.newPage();
+  await recoveryProjectPage.goto(PROJECT_URL, { waitUntil: "domcontentloaded" });
+  await waitFor(
+    async () => await recoveryProjectPage.locator("[data-testid='profile-button']").count() === 1,
+    "controlled project fixture was not installed before recovery"
+  );
+  const recoveryTabId = await tabIdForUrl(pulse2Page, PROJECT_URL);
+  assert.ok(Number.isInteger(recoveryTabId), "controlled project fixture has no Chrome tab id");
+
+  await seedPersistedRotationAndTriggerRecovery(pulse2Page, routeId, recoveryTabId);
   const recoveredCaptureWait = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
@@ -273,8 +282,8 @@ async function sendPulse2Request(extensionPage, type, payload = {}) {
   }), { requestType: type, requestPayload: payload });
 }
 
-async function seedPersistedRotationAndTriggerRecovery(extensionPage, routeId) {
-  await extensionPage.evaluate(async (id) => {
+async function seedPersistedRotationAndTriggerRecovery(extensionPage, routeId, tabId) {
+  await extensionPage.evaluate(async ({ id, managedTabId }) => {
     const stored = await chrome.storage.local.get("chatpulse2State");
     const state = stored.chatpulse2State;
     const route = state.routes.find((item) => item.id === id);
@@ -295,7 +304,7 @@ async function seedPersistedRotationAndTriggerRecovery(extensionPage, routeId) {
       cycleContinuationCount: 0,
       totalContinuationCount: 0,
       rotationPending: false,
-      tabId: null,
+      tabId: managedTabId,
       checkInProgress: false,
       lastObservedFingerprint: null,
       lastObservedAt: null,
@@ -315,7 +324,14 @@ async function seedPersistedRotationAndTriggerRecovery(extensionPage, routeId) {
 
     await chrome.storage.local.set({ chatpulse2State: state });
     await chrome.alarms.create("chatpulse-pulse2-rotation", { when: Date.now() + 100 });
-  }, routeId);
+  }, { id: routeId, managedTabId: tabId });
+}
+
+async function tabIdForUrl(extensionPage, url) {
+  return extensionPage.evaluate(async (targetUrl) => {
+    const tabs = await chrome.tabs.query({});
+    return tabs.find((tab) => tab.url === targetUrl)?.id ?? null;
+  }, url);
 }
 
 async function agePulse2Observation(extensionPage, routeId) {
