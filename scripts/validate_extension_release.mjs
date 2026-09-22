@@ -7,7 +7,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, "..");
 const sourcePath = path.join(scriptsDir, "validate_extension.mjs");
 const runtimePath = path.join(scriptsDir, ".validate_extension_release.runtime.mjs");
-const releaseVersion = "0.8.1";
+const releaseVersion = "0.8.2";
 
 const source = await readFile(sourcePath, "utf8");
 const releaseSource = source
@@ -71,6 +71,9 @@ assert.ok(model.includes("PULSE2_MAX_ROUTES = 20"));
 assert.ok(model.includes("initializingChat"));
 assert.ok(model.includes("project-initial"));
 assert.ok(content.includes("PULSE2_PREPARE_PROJECT_CHAT"));
+assert.ok(content.includes("findProjectComposerSurface"), "Pulse 2.0 must detect direct project composer shells");
+assert.ok(content.includes("project-composer-activated"), "direct project composer activation path must remain covered");
+assert.ok(content.includes("PROJECT_ENTRY_TIMEOUT_MS = 12_000"), "project entry must tolerate bounded UI hydration");
 assert.ok(ui.includes('const PORT_NAME = "chatpulse-pulse2"'));
 assert.ok(ui.includes("draftDirty"), "UI must protect unsaved settings draft from live state pushes");
 assert.ok(ui.includes("document.activeElement === control"), "focused settings controls must not be overwritten");

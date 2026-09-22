@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2 beta — current ChatGPT Project composer compatibility
+
+- recognize the current project landing composer shown as **Новый чат в … / New chat in …** even when no separate New chat button exists;
+- activate that composer shell and wait for the real textarea/contenteditable before sending the start message;
+- wait up to 12 seconds for bounded project UI hydration instead of failing after a one-shot lookup;
+- retain the legacy explicit New chat button path as a fallback;
+- add loaded-Chromium regression coverage reproducing the screenshot-style project layout with no New chat button;
+- move deterministic beta package/provenance output to ChatPulse 0.8.2.
+
 ## 0.7.4 beta — independent GitHub Actions scheduling
 
 - fix a scheduler starvation bug where each ordinary interval check recreated/postponed the GitHub 10-minute alarm and each GitHub watchdog check could recreate/postpone a longer ordinary alarm;

@@ -158,7 +158,8 @@ try {
   const projectTab = await waitFor(async () => context.pages().find((page) => page.url() === CREATED_CHAT_URL) || null,
     "project fixture never transitioned to the newly created persistent chat URL");
   assert.equal(await latestUserMessage(projectTab), START_MESSAGE, "new project chat start message mismatch");
-  assert.equal(await projectNewChatClickCount(projectTab), 1, "Pulse 2.0 did not use the project New chat action exactly once");
+  assert.equal(await projectComposerActivationCount(projectTab), 1, "Pulse 2.0 did not activate the direct project composer exactly once");
+  assert.equal(await projectTab.locator("#new-chat").count(), 0, "screenshot-like project fixture must not expose a legacy New chat button");
 
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const captured = await waitFor(async () => {
@@ -254,8 +255,8 @@ async function latestUserMessage(page) {
   return page.evaluate(() => [...document.querySelectorAll("[data-message-author-role='user']")].at(-1)?.textContent?.trim() || "");
 }
 
-async function projectNewChatClickCount(page) {
-  return page.evaluate(() => Number(globalThis.__pulse2ProjectNewChatClicks || 0));
+async function projectComposerActivationCount(page) {
+  return page.evaluate(() => Number(globalThis.__pulse2ProjectComposerActivations || 0));
 }
 
 async function waitForManagedChatGPTPage(browserContext) {
@@ -294,7 +295,34 @@ function chatFixtureHtml() {
 function projectFixtureHtml() {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Pulse 2.0 Project E2E</title></head><body>
   <button data-testid="profile-button" type="button" style="width:40px;height:40px">Profile</button>
-  <main><h1>Project E2E</h1><button id="new-chat" aria-label="New chat" type="button" style="width:120px;height:40px">New chat</button><section id="composer-host"></section><section id="messages"></section></main>
-  <script>globalThis.__pulse2ProjectNewChatClicks=0;document.querySelector('#new-chat').addEventListener('click',()=>{globalThis.__pulse2ProjectNewChatClicks+=1;document.querySelector('#composer-host').innerHTML='<textarea id="prompt-textarea" aria-label="Message ChatGPT" style="width:500px;height:80px"></textarea><button data-testid="send-button" aria-label="Send" type="button" style="width:100px;height:40px">Send</button>';document.querySelector('[data-testid="send-button"]').addEventListener('click',()=>{const input=document.querySelector('#prompt-textarea');const text=input.value.trim();if(!text)return;const m=document.createElement('article');m.setAttribute('data-message-author-role','user');m.setAttribute('data-message-id','project-user-'+Date.now());m.textContent=text;document.querySelector('#messages').append(m);history.replaceState({},'','${CREATED_CHAT_URL}');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));});});<\/script>
+  <main>
+    <h1>Модульная Стратегия</h1>
+    <div id="project-composer-shell" data-placeholder="Новый чат в Модульная Стратегия" style="width:760px;height:76px;border:1px solid #444;border-radius:24px;display:flex;align-items:center;padding:0 24px;cursor:text">
+      <span>Новый чат в Модульная Стратегия</span>
+    </div>
+    <section id="composer-host"></section>
+    <section id="messages"></section>
+  </main>
+  <script>
+  globalThis.__pulse2ProjectComposerActivations=0;
+  document.querySelector('#project-composer-shell').addEventListener('click',()=>{
+    globalThis.__pulse2ProjectComposerActivations+=1;
+    document.querySelector('#project-composer-shell').remove();
+    document.querySelector('#composer-host').innerHTML='<textarea id="prompt-textarea" aria-label="Message ChatGPT" style="width:500px;height:80px"></textarea><button data-testid="send-button" aria-label="Send" type="button" style="width:100px;height:40px">Send</button>';
+    document.querySelector('[data-testid="send-button"]').addEventListener('click',()=>{
+      const input=document.querySelector('#prompt-textarea');
+      const text=input.value.trim();
+      if(!text)return;
+      const m=document.createElement('article');
+      m.setAttribute('data-message-author-role','user');
+      m.setAttribute('data-message-id','project-user-'+Date.now());
+      m.textContent=text;
+      document.querySelector('#messages').append(m);
+      history.replaceState({},'','${CREATED_CHAT_URL}');
+      input.value='';
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+  });
+  <\/script>
   </body></html>`;
 }
