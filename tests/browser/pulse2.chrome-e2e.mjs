@@ -106,6 +106,13 @@ try {
   const recoveryTabId = await tabIdForUrl(pulse2Page, PROJECT_URL);
   assert.ok(Number.isInteger(recoveryTabId), "controlled project fixture has no Chrome tab id");
 
+  await pulse2Page.bringToFront();
+  assert.notEqual(
+    await activeTabId(pulse2Page),
+    recoveryTabId,
+    "recovery project tab must begin in the background for the foreground-activation regression"
+  );
+
   await seedPersistedRotationAndTriggerRecovery(pulse2Page, routeId, recoveryTabId);
   const recoveredCaptureWait = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -125,6 +132,11 @@ try {
   assert.equal(await latestUserMessage(recoveredProjectTab), START_MESSAGE, "recovered first project chat start message mismatch");
   assert.equal(await projectComposerActivationCount(recoveredProjectTab), 1, "recovery did not activate the direct project composer exactly once");
   assert.equal(await recoveredProjectTab.locator("#new-chat").count(), 0, "recovery fixture must not expose a legacy New chat button");
+  assert.equal(
+    await activeTabId(pulse2Page),
+    recoveredCaptureWait.tabId,
+    "rotation recovery must foreground the managed Project tab before composer lookup"
+  );
   assert.ok(Date.parse(recoveredCaptureWait.captureDueAt) - Date.parse(recoveredCaptureWait.lastCheckAt) >= 119_000);
 
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
@@ -221,6 +233,11 @@ try {
   assert.equal(await latestUserMessage(projectTab), START_MESSAGE, "new project chat start message mismatch");
   assert.equal(await projectComposerActivationCount(projectTab), 1, "Pulse 2.0 did not activate the direct project composer exactly once");
   assert.equal(await projectTab.locator("#new-chat").count(), 0, "screenshot-like project fixture must not expose a legacy New chat button");
+  assert.equal(
+    await activeTabId(pulse2Page),
+    captureWait.tabId,
+    "ordinary rotation must foreground the managed Project tab before composer lookup"
+  );
 
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const captured = await waitFor(async () => {
@@ -242,6 +259,7 @@ try {
   console.log("pulse2_browser_e2e_optional_chat_save=PASS");
   console.log("pulse2_browser_e2e_multi_route_save=PASS");
   console.log("pulse2_browser_e2e_rotation_recovery=PASS");
+  console.log("pulse2_browser_e2e_project_foreground=PASS");
   console.log("pulse2_browser_e2e_rotation=PASS");
   console.log("pulse2_browser_e2e_isolation=PASS");
   console.log("pulse2_browser_e2e_result=PASS");
@@ -336,6 +354,13 @@ async function tabIdForUrl(extensionPage, url) {
     const tabs = await chrome.tabs.query({});
     return tabs.find((tab) => tab.url === targetUrl)?.id ?? null;
   }, url);
+}
+
+async function activeTabId(extensionPage) {
+  return extensionPage.evaluate(async () => {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return tabs[0]?.id ?? null;
+  });
 }
 
 async function navigateManagedTab(extensionPage, tabId, url) {
