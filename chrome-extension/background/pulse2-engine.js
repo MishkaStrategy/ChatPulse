@@ -12,6 +12,7 @@ import {
   getPulse2Route,
   isPulse2RouteTerminal,
   markPulse2CaptureWait,
+  normalizePulse2ProjectURL,
   normalizePulse2State,
   observePulse2Snapshot,
   recordPulse2Dispatch,
@@ -25,6 +26,7 @@ import {
 export const PULSE2_PORT_NAME = "chatpulse-pulse2";
 export const PULSE2_ALARM_NAME = "chatpulse-pulse2-monitor";
 export const PULSE2_CAPTURE_ALARM_NAME = "chatpulse-pulse2-capture";
+export const PULSE2_ROTATION_ALARM_NAME = "chatpulse-pulse2-rotation";
 
 const STORAGE_KEY = "chatpulse2State";
 const PULSE1_STORAGE_KEY = "chatpulseState";
@@ -33,6 +35,7 @@ const CONTENT_TIMEOUT_MS = 6_000;
 const PROJECT_PREPARE_TIMEOUT_MS = 15_000;
 const START_MESSAGE_TIMEOUT_MS = 20_000;
 const PROJECT_SETTLE_MS = 1_000;
+const ROTATION_RECOVERY_PERIOD_MINUTES = 0.5;
 
 const ports = new Set();
 let engineQueue = Promise.resolve();
@@ -50,6 +53,7 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === PULSE2_ALARM_NAME) void enqueueEngineOperation(() => performPulse2Sweep("alarm"));
   if (alarm.name === PULSE2_CAPTURE_ALARM_NAME) void enqueueEngineOperation(() => performPulse2CaptureSweep());
+  if (alarm.name === PULSE2_ROTATION_ALARM_NAME) void enqueueEngineOperation(() => performPulse2RotationSweep());
 });
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -303,6 +307,24 @@ async function performPulse2RouteCheck(routeId) {
   }
 }
 
+async function performPulse2RotationSweep() {
+  let state = await loadPulse2State();
+  if (!state.enabled) return state;
+  const routeIds = state.routes
+    .filter((route) => route.phase === "rotating")
+    .map((route) => route.id);
+
+  for (const routeId of routeIds) {
+    await performPulse2Rotation(routeId);
+  }
+
+  state = await loadPulse2State();
+  state = settlePulse2Global(state);
+  state = await configurePulse2Alarms(state);
+  await persistPulse2State(state);
+  return state;
+}
+
 async function performPulse2Rotation(routeId) {
   let state = await loadPulse2State();
   let route = getPulse2Route(state, routeId);
@@ -310,18 +332,36 @@ async function performPulse2Rotation(routeId) {
   const expectedSessionId = state.sessionId;
   const expectedRevision = state.controlRevision;
 
+  route = {
+    ...route,
+    lastCheckAt: new Date().toISOString(),
+    lastError: null
+  };
+  state = replacePulse2Route(state, routeId, route);
+  await persistPulse2State(state);
+
   try {
     let tab = null;
     if (Number.isInteger(route.tabId)) {
       try { tab = await chrome.tabs.get(route.tabId); } catch { tab = null; }
     }
+
+    if (tab?.id && await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
+      expectedSessionId,
+      expectedRevision
+    })) {
+      return;
+    }
+
     if (!tab?.id) {
       tab = await chrome.tabs.create({ url: route.projectUrl, active: false, pinned: false });
       if (!Number.isInteger(tab?.id)) throw new Error(`Не удалось создать вкладку проекта «${route.name}».`);
       state = replacePulse2Route(state, routeId, { ...route, tabId: tab.id });
       await persistPulse2State(state);
-    } else {
+    } else if (normalizePulse2ProjectURL(tab.url) !== route.projectUrl) {
       tab = await chrome.tabs.update(tab.id, { url: route.projectUrl, active: false });
+    } else {
+      tab = await chrome.tabs.update(tab.id, { active: false });
     }
 
     await protectManagedTab(tab.id);
@@ -354,6 +394,24 @@ async function performPulse2Rotation(routeId) {
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
   }
+}
+
+async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected) {
+  const route = assertPulse2ExecutionStillCurrent(state, routeId, {
+    ...expected,
+    phase: "rotating"
+  });
+  const concreteChatUrl = normalizeChatURL(tab?.url);
+  if (!concreteChatUrl || concreteChatUrl === route.currentChatUrl) return false;
+
+  let next = markPulse2CaptureWait(state, routeId);
+  next = replacePulse2Route(next, routeId, {
+    ...requireRoute(next, routeId),
+    lastError: null
+  });
+  next = await configurePulse2Alarms(next);
+  await persistPulse2State(next);
+  return true;
 }
 
 async function performPulse2CaptureSweep() {
@@ -568,6 +626,7 @@ async function configurePulse2Alarms(state) {
   if (!current.enabled) {
     await clearAlarm(PULSE2_ALARM_NAME);
     await clearAlarm(PULSE2_CAPTURE_ALARM_NAME);
+    await clearAlarm(PULSE2_ROTATION_ALARM_NAME);
     return current;
   }
 
@@ -583,6 +642,20 @@ async function configurePulse2Alarms(state) {
     }
   } else {
     await clearAlarm(PULSE2_ALARM_NAME);
+  }
+
+  const hasRotating = current.routes.some((route) => route.phase === "rotating");
+  if (hasRotating) {
+    const existing = await chrome.alarms.get(PULSE2_ROTATION_ALARM_NAME);
+    if (!existing || Number(existing.periodInMinutes) !== ROTATION_RECOVERY_PERIOD_MINUTES) {
+      if (existing) await chrome.alarms.clear(PULSE2_ROTATION_ALARM_NAME);
+      await chrome.alarms.create(PULSE2_ROTATION_ALARM_NAME, {
+        delayInMinutes: ROTATION_RECOVERY_PERIOD_MINUTES,
+        periodInMinutes: ROTATION_RECOVERY_PERIOD_MINUTES
+      });
+    }
+  } else {
+    await clearAlarm(PULSE2_ROTATION_ALARM_NAME);
   }
 
   const dueTimes = current.routes
