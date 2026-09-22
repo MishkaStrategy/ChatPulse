@@ -14,7 +14,7 @@
         <div>
           <span class="eyebrow">Автономный режим</span>
           <h1>Pulse 2.0</h1>
-          <p>Циклическое продолжение чатов с автоматическим переходом в новый чат проекта.</p>
+          <p>Несколько независимых проектных маршрутов с автоматической ротацией чатов.</p>
         </div>
       </div>
       <div class="top-actions">
@@ -30,7 +30,12 @@
         <small id="statusDetail">Подключение к автономному engine</small>
       </article>
       <article class="metric">
-        <span>Цикл</span>
+        <span>Проекты</span>
+        <strong id="projectsValue">—</strong>
+        <small id="projectsDetail">—</small>
+      </article>
+      <article class="metric">
+        <span>Цикл выбранного проекта</span>
         <strong id="cycleValue">—</strong>
         <small id="cycleDetail">—</small>
       </article>
@@ -39,11 +44,6 @@
         <strong id="responseValue">—</strong>
         <small id="responseDetail">—</small>
       </article>
-      <article class="metric">
-        <span>Следующее действие</span>
-        <strong id="nextValue">—</strong>
-        <small id="phaseDetail">—</small>
-      </article>
     </section>
 
     <section class="grid">
@@ -51,15 +51,28 @@
         <div class="panel-heading">
           <div>
             <span class="eyebrow">Отдельные настройки</span>
-            <h2>Маршрут Pulse 2.0</h2>
+            <h2>Маршруты Pulse 2.0</h2>
           </div>
-          <span class="isolation-badge">isolated state</span>
+          <span class="isolation-badge">isolated multi-route state</span>
+        </div>
+
+        <div class="route-toolbar">
+          <div id="routeTabs" class="route-tabs" aria-label="Проекты Pulse 2.0"></div>
+          <div class="route-actions">
+            <button id="addRouteButton" class="secondary-button" type="button">+ Добавить проект</button>
+            <button id="removeRouteButton" class="secondary-button danger-button" type="button">Удалить</button>
+          </div>
         </div>
 
         <label class="field">
-          <span>Текущий чат</span>
-          <input id="chatUrlField" type="url" autocomplete="off" spellcheck="false" placeholder="https://chatgpt.com/c/…">
-          <small>После каждой ротации ссылка автоматически заменяется на новый созданный чат.</small>
+          <span>Название маршрута</span>
+          <input id="routeNameField" type="text" maxlength="120" autocomplete="off" placeholder="Проект 1">
+        </label>
+
+        <label class="field">
+          <span>Текущий чат <em>необязательно</em></span>
+          <input id="chatUrlField" type="url" autocomplete="off" spellcheck="false" placeholder="Можно оставить пустым">
+          <small>Если оставить пустым, при запуске Pulse сам создаст первый чат в выбранном проекте, отправит стартовое сообщение и начнёт цикл №1.</small>
         </label>
         <div class="button-row compact-row">
           <button id="useCurrentButton" class="secondary-button" type="button">Взять открытый чат</button>
@@ -69,19 +82,27 @@
         <label class="field">
           <span>Проект ChatGPT</span>
           <input id="projectUrlField" type="url" autocomplete="off" spellcheck="false" placeholder="https://chatgpt.com/g/g-p-…/project">
-          <small>Используется только для создания следующего чата после завершения очередного цикла.</small>
+          <small>Каждый маршрут использует собственный проект, вкладку, фазу и счётчики. Можно добавить несколько маршрутов.</small>
         </label>
+
+        <div class="divider"></div>
+        <div class="panel-heading compact-heading">
+          <div>
+            <span class="eyebrow">Общие параметры</span>
+            <h2>Для всех маршрутов</h2>
+          </div>
+        </div>
 
         <label class="field">
           <span>Текст автоответа</span>
           <textarea id="commandField" rows="3" maxlength="4000" placeholder="go"></textarea>
-          <small>Отправляется в текущий чат после стабильного ответа ассистента и заданной задержки.</small>
+          <small>Отправляется в каждом активном маршруте после стабильного ответа ассистента и заданной задержки.</small>
         </label>
 
         <label class="field">
           <span>Стартовое сообщение нового чата</span>
           <textarea id="startMessageField" rows="3" maxlength="4000" placeholder="Пусто = использовать текст автоответа"></textarea>
-          <small>Отправляется один раз при создании нового чата внутри проекта. Пустое поле наследует текст автоответа.</small>
+          <small>Используется как при первом автоматически созданном чате, так и при последующих ротациях.</small>
         </label>
 
         <div class="field-grid">
@@ -103,58 +124,58 @@
             <input id="messagesPerCycleField" type="number" min="1" max="1000" step="1" inputmode="numeric">
           </label>
           <label class="field">
-            <span>Количество циклов</span>
+            <span>Циклов на проект</span>
             <input id="maxCyclesField" type="number" min="1" max="1000" step="1" inputmode="numeric">
           </label>
         </div>
 
         <div class="button-row">
           <button id="saveButton" class="primary-button" type="button">Сохранить настройки</button>
-          <button id="checkButton" class="secondary-button" type="button">Проверить сейчас</button>
+          <button id="checkButton" class="secondary-button" type="button">Проверить выбранный проект</button>
         </div>
+        <div id="dirtyHint" class="dirty-hint" hidden>Есть несохранённые изменения. Live-обновления статуса их не перезапишут.</div>
         <div id="messageBar" class="message-bar" hidden></div>
       </article>
 
       <article class="panel flow-panel">
         <div class="panel-heading">
           <div>
-            <span class="eyebrow">Логика цикла</span>
-            <h2>Что делает режим</h2>
+            <span class="eyebrow">Логика</span>
+            <h2>Как работает multi-route</h2>
           </div>
         </div>
         <ol class="steps">
-          <li><span>1</span><p>Наблюдает только за текущей ссылкой Pulse 2.0 в собственной фоновой вкладке.</p></li>
-          <li><span>2</span><p>После завершённого ответа ждёт заданный интервал и отправляет автоответ ровно один раз этому ответу.</p></li>
-          <li><span>3</span><p>После заданного количества автоответов дожидается ответа на последний из них и открывает ссылку проекта.</p></li>
-          <li><span>4</span><p>Создаёт новый чат проекта, отправляет стартовое сообщение и ждёт 2 минуты, чтобы адрес стал постоянным <code>/c/…</code>.</p></li>
-          <li><span>5</span><p>Сохраняет новый URL как текущий и запускает следующий цикл. После последнего заданного цикла останавливается.</p></li>
+          <li><span>1</span><p>Каждый проект получает отдельный маршрут и отдельную фоновую вкладку.</p></li>
+          <li><span>2</span><p>Если исходный чат не задан, Pulse создаёт первый чат проекта и отправляет стартовое сообщение сам.</p></li>
+          <li><span>3</span><p>Маршруты имеют независимые фазы и счётчики; ошибка одного проекта не останавливает остальные.</p></li>
+          <li><span>4</span><p>После лимита автоответов маршрут создаёт следующий чат проекта, ждёт 2 минуты и захватывает реальный <code>/c/…</code>.</p></li>
+          <li><span>5</span><p>После последнего цикла конкретный маршрут завершается. Pulse выключается, когда завершились все маршруты.</p></li>
         </ol>
-        <div class="note">
-          Pulse 2.0 хранит состояние, alarm и счётчики отдельно от Pulse 1.0. Один и тот же чат одновременно в двух режимах запускать нельзя — это блокируется перед стартом.
-        </div>
+        <div class="note">Pulse 1.0 остаётся отдельным. Один и тот же чат одновременно в Pulse 1.0 и Pulse 2.0 или в двух маршрутах Pulse 2.0 использовать нельзя.</div>
       </article>
     </section>
 
     <section class="panel runtime-panel">
       <div class="panel-heading split-heading">
         <div>
-          <span class="eyebrow">Runtime</span>
-          <h2>Текущий маршрут</h2>
+          <span class="eyebrow">Runtime выбранного маршрута</span>
+          <h2 id="runtimeRouteName">—</h2>
         </div>
         <span id="currentUrlLabel" class="url-pill">—</span>
       </div>
       <div class="runtime-grid">
         <div><span>Фаза</span><strong id="phaseValue">—</strong></div>
+        <div><span>Следующее действие</span><strong id="nextValue">—</strong></div>
         <div><span>Всего автоответов</span><strong id="totalResponsesValue">0</strong></div>
         <div><span>Последняя проверка</span><strong id="lastCheckValue">—</strong></div>
-        <div><span>Ошибка</span><strong id="errorValue">—</strong></div>
+        <div class="runtime-error"><span>Ошибка</span><strong id="errorValue">—</strong></div>
       </div>
     </section>
 
     <section class="panel history-panel">
       <div class="panel-heading">
         <div>
-          <span class="eyebrow">История ротаций</span>
+          <span class="eyebrow">История выбранного маршрута</span>
           <h2>Чаты Pulse 2.0</h2>
         </div>
       </div>
@@ -163,7 +184,7 @@
 
     <footer>
       <span id="versionLabel"></span>
-      <span>Pulse 2.0 · отдельный storage + scheduler · Chrome Manifest V3</span>
+      <span>Pulse 2.0 · multi-route · separate storage + scheduler · Chrome Manifest V3</span>
     </footer>
   </main>
   <script type="module" src="pulse2.js"></script>
