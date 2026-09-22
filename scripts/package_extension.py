@@ -9,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXTENSION_ROOT = ROOT / "chrome-extension"
 DIST = ROOT / "dist"
-ZIP_NAME = "ChatPulse-Chrome-v0.8.0-beta.zip"
-MANIFEST_NAME = "ChatPulse-Chrome-v0.8.0-source-manifest.txt"
+ZIP_NAME = "ChatPulse-Chrome-v0.8.1-beta.zip"
+MANIFEST_NAME = "ChatPulse-Chrome-v0.8.1-source-manifest.txt"
 FIXED_ZIP_TIME = (2020, 1, 1, 0, 0, 0)
 EXCLUDED_PARTS = {"node_modules", "__pycache__"}
 EXCLUDED_NAMES = {".DS_Store"}
@@ -62,13 +62,7 @@ def main():
     )
 
     zip_path = DIST / ZIP_NAME
-    with zipfile.ZipFile(
-        zip_path,
-        "w",
-        compression=zipfile.ZIP_DEFLATED,
-        compresslevel=9,
-        strict_timestamps=True,
-    ) as archive:
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9, strict_timestamps=True) as archive:
         for relative, _path in files:
             info = zipfile.ZipInfo(relative, date_time=FIXED_ZIP_TIME)
             info.create_system = 3
@@ -78,10 +72,7 @@ def main():
 
     zip_bytes = zip_path.read_bytes()
     zip_sha = sha256(zip_bytes)
-    (DIST / f"{ZIP_NAME}.sha256").write_text(
-        f"{zip_sha}  {ZIP_NAME}\n",
-        encoding="utf-8",
-    )
+    (DIST / f"{ZIP_NAME}.sha256").write_text(f"{zip_sha}  {ZIP_NAME}\n", encoding="utf-8")
 
     with zipfile.ZipFile(zip_path, "r") as archive:
         names = archive.namelist()
