@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.4 beta — foreground Project tab before new-chat creation
+
+- when Pulse 2.0 starts a route without a current chat, open its Project tab as an active Chrome tab instead of leaving project initialization entirely in the background;
+- before every first-chat or next-chat rotation, explicitly activate the route-owned managed tab and focus its Chrome window when possible;
+- keep the Project tab foregrounded through page-load settling, project-composer discovery and start-message submission so ChatGPT can fully hydrate controls that may not render in a background tab;
+- keep ordinary monitoring of existing chats background-capable; foreground switching is scoped to project-chat creation/rotation;
+- retain the 0.8.3 rotation recovery watchdog and make recovery attempts foreground the same managed tab before composer lookup;
+- add loaded-Chromium regression coverage that starts with the Project tab intentionally in the background and requires Pulse to make it active before rotation succeeds;
+- move deterministic beta package/provenance output to ChatPulse 0.8.4.
+
 ## 0.8.3 beta — recover stalled first project-chat creation
 
 - create each managed tab synchronously during START, using the current chat when present or the Project page when the current chat is empty;
