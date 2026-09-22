@@ -73,6 +73,7 @@ test("rotating routes have a persistent recovery alarm and crash-safe post-send 
   assert.match(engine, /recoverPulse2RotationAfterDispatch/);
   assert.match(engine, /normalizeChatURL\(tab\?\.url\)/);
   assert.match(engine, /lastCheckAt: new Date\(\)\.toISOString\(\)/);
+  assert.match(engine, /targetUrl = route\.currentChatUrl \|\| route\.projectUrl/);
 });
 
 test("Pulse 2.0 retains bounded URL capture and common safe sender", () => {
