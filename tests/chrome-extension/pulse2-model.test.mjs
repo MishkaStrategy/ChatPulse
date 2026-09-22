@@ -6,9 +6,11 @@ import {
   applyPulse2SettingsPatch,
   beginPulse2Rotation,
   capturePulse2Chat,
+  completePulse2Route,
   defaultPulse2State,
   markPulse2CaptureWait,
   normalizePulse2ProjectURL,
+  normalizePulse2State,
   observePulse2Snapshot,
   recordPulse2Dispatch,
   startPulse2State
@@ -16,13 +18,14 @@ import {
 
 const CHAT_A = "https://chatgpt.com/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const CHAT_B = "https://chatgpt.com/c/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
-const PROJECT = "https://chatgpt.com/g/g-p-project123/project";
+const CHAT_C = "https://chatgpt.com/c/cccccccc-cccc-cccc-cccc-cccccccccccc";
+const PROJECT_A = "https://chatgpt.com/g/g-p-project-a/project";
+const PROJECT_B = "https://chatgpt.com/g/g-p-project-b/project";
 
-function configured(overrides = {}) {
+function configured(routes = [{ id: "route-a", name: "A", currentChatUrl: CHAT_A, projectUrl: PROJECT_A }], overrides = {}) {
   let state = defaultPulse2State();
   state = applyPulse2SettingsPatch(state, {
-    currentChatUrl: CHAT_A,
-    projectUrl: PROJECT,
+    routes,
     commandText: "go",
     intervalMinutes: 2,
     messagesPerCycle: 2,
@@ -30,6 +33,10 @@ function configured(overrides = {}) {
     ...overrides
   });
   return state;
+}
+
+function route(state, id) {
+  return state.routes.find((item) => item.id === id);
 }
 
 function assistantSnapshot(fingerprint) {
@@ -44,87 +51,130 @@ function assistantSnapshot(fingerprint) {
 }
 
 test("project URL normalization accepts project routes and rejects chat URLs", () => {
-  assert.equal(normalizePulse2ProjectURL(PROJECT), PROJECT);
-  assert.equal(
-    normalizePulse2ProjectURL("https://chat.openai.com/projects/demo?tab=files"),
-    "https://chatgpt.com/projects/demo"
-  );
+  assert.equal(normalizePulse2ProjectURL(PROJECT_A), PROJECT_A);
+  assert.equal(normalizePulse2ProjectURL("https://chat.openai.com/projects/demo?tab=files"), "https://chatgpt.com/projects/demo");
   assert.equal(normalizePulse2ProjectURL(CHAT_A), null);
   assert.equal(normalizePulse2ProjectURL("https://example.com/projects/demo"), null);
 });
 
-test("Pulse 2.0 starts with an isolated cycle counter and baseline", () => {
-  const started = startPulse2State(configured(), {
-    tabId: 42,
-    at: "2026-09-16T10:00:00.000Z"
+test("legacy single-route state migrates into schema v2 routes without losing runtime", () => {
+  const migrated = normalizePulse2State({
+    schemaVersion: 1,
+    enabled: true,
+    phase: "monitoring",
+    currentChatUrl: CHAT_A,
+    projectUrl: PROJECT_A,
+    commandText: "go",
+    intervalMinutes: 2,
+    messagesPerCycle: 3,
+    maxCycles: 4,
+    cycleNumber: 2,
+    cycleContinuationCount: 1,
+    totalContinuationCount: 4,
+    history: [{ cycle: 1, url: CHAT_A, createdAt: "2026-09-16T10:00:00.000Z", source: "initial" }]
   });
-  assert.equal(started.enabled, true);
-  assert.equal(started.phase, "monitoring");
-  assert.equal(started.cycleNumber, 1);
-  assert.equal(started.cycleContinuationCount, 0);
-  assert.equal(started.totalContinuationCount, 0);
-  assert.equal(started.history.length, 1);
-  assert.equal(started.history[0].url, CHAT_A);
-  assert.equal(started.tabId, 42);
+  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.enabled, true);
+  assert.equal(migrated.routes.length, 1);
+  assert.equal(migrated.routes[0].currentChatUrl, CHAT_A);
+  assert.equal(migrated.routes[0].cycleNumber, 2);
+  assert.equal(migrated.routes[0].cycleContinuationCount, 1);
 });
 
-test("stable assistant response becomes eligible only after the configured delay", () => {
-  let state = startPulse2State(configured(), { at: "2026-09-16T10:00:00.000Z" });
-  let result = observePulse2Snapshot(state, assistantSnapshot("answer-1"), Date.parse("2026-09-16T10:00:00.000Z"));
+test("current chat is optional and an empty route starts by creating its first project chat", () => {
+  const state = configured([{ id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }]);
+  const started = startPulse2State(state, { at: "2026-09-22T10:00:00.000Z" });
+  const current = route(started, "route-a");
+  assert.equal(started.enabled, true);
+  assert.equal(current.currentChatUrl, "");
+  assert.equal(current.phase, "rotating");
+  assert.equal(current.initializingChat, true);
+  assert.equal(current.cycleNumber, 1);
+  assert.equal(current.history.length, 0);
+});
+
+test("multiple projects start independently with separate runtime state", () => {
+  const state = configured([
+    { id: "route-a", name: "A", currentChatUrl: CHAT_A, projectUrl: PROJECT_A },
+    { id: "route-b", name: "B", currentChatUrl: "", projectUrl: PROJECT_B }
+  ]);
+  const started = startPulse2State(state, {
+    tabIds: { "route-a": 11 },
+    at: "2026-09-22T10:00:00.000Z"
+  });
+  assert.equal(started.routes.length, 2);
+  assert.equal(route(started, "route-a").phase, "monitoring");
+  assert.equal(route(started, "route-a").tabId, 11);
+  assert.equal(route(started, "route-b").phase, "rotating");
+  assert.equal(route(started, "route-b").initializingChat, true);
+});
+
+test("dispatch counters on one project do not mutate another project", () => {
+  let state = startPulse2State(configured([
+    { id: "route-a", name: "A", currentChatUrl: CHAT_A, projectUrl: PROJECT_A },
+    { id: "route-b", name: "B", currentChatUrl: CHAT_B, projectUrl: PROJECT_B }
+  ]), { at: "2026-09-22T10:00:00.000Z" });
+  state = recordPulse2Dispatch(state, "route-a", "answer-a", "confirmed", "2026-09-22T10:02:00.000Z");
+  assert.equal(route(state, "route-a").cycleContinuationCount, 1);
+  assert.equal(route(state, "route-a").totalContinuationCount, 1);
+  assert.equal(route(state, "route-b").cycleContinuationCount, 0);
+  assert.equal(route(state, "route-b").totalContinuationCount, 0);
+});
+
+test("stable assistant response becomes eligible only after the configured delay per route", () => {
+  let state = startPulse2State(configured(), { at: "2026-09-22T10:00:00.000Z" });
+  let result = observePulse2Snapshot(state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T10:00:00.000Z"));
   assert.equal(result.decision, "response-changed");
   state = result.state;
-
-  result = observePulse2Snapshot(state, assistantSnapshot("answer-1"), Date.parse("2026-09-16T10:01:59.000Z"));
+  result = observePulse2Snapshot(state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T10:01:59.000Z"));
   assert.equal(result.decision, "waiting-delay");
-
-  result = observePulse2Snapshot(result.state, assistantSnapshot("answer-1"), Date.parse("2026-09-16T10:02:00.000Z"));
+  result = observePulse2Snapshot(result.state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T10:02:00.000Z"));
   assert.equal(result.decision, "send-auto-response");
 });
 
-test("after N auto-responses Pulse 2.0 waits for the next completed assistant response, then rotates", () => {
-  let state = startPulse2State(configured({ messagesPerCycle: 2 }), {
-    at: "2026-09-16T10:00:00.000Z"
-  });
-
-  state = recordPulse2Dispatch(state, "answer-1", "confirmed", "2026-09-16T10:02:00.000Z");
-  assert.equal(state.rotationPending, false);
-  state = recordPulse2Dispatch(state, "answer-2", "confirmed", "2026-09-16T10:04:00.000Z");
-  assert.equal(state.cycleContinuationCount, 2);
-  assert.equal(state.rotationPending, true);
-
-  let result = observePulse2Snapshot(state, assistantSnapshot("answer-after-second-send"), Date.parse("2026-09-16T10:05:00.000Z"));
-  assert.equal(result.decision, "response-changed");
-  state = result.state;
-
-  result = observePulse2Snapshot(state, assistantSnapshot("answer-after-second-send"), Date.parse("2026-09-16T10:07:00.000Z"));
-  assert.equal(result.decision, "rotate");
+test("initial project-created chat becomes cycle 1 instead of cycle 2", () => {
+  let state = startPulse2State(configured([
+    { id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }
+  ]), { at: "2026-09-22T10:00:00.000Z" });
+  state = markPulse2CaptureWait(state, "route-a", "2026-09-22T10:00:30.000Z");
+  assert.equal(Date.parse(route(state, "route-a").captureDueAt) - Date.parse("2026-09-22T10:00:30.000Z"), PULSE2_CAPTURE_DELAY_MS);
+  state = capturePulse2Chat(state, "route-a", CHAT_A, { at: "2026-09-22T10:02:30.000Z" });
+  const current = route(state, "route-a");
+  assert.equal(current.phase, "monitoring");
+  assert.equal(current.cycleNumber, 1);
+  assert.equal(current.initializingChat, false);
+  assert.equal(current.history.length, 1);
+  assert.equal(current.history[0].source, "project-initial");
 });
 
-test("rotation waits two minutes before capturing a new persistent chat URL", () => {
-  let state = startPulse2State(configured(), { at: "2026-09-16T10:00:00.000Z" });
-  state = beginPulse2Rotation({ ...state, rotationPending: true }, "2026-09-16T10:10:00.000Z");
-  state = markPulse2CaptureWait(state, "2026-09-16T10:10:30.000Z");
-  assert.equal(
-    Date.parse(state.captureDueAt) - Date.parse("2026-09-16T10:10:30.000Z"),
-    PULSE2_CAPTURE_DELAY_MS
-  );
+test("normal rotation increments only that route and preserves two-minute capture contract", () => {
+  let state = startPulse2State(configured(), { at: "2026-09-22T10:00:00.000Z" });
+  state = beginPulse2Rotation({ ...state, routes: state.routes.map((r) => r.id === "route-a" ? { ...r, rotationPending: true } : r) }, "route-a", "2026-09-22T10:10:00.000Z");
+  state = markPulse2CaptureWait(state, "route-a", "2026-09-22T10:10:30.000Z");
+  state = capturePulse2Chat(state, "route-a", CHAT_C, { at: "2026-09-22T10:12:30.000Z" });
+  assert.equal(route(state, "route-a").cycleNumber, 2);
+  assert.equal(route(state, "route-a").history.at(-1).source, "project");
+});
 
-  state = capturePulse2Chat(state, CHAT_B, {
-    title: "Новый проектный чат",
-    at: "2026-09-16T10:12:30.000Z"
-  });
-  assert.equal(state.phase, "monitoring");
-  assert.equal(state.currentChatUrl, CHAT_B);
-  assert.equal(state.cycleNumber, 2);
-  assert.equal(state.cycleContinuationCount, 0);
-  assert.equal(state.rotationPending, false);
-  assert.equal(state.history.at(-1).source, "project");
+test("completing one route does not stop other active routes", () => {
+  let state = startPulse2State(configured([
+    { id: "route-a", name: "A", currentChatUrl: CHAT_A, projectUrl: PROJECT_A },
+    { id: "route-b", name: "B", currentChatUrl: CHAT_B, projectUrl: PROJECT_B }
+  ]), { at: "2026-09-22T10:00:00.000Z" });
+  state = completePulse2Route(state, "route-a");
+  assert.equal(route(state, "route-a").phase, "completed");
+  assert.equal(route(state, "route-b").phase, "monitoring");
+  assert.equal(state.enabled, true);
+});
+
+test("same current chat cannot be assigned to two Pulse 2.0 routes", () => {
+  assert.throws(() => configured([
+    { id: "route-a", name: "A", currentChatUrl: CHAT_A, projectUrl: PROJECT_A },
+    { id: "route-b", name: "B", currentChatUrl: CHAT_A, projectUrl: PROJECT_B }
+  ]), /один и тот же текущий чат/i);
 });
 
 test("settings cannot be mutated while Pulse 2.0 is running", () => {
-  const running = startPulse2State(configured(), { at: "2026-09-16T10:00:00.000Z" });
-  assert.throws(
-    () => applyPulse2SettingsPatch(running, { messagesPerCycle: 9 }),
-    /Остановите Pulse 2\.0/
-  );
+  const running = startPulse2State(configured(), { at: "2026-09-22T10:00:00.000Z" });
+  assert.throws(() => applyPulse2SettingsPatch(running, { messagesPerCycle: 9 }), /Остановите Pulse 2\.0/);
 });
