@@ -1,11 +1,11 @@
-name: ChatPulse 0.8.1 beta release gate
+name: ChatPulse 0.8.2 beta release gate
 # workflow_dispatch is retained so a frozen RC can be revalidated without modifying product code.
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - release/0.8.1-pulse2-multiroute
+      - release/0.8.2-pulse2-project-composer
       - main
     paths:
       - ".github/workflows/extension-ci.yml"
@@ -37,7 +37,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: chatpulse-0.8.1-${{ github.event.pull_request.number || github.ref }}
+  group: chatpulse-0.8.2-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -72,7 +72,7 @@ jobs:
         run: npm run audit:extension
 
   browser-e2e:
-    name: Chromium MV3 browser E2E — Pulse 1.0 + Pulse 2.0 multi-route
+    name: Chromium MV3 browser E2E — Pulse 1.0 + Pulse 2.0 project-composer
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -112,7 +112,7 @@ jobs:
           CHATPULSE_E2E_RUN_ID: ${{ github.run_id }}
         run: node tests/browser/github-watchdog.chrome-e2e.mjs
 
-      - name: Run loaded-extension Pulse 2.0 multi-route browser E2E
+      - name: Run loaded-extension Pulse 2.0 project-composer browser E2E
         run: node tests/browser/pulse2.chrome-e2e.mjs
 
   package:
@@ -144,11 +144,11 @@ jobs:
         run: |
           set -euo pipefail
           npm run package:beta
-          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.1-beta.zip.sha256)"
-          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.1-source-manifest.txt.sha256)"
+          first_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.2-beta.zip.sha256)"
+          first_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.2-source-manifest.txt.sha256)"
           npm run package:beta
-          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.1-beta.zip.sha256)"
-          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.1-source-manifest.txt.sha256)"
+          second_zip="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.2-beta.zip.sha256)"
+          second_manifest="$(awk '{print $1}' dist/ChatPulse-Chrome-v0.8.2-source-manifest.txt.sha256)"
           test "$first_zip" = "$second_zip"
           test "$first_manifest" = "$second_manifest"
           echo "artifact_sha256=$second_zip"
@@ -167,8 +167,8 @@ jobs:
           import hashlib
           from pathlib import Path
           for name in [
-              'ChatPulse-Chrome-v0.8.1-beta.zip',
-              'ChatPulse-Chrome-v0.8.1-source-manifest.txt',
+              'ChatPulse-Chrome-v0.8.2-beta.zip',
+              'ChatPulse-Chrome-v0.8.2-source-manifest.txt',
           ]:
               path = Path('dist') / name
               actual = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -178,14 +178,14 @@ jobs:
               print(f'{name} sha256={actual}')
           PY
 
-      - name: Upload ChatPulse 0.8.1 beta provenance
+      - name: Upload ChatPulse 0.8.2 beta provenance
         uses: actions/upload-artifact@v4
         with:
-          name: ChatPulse-Chrome-v0.8.1-beta
+          name: ChatPulse-Chrome-v0.8.2-beta
           path: |
-            dist/ChatPulse-Chrome-v0.8.1-beta.zip
-            dist/ChatPulse-Chrome-v0.8.1-beta.zip.sha256
-            dist/ChatPulse-Chrome-v0.8.1-source-manifest.txt
-            dist/ChatPulse-Chrome-v0.8.1-source-manifest.txt.sha256
+            dist/ChatPulse-Chrome-v0.8.2-beta.zip
+            dist/ChatPulse-Chrome-v0.8.2-beta.zip.sha256
+            dist/ChatPulse-Chrome-v0.8.2-source-manifest.txt
+            dist/ChatPulse-Chrome-v0.8.2-source-manifest.txt.sha256
           if-no-files-found: error
           retention-days: 30
