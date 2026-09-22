@@ -66,6 +66,7 @@ assert.ok(engine.includes('export const PULSE2_ROTATION_ALARM_NAME = "chatpulse-
 assert.ok(engine.includes("performPulse2RotationSweep"), "rotating routes need an alarm-recoverable sweep");
 assert.ok(engine.includes("ROTATION_RECOVERY_PERIOD_MINUTES = 0.5"), "rotation recovery watchdog must remain bounded");
 assert.ok(engine.includes("recoverPulse2RotationAfterDispatch"), "rotation recovery must adopt a concrete chat URL after a lost post-send checkpoint");
+assert.ok(engine.includes("targetUrl = route.currentChatUrl || route.projectUrl"), "START must synchronously create a managed tab even when current chat is empty");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
 assert.ok(!engine.includes('chrome.storage.local.set({ [PULSE1_STORAGE_KEY]'), "Pulse 2.0 must never write Pulse 1 state");
 assert.ok(engine.includes("enqueueEngineOperation"), "multi-route writes must be serialized");
