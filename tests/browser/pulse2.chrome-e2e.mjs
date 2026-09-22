@@ -172,7 +172,7 @@ try {
     "authenticated ChatGPT fixture was not installed in the managed tab"
   );
 
-  await pulse2Page.locator("#checkButton").click();
+  await sendPulse2Request(pulse2Page, "CHECK_NOW", { routeId });
   const baseline = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
