@@ -2,82 +2,132 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 80
-updated_at: 2026-09-22T18:15:00Z
-project_state: ACTIVE
-critical_path_status: EXECUTING
-release_contract_status: EXPLICIT
+critical_path_revision: 81
+updated_at: 2026-09-22T18:49:00Z
+project_state: DONE
+critical_path_status: VERIFIED
+release_contract_status: SATISFIED
 handoff_status: READY
 basis_ref: main
-basis_sha: b4eaeda7ff3bb7490c04833e23cdf8810a4688e4
+basis_sha: a3fb895bf5e89fe47faf9ede763be3c6a04b88b8
 ---
 
 # HQ Critical Path
 
-## Current Goal
+## Current Release Contract
 
-Release ChatPulse 0.8.3 beta fixing Pulse 2.0 routes that can remain indefinitely in **создание чата / Создание первого чата** after Start.
+Release target: ChatPulse 0.8.3 beta — prevent Pulse 2.0 routes with an empty current-chat URL from remaining indefinitely in **создание чата / Создание первого чата**.
 
-## Owner Evidence / Root Cause
+Definition of DONE: project-chat creation has durable recovery across Manifest V3 service-worker sleep/restart, the exact persisted stuck state is recovered in loaded Chromium without another owner action, all prior Pulse 1.0/Pulse 2.0 behavior remains green, and exact post-merge `main` reproduces the candidate package identity.
 
-Owner supplied a runtime screenshot with an empty current chat, valid project URL, phase **создание чата**, next action **Создание первого чата**, zero responses, no last check and no error.
-
-Live 0.8.2 code persisted empty-chat routes as `phase=rotating` correctly, but the first rotation was started only through fire-and-forget follow-up work after the START request. A Manifest V3 service worker sleep/restart could therefore leave a persisted rotating route with no alarm capable of resuming it. Monitoring alarms only covered `monitoring`; capture alarms only covered `capture-wait`.
-
-## 0.8.3 Release Contract
-
-- Add a dedicated persistent recovery path for every active `rotating` route.
-- The recovery path must be alarm-driven so a worker wake/restart can resume work without another UI action.
-- Keep immediate follow-up work for responsiveness; recovery alarm is a watchdog, not a replacement for normal fast execution.
-- Avoid unnecessary project-page reloads on retries.
-- Record a visible runtime attempt timestamp when rotation work begins.
-- If a previous attempt already sent the start message and the managed tab already has a new concrete `/c/...` URL, adopt it into capture-wait rather than creating a duplicate chat.
-- Preserve Pulse 1.0 isolation, project-composer compatibility, multi-route behavior, auth/fail-closed rules and bounded URL capture.
-- Add loaded-browser regression evidence for the exact persisted stuck `rotating` state.
-- Pass canonical PR release/dependency gates and exact post-merge main revalidation.
-
-## Current State
+## Repository Basis
 
 - Previous verified release: 0.8.2.
 - 0.8.2 immutable product basis: `9327e20daf6f19aead632424e9e9822d6b908e6e`.
-- Main state-only head before this fix: `b4eaeda7ff3bb7490c04833e23cdf8810a4688e4`.
-- Execution branch: `fix/pulse2-rotation-recovery-0.8.3`.
-- Dedicated `chatpulse-pulse2-rotation` recovery alarm implemented at 30-second cadence while any route is rotating.
-- Alarm-driven `performPulse2RotationSweep` implemented.
-- Rotation attempts now persist `lastCheckAt`.
-- Existing project tab is reused without needless reload when already at the correct project URL.
-- Crash/restart recovery adopts a new concrete chat URL into capture-wait if the start send already advanced the managed tab.
-- Browser regression seeds the exact stuck persisted state and triggers the real rotation alarm.
-- Release metadata/tooling bumped to 0.8.3 beta.
+- 0.8.3 frozen candidate: `70cd6ec615273543c31e85f9db3ecf8cce20a659`.
+- Canonical PR: #37, merged.
+- Immutable 0.8.3 product merge / release basis: `a3fb895bf5e89fe47faf9ede763be3c6a04b88b8`.
+- This state document may advance `main` after the immutable product basis above without changing product release contents.
+
+## Root Cause / Delivered Fix
+
+Owner evidence showed a route with a valid Project URL and empty current-chat field stuck at `rotating` / **создание чата**, with no last check and no error.
+
+0.8.2 correctly persisted the route in `rotating`, but creation of the first project chat was launched only as fire-and-forget follow-up work after START. Monitoring and capture had durable alarms; rotating routes did not. A Manifest V3 service-worker sleep/restart could therefore strand the route indefinitely.
+
+0.8.3 now:
+
+- creates a managed tab synchronously during START for every route, using the current chat when present or the Project page when current chat is empty;
+- keeps the normal immediate follow-up path for fast execution;
+- adds dedicated `chatpulse-pulse2-rotation` recovery scheduling every 30 seconds while any route is `rotating`;
+- resumes all persisted rotating routes through `performPulse2RotationSweep` after worker wake/restart;
+- records `lastCheckAt` when a rotation attempt actually begins;
+- reuses a managed tab already on the correct Project page instead of unnecessarily reloading it;
+- if a prior attempt already sent the start message and the managed tab has become a new concrete `/c/...` URL, adopts it into capture-wait instead of creating another chat;
+- preserves direct `Новый чат в … / New chat in …` Project-composer compatibility from 0.8.2;
+- preserves Pulse 1.0 isolation, auth/fail-closed send rules, multi-route serialization and bounded permanent-URL capture.
+
+## Audit / Validation Evidence
+
+### Development audit findings
+
+The stricter browser regression intentionally found and blocked two harness races before the final candidate:
+- the first extension-created tab could load before Playwright fixture interception;
+- a retained existing-chat baseline could read a stale auth error before the route-owned fixture/check completed.
+
+Neither issue was accepted as release evidence. The harness was made deterministic by pre-controlling the recovery Project tab and later binding the retained authenticated fixture to the exact saved `route.tabId`. Production authentication guards were never weakened.
+
+### Candidate / PR #37
+
+- Candidate SHA: `70cd6ec615273543c31e85f9db3ecf8cce20a659`.
+- PR release run `35769145846`: SUCCESS.
+- PR dependency run `35769145859`: SUCCESS.
+- Five full extension audit cycles: 5/5 SUCCESS.
+- Retained Pulse 1.0 loaded-extension Chromium E2E: SUCCESS.
+- Pulse 2.0 loaded-extension E2E:
+  - unsaved settings draft: PASS;
+  - optional current chat: PASS;
+  - multi-route save: PASS;
+  - persisted stuck rotation recovery: PASS;
+  - retained full rotation: PASS;
+  - Pulse 1.0 isolation: PASS.
+- Reproducible package/provenance: SUCCESS.
+- Candidate artifact ID: `10712993313`, name `ChatPulse-Chrome-v0.8.3-beta`.
+- Candidate ZIP SHA-256: `25cfa3508989839dd1fe3f2de2bceece054cc5ac61dae92501bd638d1af8da17`.
+- Candidate source manifest SHA-256: `b6b3340d6063944c76fae45260650f1d6c948c7258cd5fc4f9955912b9ac1e77`.
+
+### Exact post-merge product main
+
+- Product merge SHA: `a3fb895bf5e89fe47faf9ede763be3c6a04b88b8`.
+- Exact-main release run `35769404771`: SUCCESS.
+- Exact-main dependency run `35769404767`: SUCCESS.
+- Five full extension audit cycles: 5/5 SUCCESS.
+- Retained Pulse 1.0 loaded-extension Chromium E2E: SUCCESS.
+- Pulse 2.0 persisted-rotation recovery + retained rotation E2E: SUCCESS.
+- Reproducible package/provenance: SUCCESS.
+- Exact-main artifact ID: `10713527175`, name `ChatPulse-Chrome-v0.8.3-beta`.
+- Exact-main ZIP SHA-256: `25cfa3508989839dd1fe3f2de2bceece054cc5ac61dae92501bd638d1af8da17`.
+- Exact-main source manifest SHA-256: `b6b3340d6063944c76fae45260650f1d6c948c7258cd5fc4f9955912b9ac1e77`.
+- Candidate and exact post-merge product `main` are byte-for-byte identical by canonical release payload hashes.
+
+## Adversarial Review
+
+- Rotation recovery uses the existing serialized engine queue, so ordinary immediate work and alarm recovery do not concurrently mutate route state in one worker instance.
+- The rotation alarm exists only while an enabled route is actually `rotating` and is cleared when no rotating routes remain or Pulse 2.0 stops.
+- Chrome minimum version remains 120, where the 30-second alarm cadence is supported.
+- Recovery re-checks the persisted session/revision/phase before committing send/capture transitions.
+- Existing auth and fail-closed checks were not relaxed.
+- No blocker remained after exact-main loaded-browser validation.
 
 ## Critical Work
 
-- [x] Root-cause the stuck `rotating` state from live code.
-- [x] Add rotating-route recovery watchdog.
-- [x] Add post-send concrete-chat adoption to avoid duplicate first-chat creation after interruption.
-- [x] Add runtime progress timestamp.
-- [x] Add focused/static regression coverage.
-- [x] Add loaded-browser stalled-state recovery regression.
-- [x] Bump release tooling/docs to 0.8.3 beta.
-- [ ] Open canonical PR on exact candidate.
-- [ ] Pass PR full audits, loaded Chromium E2E, dependency and reproducible package gates.
-- [ ] Complete adversarial review.
-- [ ] Merge with exact-head guard.
-- [ ] Repeat material validation on exact post-merge main.
-- [ ] Persist DONE/VERIFIED evidence and deliver exact-main ZIP.
+- [x] Root-cause the owner-reported stuck `rotating` state.
+- [x] Create managed Project tabs synchronously on START for blank-current-chat routes.
+- [x] Add durable rotating-route recovery watchdog.
+- [x] Add crash/restart concrete-chat adoption to reduce duplicate creation risk.
+- [x] Add runtime attempt timestamp.
+- [x] Add focused/static recovery contract coverage.
+- [x] Add loaded-browser regression for the exact persisted stuck state.
+- [x] Pass candidate dependency gate and 5/5 audits.
+- [x] Pass candidate loaded Chromium recovery + retained rotation E2E.
+- [x] Produce deterministic 0.8.3 candidate package.
+- [x] Merge PR #37 with exact-head guard.
+- [x] Repeat all material validation on exact post-merge `main`.
+- [x] Verify exact-main package hashes equal the candidate byte-for-byte.
+- [x] Persist DONE/VERIFIED evidence.
 
 ## Blockers
 
-NONE currently known.
+NONE.
 
 ## Active Execution
 
-HQ_DIRECT on `fix/pulse2-rotation-recovery-0.8.3`.
+NONE. ChatPulse 0.8.3 release contract is complete.
 
 ## Next Action
 
-Open the canonical PR and validate the persisted-stuck-state recovery path on the exact GitHub candidate.
+None for this release. Await the next owner-requested bug/feature.
 
 ## Recovery Note
 
-The key defect is not the Project composer detector from 0.8.2. It is missing durable scheduling for `rotating` routes. Do not remove immediate follow-up work; add durable alarm recovery around it. Do not relax auth/send/capture safety checks.
+Immutable 0.8.3 product release basis is `a3fb895bf5e89fe47faf9ede763be3c6a04b88b8`. The owner-reported `создание чата` hang is covered by a real loaded-extension alarm-driven recovery regression. PR #37 and exact-main evidence above satisfy the release contract.
