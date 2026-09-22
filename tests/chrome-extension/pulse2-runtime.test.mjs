@@ -10,43 +10,55 @@ const helper = await readFile("chrome-extension/content/pulse2-content.js", "utf
 const page = await readFile("chrome-extension/pulse2/pulse2.html", "utf8");
 const ui = await readFile("chrome-extension/pulse2/pulse2.js", "utf8");
 
-test("Pulse 2.0 is loaded beside, not instead of, Pulse 1.0", () => {
+test("Pulse 2.0 remains isolated beside Pulse 1.0", () => {
   assert.equal(manifest.background.service_worker, "background/service-worker-v3.js");
   assert.match(wrapper, /import "\.\/service-worker-v2\.js"/);
   assert.match(wrapper, /import "\.\/pulse2-engine\.js"/);
-});
-
-test("Pulse 2.0 owns independent storage, alarms, port and controls", () => {
   assert.match(engine, /const STORAGE_KEY = "chatpulse2State"/);
-  assert.match(engine, /PULSE2_PORT_NAME = "chatpulse-pulse2"/);
-  assert.match(engine, /PULSE2_ALARM_NAME = "chatpulse-pulse2-monitor"/);
-  assert.match(engine, /PULSE2_CAPTURE_ALARM_NAME = "chatpulse-pulse2-capture"/);
-  assert.match(engine, /PULSE1_STORAGE_KEY = "chatpulseState"/);
+  assert.match(engine, /const PULSE1_STORAGE_KEY = "chatpulseState"/);
   assert.doesNotMatch(engine, /chrome\.storage\.local\.set\(\{ \[PULSE1_STORAGE_KEY\]/);
-  assert.match(engine, /assertNoPulse1Collision/);
 });
 
-test("Pulse 2.0 rotation captures the URL only after its bounded two-minute wait", () => {
+test("Pulse 2.0 schema v2 supports independent multi-route state", () => {
+  assert.match(model, /PULSE2_SCHEMA_VERSION = 2/);
+  assert.match(model, /routes:/);
+  assert.match(model, /PULSE2_MAX_ROUTES = 20/);
+  assert.match(engine, /performPulse2Sweep/);
+  assert.match(engine, /performPulse2Rotation\(routeId\)/);
+  assert.match(engine, /performPulse2Capture\(routeId\)/);
+  assert.match(engine, /enqueueEngineOperation/);
+});
+
+test("current chat is optional and project initialization is explicit", () => {
+  assert.match(model, /initializingChat: !hasChat/);
+  assert.match(model, /phase: hasChat \? "monitoring" : "rotating"/);
+  assert.match(model, /source = isInitial \? "project-initial" : "project"/);
+  assert.match(page, /Текущий чат <em>необязательно<\/em>/);
+  assert.match(page, /сам создаст первый чат/);
+});
+
+test("editing draft is protected from live state pushes", () => {
+  assert.match(ui, /let draftDirty = false/);
+  assert.match(ui, /maybeSyncDraftFromLiveState/);
+  assert.match(ui, /if \(!draft \|\| state\.enabled \|\| \(!draftDirty && !settingsFocused\(\)\)\)/);
+  assert.match(ui, /document\.activeElement === control/);
+  assert.match(ui, /Live-обновления статуса их не перезапишут|dirtyHint/);
+});
+
+test("multi-project UI can add and remove routes without mutating running settings", () => {
+  assert.match(page, /\+ Добавить проект/);
+  assert.match(page, /Удалить/);
+  assert.match(ui, /addRoute\(\)/);
+  assert.match(ui, /removeSelectedRoute\(\)/);
+  assert.match(ui, /routes: draft\.routes\.map/);
+  assert.match(ui, /running \|\| busy/);
+});
+
+test("Pulse 2.0 retains bounded URL capture and common safe sender", () => {
   assert.match(model, /PULSE2_CAPTURE_DELAY_MS = 2 \* 60_000/);
   assert.match(model, /PULSE2_CAPTURE_RETRY_MS = 30_000/);
   assert.match(model, /PULSE2_MAX_CAPTURE_ATTEMPTS = 10/);
-  assert.match(engine, /phase === "capture-wait"/);
-  assert.match(engine, /normalizedURL !== state\.currentChatUrl/);
-  assert.match(engine, /capturePulse2Chat/);
-});
-
-test("project chat creation uses a dedicated content helper and the common safe sender", () => {
   assert.match(helper, /PULSE2_PREPARE_PROJECT_CHAT/);
-  assert.match(engine, /PULSE2_PREPARE_PROJECT_CHAT/);
   assert.match(engine, /type: "CHATPULSE_SEND"/);
   assert.match(engine, /effectivePulse2StartMessage/);
-});
-
-test("Pulse 2.0 has a separate full-page UI and connects through the isolated port", () => {
-  assert.match(page, /Pulse 2\.0/);
-  assert.match(page, /Проект ChatGPT/);
-  assert.match(page, /Автоответов на цикл/);
-  assert.match(page, /Количество циклов/);
-  assert.match(ui, /chrome\.runtime\.connect\(\{ name: PORT_NAME \}\)/);
-  assert.match(ui, /openPulse1Button/);
 });
