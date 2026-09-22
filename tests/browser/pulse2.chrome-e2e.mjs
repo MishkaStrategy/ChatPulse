@@ -145,6 +145,7 @@ try {
     return saved?.routes?.length === 1 && saved.routes[0].currentChatUrl === CHAT_URL ? saved : null;
   }, "Pulse 2.0 retained route was not saved for full rotation E2E");
 
+  const pagesBeforeRetainedStart = new Set(context.pages());
   await pulse2Page.locator("#toggleButton").click();
   await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -152,7 +153,7 @@ try {
     return running?.enabled && Number.isInteger(route?.tabId) ? running : null;
   }, "Pulse 2.0 did not create its autonomous managed tab");
 
-  const initialChatPage = await waitForManagedChatGPTPage(context);
+  const initialChatPage = await waitForManagedChatGPTPage(context, pagesBeforeRetainedStart);
   await initialChatPage.route(PROJECT_URL, async (route) => {
     await route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: projectFixtureHtml() });
   });
@@ -359,8 +360,9 @@ async function projectComposerActivationCount(page) {
   return page.evaluate(() => Number(globalThis.__pulse2ProjectComposerActivations || 0));
 }
 
-async function waitForManagedChatGPTPage(browserContext) {
+async function waitForManagedChatGPTPage(browserContext, excludedPages = new Set()) {
   return waitFor(async () => browserContext.pages().find((page) => {
+    if (excludedPages.has(page)) return false;
     try { return new URL(page.url()).hostname === "chatgpt.com"; } catch { return false; }
   }) || null, "Pulse 2.0 managed ChatGPT page was not exposed to Playwright");
 }
