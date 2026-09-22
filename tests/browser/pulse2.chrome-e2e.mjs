@@ -154,22 +154,26 @@ try {
     return saved?.routes?.length === 1 && saved.routes[0].currentChatUrl === CHAT_URL ? saved : null;
   }, "Pulse 2.0 retained route was not saved for full rotation E2E");
 
-  const pagesBeforeRetainedStart = new Set(context.pages());
   await pulse2Page.locator("#toggleButton").click();
-  await waitFor(async () => {
+  const retainedRunning = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
     return running?.enabled && Number.isInteger(route?.tabId) ? running : null;
   }, "Pulse 2.0 did not create its autonomous managed tab");
 
-  const initialChatPage = await waitForManagedChatGPTPage(context, pagesBeforeRetainedStart);
+  const retainedTabId = retainedRunning.routes.find((item) => item.id === routeId).tabId;
+  const retainedFixtureUrl = `${CHAT_URL}?fixture=retained`;
+  await navigateManagedTab(pulse2Page, retainedTabId, retainedFixtureUrl);
+  const initialChatPage = await waitFor(
+    async () => context.pages().find((page) => page.url() === retainedFixtureUrl) || null,
+    "route-owned managed tab did not navigate to the retained authenticated fixture"
+  );
   await initialChatPage.route(PROJECT_URL, async (route) => {
     await route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: projectFixtureHtml() });
   });
-  await initialChatPage.goto(CHAT_URL, { waitUntil: "domcontentloaded" });
   await waitFor(
     async () => await initialChatPage.locator("[data-testid='profile-button']").count() === 1,
-    "authenticated ChatGPT fixture was not installed in the managed tab"
+    "authenticated ChatGPT fixture was not installed in the route-owned managed tab"
   );
 
   await sendPulse2Request(pulse2Page, "CHECK_NOW", { routeId });
@@ -332,6 +336,12 @@ async function tabIdForUrl(extensionPage, url) {
     const tabs = await chrome.tabs.query({});
     return tabs.find((tab) => tab.url === targetUrl)?.id ?? null;
   }, url);
+}
+
+async function navigateManagedTab(extensionPage, tabId, url) {
+  await extensionPage.evaluate(async ({ managedTabId, targetUrl }) => {
+    await chrome.tabs.update(managedTabId, { url: targetUrl, active: false });
+  }, { managedTabId: tabId, targetUrl: url });
 }
 
 async function agePulse2Observation(extensionPage, routeId) {
