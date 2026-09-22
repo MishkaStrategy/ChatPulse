@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.3 beta — recover stalled first project-chat creation
+
+- add a dedicated 30-second recovery alarm for Pulse 2.0 routes in the `rotating` / project-chat-creation phase;
+- make persisted rotating routes resume after a Manifest V3 service-worker sleep/restart instead of remaining indefinitely on **Создание первого чата**;
+- record a rotation attempt timestamp in runtime so the UI no longer looks permanently untouched while work is actually running;
+- avoid reloading a project page that is already open in the managed tab;
+- if the start message was already sent and the managed tab has already become a new concrete `/c/...` URL before a background interruption, adopt that chat and continue URL capture instead of creating a duplicate chat;
+- add loaded-Chromium regression coverage that seeds the exact persisted stuck state and verifies alarm-driven recovery without another user action;
+- move deterministic beta package/provenance output to ChatPulse 0.8.3.
+
 ## 0.8.2 beta — current ChatGPT Project composer compatibility
 
 - recognize the current project landing composer shown as **Новый чат в … / New chat in …** even when no separate New chat button exists;
