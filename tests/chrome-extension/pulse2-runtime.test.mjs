@@ -63,6 +63,19 @@ test("project entry supports the new direct composer shell as well as legacy New
   assert.match(helper, /project-new-chat-opened/);
 });
 
+
+test("rotating routes have a persistent recovery alarm and crash-safe post-send adoption", () => {
+  assert.match(engine, /PULSE2_ROTATION_ALARM_NAME = "chatpulse-pulse2-rotation"/);
+  assert.match(engine, /ROTATION_RECOVERY_PERIOD_MINUTES = 0\.5/);
+  assert.match(engine, /performPulse2RotationSweep/);
+  assert.match(engine, /alarm\.name === PULSE2_ROTATION_ALARM_NAME/);
+  assert.match(engine, /periodInMinutes: ROTATION_RECOVERY_PERIOD_MINUTES/);
+  assert.match(engine, /recoverPulse2RotationAfterDispatch/);
+  assert.match(engine, /normalizeChatURL\(tab\?\.url\)/);
+  assert.match(engine, /lastCheckAt: new Date\(\)\.toISOString\(\)/);
+  assert.match(engine, /targetUrl = route\.currentChatUrl \|\| route\.projectUrl/);
+});
+
 test("Pulse 2.0 retains bounded URL capture and common safe sender", () => {
   assert.match(model, /PULSE2_CAPTURE_DELAY_MS = 2 \* 60_000/);
   assert.match(model, /PULSE2_CAPTURE_RETRY_MS = 30_000/);

@@ -2,115 +2,82 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 79
-updated_at: 2026-09-22T17:53:00Z
-project_state: DONE
-critical_path_status: VERIFIED
-release_contract_status: SATISFIED
+critical_path_revision: 80
+updated_at: 2026-09-22T18:15:00Z
+project_state: ACTIVE
+critical_path_status: EXECUTING
+release_contract_status: EXPLICIT
 handoff_status: READY
 basis_ref: main
-basis_sha: 9327e20daf6f19aead632424e9e9822d6b908e6e
+basis_sha: b4eaeda7ff3bb7490c04833e23cdf8810a4688e4
 ---
 
 # HQ Critical Path
 
-## Current Release Contract
+## Current Goal
 
-Release target: ChatPulse 0.8.2 beta — make Pulse 2.0 compatible with the current ChatGPT Project landing composer shown as `Новый чат в … / New chat in …` even when no separate New chat button exists.
+Release ChatPulse 0.8.3 beta fixing Pulse 2.0 routes that can remain indefinitely in **создание чата / Создание первого чата** after Start.
 
-Definition of DONE: the direct composer path must work in loaded Chromium, retain the legacy explicit New chat fallback and existing safety boundaries, pass the full PR release/dependency gates, merge through the canonical PR, then reproduce all material evidence on exact post-merge product `main`.
+## Owner Evidence / Root Cause
 
-## Repository Basis
+Owner supplied a runtime screenshot with an empty current chat, valid project URL, phase **создание чата**, next action **Создание первого чата**, zero responses, no last check and no error.
 
-- Previous verified release: 0.8.1.
-- 0.8.1 immutable product basis: `8d186a53a9764fa032f30d33c078f770a7c016d2`.
-- State-only main head before 0.8.2: `c909d04fac4e2b8a19ad8bfc669ed064c7909ec5`.
-- Frozen 0.8.2 candidate: `0d799f9691d48b9b80fd9be02c5e1d0d8a58c1ae`.
-- Canonical PR: #36, merged.
-- Immutable 0.8.2 product merge / release basis: `9327e20daf6f19aead632424e9e9822d6b908e6e`.
-- This state document may advance `main` after the immutable product basis above without changing product release contents.
+Live 0.8.2 code persisted empty-chat routes as `phase=rotating` correctly, but the first rotation was started only through fire-and-forget follow-up work after the START request. A Manifest V3 service worker sleep/restart could therefore leave a persisted rotating route with no alarm capable of resuming it. Monitoring alarms only covered `monitoring`; capture alarms only covered `capture-wait`.
 
-## Bug / Delivered Fix
+## 0.8.3 Release Contract
 
-Owner evidence showed a current ChatGPT Project page where the visible entry point is a large composer labelled `Новый чат в Модульная Стратегия`, with no separate `Новый чат / New chat` button.
+- Add a dedicated persistent recovery path for every active `rotating` route.
+- The recovery path must be alarm-driven so a worker wake/restart can resume work without another UI action.
+- Keep immediate follow-up work for responsiveness; recovery alarm is a watchdog, not a replacement for normal fast execution.
+- Avoid unnecessary project-page reloads on retries.
+- Record a visible runtime attempt timestamp when rotation work begins.
+- If a previous attempt already sent the start message and the managed tab already has a new concrete `/c/...` URL, adopt it into capture-wait rather than creating a duplicate chat.
+- Preserve Pulse 1.0 isolation, project-composer compatibility, multi-route behavior, auth/fail-closed rules and bounded URL capture.
+- Add loaded-browser regression evidence for the exact persisted stuck `rotating` state.
+- Pass canonical PR release/dependency gates and exact post-merge main revalidation.
 
-0.8.1 performed a one-shot lookup for either an already materialized textarea/contenteditable or an explicit Chat/New chat/Create chat button, which caused the observed error.
+## Current State
 
-0.8.2 now:
-
-- waits up to 12 seconds for bounded Project UI hydration;
-- recognizes visible direct project composer shells whose semantic label begins with `Новый чат в` or `New chat in`;
-- limits that detection to the main content region, excludes nav/aside and requires a visible element;
-- activates the composer shell and waits for the actual textarea/contenteditable before the start message is sent;
-- retains the prior explicit `New chat / Chat` action path as fallback;
-- preserves the existing auth checks, fail-closed sender, Pulse 1.0 isolation, multi-route runtime, permanent URL capture and bounded retry behavior.
-
-## Validation / Audit Evidence
-
-### Candidate / PR #36
-
-- Candidate SHA: `0d799f9691d48b9b80fd9be02c5e1d0d8a58c1ae`.
-- PR release run `35763058034`: SUCCESS.
-- PR dependency run `35763058026`: SUCCESS.
-- Five full extension audit cycles: 5/5 SUCCESS.
-- Retained Pulse 1.0 loaded-extension Chromium E2E: SUCCESS.
-- Pulse 2.0 loaded Chromium screenshot-style Project composer regression: SUCCESS.
-  - no legacy New chat button exists in the fixture;
-  - visible `Новый чат в Модульная Стратегия` composer shell is activated exactly once;
-  - real editor materializes after activation;
-  - start message is sent;
-  - normal project rotation and permanent `/c/...` URL capture continue successfully.
-- Reproducible package/provenance: SUCCESS.
-- Candidate artifact ID: `10710508085`, name `ChatPulse-Chrome-v0.8.2-beta`.
-- Candidate ZIP SHA-256: `1ce410d4ffa7a5f5944d93e4f9052bf0afee82742d95a704bc01f89c178b68b5`.
-- Candidate source manifest SHA-256: `b06f8f41efcbb4a7bab22fee84a02c6e2f0b80f3cfd1028fae8b68f6ea47f949`.
-
-### Exact post-merge product main
-
-- Product merge SHA: `9327e20daf6f19aead632424e9e9822d6b908e6e`.
-- Exact-main release run `35763241468`: SUCCESS.
-- Exact-main dependency run `35763241429`: SUCCESS.
-- Five full extension audit cycles: 5/5 SUCCESS.
-- Retained Pulse 1.0 loaded-extension Chromium E2E: SUCCESS.
-- Pulse 2.0 screenshot-style project-composer loaded Chromium E2E: SUCCESS.
-- Reproducible package/provenance: SUCCESS.
-- Exact-main artifact ID: `10711401391`, name `ChatPulse-Chrome-v0.8.2-beta`.
-- Exact-main ZIP SHA-256: `1ce410d4ffa7a5f5944d93e4f9052bf0afee82742d95a704bc01f89c178b68b5`.
-- Exact-main source manifest SHA-256: `b06f8f41efcbb4a7bab22fee84a02c6e2f0b80f3cfd1028fae8b68f6ea47f949`.
-- Candidate and exact post-merge product main are byte-for-byte identical by canonical release payload hashes.
-
-## Adversarial Review
-
-- Direct composer detection is scoped to `main/[role=main]`, excludes `nav/aside`, requires visibility and a specific `Новый чат в … / New chat in …` prefix.
-- Legacy explicit New chat detection remains available as a fallback.
-- No production authentication guard or send/capture safety check was relaxed.
-- No new blocker remained after loaded-browser and post-merge validation.
+- Previous verified release: 0.8.2.
+- 0.8.2 immutable product basis: `9327e20daf6f19aead632424e9e9822d6b908e6e`.
+- Main state-only head before this fix: `b4eaeda7ff3bb7490c04833e23cdf8810a4688e4`.
+- Execution branch: `fix/pulse2-rotation-recovery-0.8.3`.
+- Dedicated `chatpulse-pulse2-rotation` recovery alarm implemented at 30-second cadence while any route is rotating.
+- Alarm-driven `performPulse2RotationSweep` implemented.
+- Rotation attempts now persist `lastCheckAt`.
+- Existing project tab is reused without needless reload when already at the correct project URL.
+- Crash/restart recovery adopts a new concrete chat URL into capture-wait if the start send already advanced the managed tab.
+- Browser regression seeds the exact stuck persisted state and triggers the real rotation alarm.
+- Release metadata/tooling bumped to 0.8.3 beta.
 
 ## Critical Work
 
-- [x] Root-cause current Project UI incompatibility.
-- [x] Add direct project composer-shell detection.
-- [x] Add bounded hydration wait and preserve legacy button fallback.
-- [x] Add screenshot-style browser regression fixture with no New chat button.
-- [x] Pass PR 5/5 full audits, loaded Chromium E2E, dependency and reproducible package gates.
-- [x] Complete adversarial review.
-- [x] Merge PR #36 with exact-head guard.
-- [x] Repeat all material validation on exact post-merge main.
-- [x] Verify candidate and exact-main package hashes are identical.
-- [x] Persist DONE/VERIFIED evidence.
+- [x] Root-cause the stuck `rotating` state from live code.
+- [x] Add rotating-route recovery watchdog.
+- [x] Add post-send concrete-chat adoption to avoid duplicate first-chat creation after interruption.
+- [x] Add runtime progress timestamp.
+- [x] Add focused/static regression coverage.
+- [x] Add loaded-browser stalled-state recovery regression.
+- [x] Bump release tooling/docs to 0.8.3 beta.
+- [ ] Open canonical PR on exact candidate.
+- [ ] Pass PR full audits, loaded Chromium E2E, dependency and reproducible package gates.
+- [ ] Complete adversarial review.
+- [ ] Merge with exact-head guard.
+- [ ] Repeat material validation on exact post-merge main.
+- [ ] Persist DONE/VERIFIED evidence and deliver exact-main ZIP.
 
 ## Blockers
 
-NONE.
+NONE currently known.
 
 ## Active Execution
 
-NONE. ChatPulse 0.8.2 release contract is complete.
+HQ_DIRECT on `fix/pulse2-rotation-recovery-0.8.3`.
 
 ## Next Action
 
-None for this release. Await the next owner-requested bug/feature.
+Open the canonical PR and validate the persisted-stuck-state recovery path on the exact GitHub candidate.
 
 ## Recovery Note
 
-Immutable 0.8.2 product release basis is `9327e20daf6f19aead632424e9e9822d6b908e6e`. PR #36 plus candidate/exact-main evidence above satisfy the release contract. The key compatibility behavior is direct activation of current Project composer shells labelled `Новый чат в … / New chat in …` without requiring a separate New chat button.
+The key defect is not the Project composer detector from 0.8.2. It is missing durable scheduling for `rotating` routes. Do not remove immediate follow-up work; add durable alarm recovery around it. Do not relax auth/send/capture safety checks.
