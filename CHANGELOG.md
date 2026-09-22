@@ -2,6 +2,7 @@
 
 ## 0.8.3 beta — recover stalled first project-chat creation
 
+- create each managed tab synchronously during START, using the current chat when present or the Project page when the current chat is empty;
 - add a dedicated 30-second recovery alarm for Pulse 2.0 routes in the `rotating` / project-chat-creation phase;
 - make persisted rotating routes resume after a Manifest V3 service-worker sleep/restart instead of remaining indefinitely on **Создание первого чата**;
 - record a rotation attempt timestamp in runtime so the UI no longer looks permanently untouched while work is actually running;
