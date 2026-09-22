@@ -64,6 +64,15 @@ test("project entry supports the new direct composer shell as well as legacy New
 });
 
 
+test("project rotation foregrounds the managed tab before composer lookup", () => {
+  assert.match(engine, /active: !route\.currentChatUrl/);
+  assert.match(engine, /chrome\.tabs\.create\(\{ url: route\.projectUrl, active: true/);
+  assert.match(engine, /url: route\.projectUrl, active: true/);
+  assert.match(engine, /activatePulse2ManagedTab/);
+  assert.match(engine, /chrome\.tabs\.update\(tabId, \{ active: true \}\)/);
+  assert.match(engine, /chrome\.windows\.update\(tab\.windowId, \{ focused: true \}\)/);
+});
+
 test("rotating routes have a persistent recovery alarm and crash-safe post-send adoption", () => {
   assert.match(engine, /PULSE2_ROTATION_ALARM_NAME = "chatpulse-pulse2-rotation"/);
   assert.match(engine, /ROTATION_RECOVERY_PERIOD_MINUTES = 0\.5/);
