@@ -2,6 +2,7 @@
   if (globalThis.__chatPulse2ContentInstalled) return;
   globalThis.__chatPulse2ContentInstalled = true;
 
+  const PROJECT_ENTRY_TIMEOUT_MS = 12_000;
   const INPUT_SELECTORS = [
     "#prompt-textarea",
     "textarea[placeholder]",
@@ -27,22 +28,48 @@
       throw new Error("Открытая страница не соответствует проекту Pulse 2.0.");
     }
 
-    const existing = findInput();
-    if (existing) return { ready: true, action: "project-composer-ready", url: location.href };
+    const startedAt = Date.now();
+    let activatedProjectComposer = false;
+    let openedNewChatAction = false;
 
-    const control = findProjectChatControl(projectUrl);
-    if (!control) {
-      throw new Error("Не найдено действие «Новый чат / Chat» внутри проекта ChatGPT.");
+    while (Date.now() - startedAt < PROJECT_ENTRY_TIMEOUT_MS) {
+      const input = findInput();
+      if (input) {
+        return {
+          ready: true,
+          action: activatedProjectComposer
+            ? "project-composer-activated"
+            : openedNewChatAction
+              ? "project-new-chat-opened"
+              : "project-composer-ready",
+          url: location.href
+        };
+      }
+
+      if (!activatedProjectComposer) {
+        const composerSurface = findProjectComposerSurface();
+        if (composerSurface) {
+          composerSurface.click();
+          activatedProjectComposer = true;
+          await delay(200);
+          continue;
+        }
+      }
+
+      if (!openedNewChatAction) {
+        const control = findProjectChatControl(projectUrl);
+        if (control) {
+          control.click();
+          openedNewChatAction = true;
+          await delay(200);
+          continue;
+        }
+      }
+
+      await delay(150);
     }
-    control.click();
 
-    const input = await waitForInput(12_000);
-    if (!input) throw new Error("После открытия нового чата поле ввода не появилось.");
-    return {
-      ready: true,
-      action: "project-new-chat-opened",
-      url: location.href
-    };
+    throw new Error("Не найдено поле нового чата внутри проекта ChatGPT.");
   }
 
   function isProjectLocation(projectUrl) {
@@ -57,6 +84,50 @@
     } catch {
       return false;
     }
+  }
+
+  function findProjectComposerSurface() {
+    const roots = [
+      document.querySelector("main"),
+      document.querySelector("[role='main']")
+    ].filter(Boolean);
+
+    for (const root of roots) {
+      const attributeCandidates = root.querySelectorAll(
+        "[data-placeholder], [aria-placeholder], [placeholder], [aria-label], [data-testid*='composer' i]"
+      );
+      for (const element of attributeCandidates) {
+        if (!isVisible(element) || element.closest("nav, aside")) continue;
+        const label = normalize([
+          element.getAttribute("data-placeholder"),
+          element.getAttribute("aria-placeholder"),
+          element.getAttribute("placeholder"),
+          element.getAttribute("aria-label"),
+          element.innerText,
+          element.textContent
+        ].filter(Boolean).join(" "));
+        if (isProjectComposerLabel(label)) return element;
+      }
+
+      for (const element of root.querySelectorAll("span, p, div")) {
+        if (!isVisible(element) || element.closest("nav, aside")) continue;
+        const label = normalize(element.innerText || element.textContent);
+        if (!isProjectComposerLabel(label)) continue;
+
+        // Prefer the smallest visible node carrying the "New chat in …" label.
+        const childWithSameLabel = [...element.children].some((child) =>
+          isVisible(child) && isProjectComposerLabel(normalize(child.innerText || child.textContent))
+        );
+        if (!childWithSameLabel) return element;
+      }
+    }
+
+    return null;
+  }
+
+  function isProjectComposerLabel(value) {
+    const label = normalize(value).toLocaleLowerCase();
+    return /^(?:новый чат в|new chat in)(?:\s|$)/iu.test(label);
   }
 
   function findProjectChatControl(projectUrl) {
@@ -96,16 +167,6 @@
     for (const selector of INPUT_SELECTORS) {
       const candidate = document.querySelector(selector);
       if (candidate && isVisible(candidate)) return candidate;
-    }
-    return null;
-  }
-
-  async function waitForInput(timeoutMs) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
-      const input = findInput();
-      if (input) return input;
-      await delay(150);
     }
     return null;
   }
