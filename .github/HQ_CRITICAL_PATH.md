@@ -2,111 +2,77 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 75
-updated_at: 2026-09-16T11:03:00Z
-project_state: DONE
-critical_path_status: VERIFIED
-release_contract_status: SATISFIED
+critical_path_revision: 76
+updated_at: 2026-09-22T13:15:00Z
+project_state: ACTIVE
+critical_path_status: EXECUTING
+release_contract_status: EXPLICIT
 handoff_status: READY
 basis_ref: main
-basis_sha: aa1aadfbee6ef7887e2befde68d7567fb0152137
+basis_sha: 6b0021f28a224c1246dfa254c616c3b85980ecd7
 ---
 
 # HQ Critical Path
 
-## Current Release Contract
+## Current Goal
 
-Release target: ChatPulse 0.8.0 beta with a fully separate Pulse 2.0 mode: independent UI/state/scheduler, configurable current-chat + project URLs, configurable auto-response text/delay, configurable continuations per cycle, automatic project-chat rotation, permanent `/c/...` URL capture after a two-minute delay, and a finite cycle count.
+Release ChatPulse 0.8.1 beta with Pulse 2.0 bug fixes and multi-route support requested by the owner.
 
-Definition of DONE: canonical PR merged after candidate release/dependency gates; exact post-merge product `main` reproduces 5/5 audits, retained Pulse 1.0 Chromium E2E, Pulse 2.0 project-rotation Chromium E2E, reproducible package/provenance, and dependency-policy success.
+## Release Contract
 
-## Repository Basis
+0.8.1 must:
 
-- Previous release: ChatPulse 0.7.9 remains DONE and verified.
-- Frozen 0.8.0 candidate head: `3e727dd4205414c1a84fae77945f4a7886ee025a`.
-- Canonical PR: #34, merged.
-- Exact product merge / release basis: `aa1aadfbee6ef7887e2befde68d7567fb0152137`.
-- This file may advance `main` with state-only commits after the immutable product basis above; that does not alter release contents.
+- stop live background state updates from overwriting unsaved Pulse 2.0 form input;
+- make current-chat URL optional for every route;
+- when current chat is empty, create the first project chat, send the start message, capture its permanent `/c/...` URL after the existing two-minute delay, and continue it as cycle 1;
+- support multiple independent ChatGPT project routes in one Pulse 2.0 session;
+- keep per-route tabs, phases, current URLs, cycle counters, history and errors isolated;
+- allow one route to fail/complete without stopping other active routes;
+- retain Pulse 1.0 isolation and collision protection;
+- preserve the existing bounded URL capture/fail-closed behavior;
+- pass proportional regression/audit coverage including repeated full audits and loaded Chromium E2E before merge.
 
-## Release Gates
+## Current State
 
-### Candidate / PR evidence
-
-- PR-context release run `35087859711`: SUCCESS.
-- PR-context dependency run `35087859547`: SUCCESS.
-- Five independent extension audit cycles: 5/5 SUCCESS.
-- Loaded-extension Chromium MV3 retained Pulse 1.0 E2E: SUCCESS.
-- Loaded-extension Pulse 2.0 project-rotation E2E: SUCCESS.
-- Reproducible package/provenance: SUCCESS.
-- Candidate artifact ID: `10442848372`, name `ChatPulse-Chrome-v0.8.0-beta`.
-
-### Exact post-merge product-main evidence
-
-- Product merge SHA `aa1aadfbee6ef7887e2befde68d7567fb0152137`.
-- Exact-main release run `35088071054`: SUCCESS.
-- Exact-main dependency run `35088070984`: SUCCESS.
-- Five independent extension audit cycles: 5/5 SUCCESS.
-- Loaded-extension Chromium MV3 retained Pulse 1.0 E2E: SUCCESS.
-- Loaded-extension Pulse 2.0 project-rotation E2E: SUCCESS.
-- Reproducible package/provenance: SUCCESS.
-- Exact-main artifact ID: `10442274217`, name `ChatPulse-Chrome-v0.8.0-beta`.
-
-### Canonical package identity
-
-Candidate and exact-main produced identical deterministic release payload hashes:
-
-- `ChatPulse-Chrome-v0.8.0-beta.zip` SHA-256: `723566c0dd4badd863c10642e85f19e0b8d92564b36a182e76dab5f22fe0ebf3`.
-- `ChatPulse-Chrome-v0.8.0-source-manifest.txt` SHA-256: `2a022c73fe38c0a75a1bc3db2457478472bba48e6ca27190c55e911a5d46f4a0`.
-- Packaged extension file count: 27.
-- Reproducible timestamp: `2020-01-01T00:00:00`.
-
-## Delivered Pulse 2.0 Behavior
-
-- Separate full-page UI and independent Start/Stop.
-- Separate `chatpulse2State`, alarms, runtime channel, counters and managed tab.
-- Pulse 1.0 remains on its existing engine; only collision protection reads Pulse 1.0 state.
-- Current chat URL + ChatGPT project URL are configured independently.
-- Auto-response command and delay are configurable.
-- Continuations per cycle and total cycles are configurable.
-- After the Nth continuation, Pulse 2.0 waits for the assistant's final response before rotation.
-- Rotation opens the configured project in the managed tab, starts a new project chat, sends the configured start message, waits two minutes, then captures the real permanent `/c/...` URL.
-- Permanent conversation URLs are never synthesized; bounded capture retries fail closed.
-- The captured URL replaces the previous current-chat URL and begins the next cycle with reset per-cycle counters.
-- The final configured cycle completes without creating an extra chat.
-- Start messages do not increment ordinary continuation counts.
-- Simultaneous Pulse 1.0 / Pulse 2.0 control of the same current chat is blocked.
-
-## Material Validation Findings
-
-The new browser gate found and closed two issues before release:
-
-1. Start-time baseline was initially deferred by the scheduler freshness gate. Production logic was corrected so explicit Start establishes a safe baseline immediately while the first auto-response still respects the configured delay.
-2. Headless Playwright did not reliably route the first extension-created `chrome.tabs.create()` request. The E2E harness was corrected to drive the actual Pulse 2.0 managed tab deterministically; production authentication guards were not weakened.
+- Previous release 0.8.0 remains DONE and verified; immutable product basis `aa1aadfbee6ef7887e2befde68d7567fb0152137`.
+- `main` before this work: state-only head `6b0021f28a224c1246dfa254c616c3b85980ecd7`.
+- Execution branch: `fix/pulse2-multiroute-0.8.1`.
+- Root cause of settings reset identified: `pulse2.js::render()` rewrote form values on every background state push.
+- Local focused model/runtime regression suite for the new design: 17/17 PASS before repository commit.
 
 ## Critical Work
 
-- [x] Define isolated Pulse 2.0 state machine and safety boundaries.
-- [x] Implement separate Pulse 2.0 UI/model/background/content helper.
-- [x] Add version/package/CI wiring for 0.8.0.
-- [x] Add focused model/runtime/static tests and documentation.
-- [x] Add loaded-extension Pulse 2.0 project-rotation E2E.
-- [x] Freeze and validate exact candidate.
-- [x] Pass canonical PR release/dependency gates.
-- [x] Merge PR #34 to `main`.
-- [x] Verify exact post-merge product `main` and package identity.
+- [x] Isolate editable UI draft from live runtime state.
+- [x] Define schema-v2 multi-route model with legacy single-route migration.
+- [x] Make current chat optional and define first-project-chat initialization as cycle 1.
+- [x] Serialize background operations to prevent multi-route state clobbering.
+- [x] Add route UI, independent runtime/history and regression tests.
+- [ ] Commit exact candidate and open canonical PR.
+- [ ] Resolve PR-context unit/static/browser/package/dependency gates.
+- [ ] Perform adversarial regression review and any required additional audit cycles.
+- [ ] Merge only after green evidence.
+- [ ] Verify exact post-merge main and persist DONE evidence.
 
 ## Blockers
 
-NONE.
+NONE currently known.
 
 ## Active Execution
 
-NONE. ChatPulse 0.8.0 release contract is complete.
+HQ_DIRECT on `fix/pulse2-multiroute-0.8.1`. No parallel writer.
+
+## Decisions / Evidence
+
+- Multi-project means multiple independent routes, not a sequential list sharing one runtime object.
+- Common response text/delay/cycle limits remain global; project URL, current chat and runtime are per route.
+- One serialized engine operation queue is used to avoid lost updates while still keeping multiple project tabs/cycles active.
+- A blank current-chat field is an explicit initialization mode, not a validation error.
+- Unsaved form data is held in a UI draft and is never rehydrated from background pushes while dirty/focused.
 
 ## Next Action
 
-None for this release. Await a new owner request; do not reopen 0.8.0 without new live evidence.
+Create the exact candidate commit on the feature branch, open the PR, and run the full 0.8.1 release gates.
 
 ## Recovery Note
 
-Resume from the live organizational master prompt plus this document. Immutable product release basis is `aa1aadfbee6ef7887e2befde68d7567fb0152137`; PR #34 and exact-main evidence above satisfy the ChatPulse 0.8.0 Pulse 2.0 release contract.
+Resume from live organizational master + this document. Do not reopen 0.8.0. Current release scope is exactly the three owner-requested Pulse 2.0 fixes plus tests/audits necessary to prove them safely.

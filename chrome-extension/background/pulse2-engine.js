@@ -5,15 +5,19 @@ import {
   applyPulse2SettingsPatch,
   beginPulse2Rotation,
   capturePulse2Chat,
-  completePulse2State,
+  completePulse2Route,
   defaultPulse2State,
   effectivePulse2StartMessage,
-  failPulse2State,
+  failPulse2Route,
+  getPulse2Route,
+  isPulse2RouteTerminal,
   markPulse2CaptureWait,
   normalizePulse2State,
   observePulse2Snapshot,
   recordPulse2Dispatch,
+  replacePulse2Route,
   retryPulse2Capture,
+  settlePulse2Global,
   startPulse2State,
   stopPulse2State
 } from "../lib/pulse2-model.js";
@@ -24,7 +28,6 @@ export const PULSE2_CAPTURE_ALARM_NAME = "chatpulse-pulse2-capture";
 
 const STORAGE_KEY = "chatpulse2State";
 const PULSE1_STORAGE_KEY = "chatpulseState";
-const CHATGPT_PATTERNS = ["https://chatgpt.com/*", "https://chat.openai.com/*"];
 const TAB_LOAD_TIMEOUT_MS = 45_000;
 const CONTENT_TIMEOUT_MS = 6_000;
 const PROJECT_PREPARE_TIMEOUT_MS = 15_000;
@@ -32,8 +35,7 @@ const START_MESSAGE_TIMEOUT_MS = 20_000;
 const PROJECT_SETTLE_MS = 1_000;
 
 const ports = new Set();
-let activePulse2Check = null;
-let activePulse2Rotation = null;
+let engineQueue = Promise.resolve();
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port?.name !== PULSE2_PORT_NAME) return;
@@ -46,28 +48,30 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === PULSE2_ALARM_NAME) void queuePulse2Check("alarm");
-  if (alarm.name === PULSE2_CAPTURE_ALARM_NAME) void handlePulse2CaptureAlarm();
+  if (alarm.name === PULSE2_ALARM_NAME) void enqueueEngineOperation(() => performPulse2Sweep("alarm"));
+  if (alarm.name === PULSE2_CAPTURE_ALARM_NAME) void enqueueEngineOperation(() => performPulse2CaptureSweep());
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  void resumePulse2();
+  void enqueueEngineOperation(() => resumePulse2());
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void resumePulse2();
+  void enqueueEngineOperation(() => resumePulse2());
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes[PULSE1_STORAGE_KEY]) return;
-  void stopPulse2OnPulse1Collision();
+  void enqueueEngineOperation(() => stopPulse2RoutesOnPulse1Collision());
 });
 
 async function handlePortRequest(port, message) {
   const requestId = message?.requestId;
   if (!requestId) return;
   try {
-    const result = await handlePulse2Action(message?.type, message || {});
+    const result = message?.type === "GET_STATE"
+      ? { state: await loadPulse2State() }
+      : await enqueueEngineOperation(() => handlePulse2Action(message?.type, message || {}));
     safePost(port, { kind: "response", requestId, ok: true, ...result });
   } catch (error) {
     safePost(port, {
@@ -81,9 +85,6 @@ async function handlePortRequest(port, message) {
 
 async function handlePulse2Action(type, message) {
   switch (type) {
-    case "GET_STATE":
-      return { state: await loadPulse2State() };
-
     case "UPDATE_SETTINGS": {
       const current = await loadPulse2State();
       const next = applyPulse2SettingsPatch(current, message.patch || {});
@@ -91,29 +92,43 @@ async function handlePulse2Action(type, message) {
       return { state: next };
     }
 
-    case "USE_CURRENT_CHAT": {
-      let state = await loadPulse2State();
-      if (state.enabled) throw new Error("Остановите Pulse 2.0 перед сменой исходного чата.");
+    case "GET_ACTIVE_CHAT_URL": {
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       const url = normalizeChatURL(tab?.url);
       if (!url) throw new Error("Откройте конкретный чат ChatGPT и повторите.");
-      state = applyPulse2SettingsPatch(state, { currentChatUrl: url });
+      return { state: await loadPulse2State(), url };
+    }
+
+    case "USE_CURRENT_CHAT": {
+      let state = await loadPulse2State();
+      if (state.enabled) throw new Error("Остановите Pulse 2.0 перед сменой исходного чата.");
+      const route = requireRoute(state, message.routeId);
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const url = normalizeChatURL(tab?.url);
+      if (!url) throw new Error("Откройте конкретный чат ChatGPT и повторите.");
+      state = applyPulse2SettingsPatch(state, {
+        routes: state.routes.map((item) => item.id === route.id ? { ...item, currentChatUrl: url } : item)
+      });
       await persistPulse2State(state);
       return { state };
     }
 
-    case "START":
-      return { state: await startPulse2() };
+    case "START": {
+      const state = await startPulse2();
+      queueFollowUpWork(state);
+      return { state };
+    }
 
     case "STOP":
       return { state: await stopPulse2("manual") };
 
-    case "CHECK_NOW":
-      await queuePulse2Check("manual");
-      return { state: await loadPulse2State() };
+    case "CHECK_NOW": {
+      const state = await performPulse2Sweep("manual", message.routeId || null);
+      return { state };
+    }
 
     case "OPEN_CURRENT_CHAT":
-      return { state: await openPulse2CurrentChat() };
+      return { state: await openPulse2CurrentChat(message.routeId) };
 
     default:
       throw new Error("Неизвестная команда Pulse 2.0.");
@@ -122,42 +137,43 @@ async function handlePulse2Action(type, message) {
 
 async function resumePulse2() {
   let state = await loadPulse2State();
-  state = { ...state, checkInProgress: false };
-  if (!state.enabled) {
-    state = await configurePulse2Alarms(state);
-    await persistPulse2State(state);
-    return;
-  }
-  if (state.phase === "rotating") {
-    await persistPulse2State(state);
-    void queuePulse2Rotation();
-    return;
-  }
-  if (!["monitoring", "capture-wait"].includes(state.phase)) {
-    state = failPulse2State(state, `Невозможно восстановить фазу ${state.phase}.`);
-  }
+  state = normalizePulse2State({
+    ...state,
+    routes: state.routes.map((route) => ({ ...route, checkInProgress: false }))
+  });
+  state = settlePulse2Global(state);
   state = await configurePulse2Alarms(state);
   await persistPulse2State(state);
+  if (state.enabled) queueFollowUpWork(state);
+  return state;
 }
 
 async function startPulse2() {
   let state = await loadPulse2State();
   if (state.enabled) return state;
-  await assertNoPulse1Collision(state.currentChatUrl);
+  await assertNoPulse1Collisions(state.routes.map((route) => route.currentChatUrl).filter(Boolean));
 
-  const tab = await chrome.tabs.create({
-    url: state.currentChatUrl,
-    active: false,
-    pinned: false
-  });
-  if (!Number.isInteger(tab?.id)) throw new Error("Chrome не вернул идентификатор вкладки Pulse 2.0.");
-  await protectManagedTab(tab.id);
-
-  state = startPulse2State(state, { tabId: tab.id });
-  state = await configurePulse2Alarms(state);
-  await persistPulse2State(state);
-  void queuePulse2Check("start");
-  return state;
+  const tabIds = {};
+  const createdTabIds = [];
+  try {
+    for (const route of state.routes) {
+      if (!route.currentChatUrl) continue;
+      const tab = await chrome.tabs.create({ url: route.currentChatUrl, active: false, pinned: false });
+      if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
+      tabIds[route.id] = tab.id;
+      createdTabIds.push(tab.id);
+      await protectManagedTab(tab.id);
+    }
+    state = startPulse2State(state, { tabIds });
+    state = await configurePulse2Alarms(state);
+    await persistPulse2State(state);
+    return state;
+  } catch (error) {
+    for (const tabId of createdTabIds) {
+      try { await chrome.tabs.remove(tabId); } catch { /* best effort cleanup */ }
+    }
+    throw error;
+  }
 }
 
 async function stopPulse2(reason) {
@@ -168,133 +184,144 @@ async function stopPulse2(reason) {
   return state;
 }
 
-function queuePulse2Check(source) {
-  const previous = activePulse2Check;
-  const queued = (previous ? previous.catch(() => {}) : Promise.resolve())
-    .then(() => performPulse2Check(source));
-  let tracked = null;
-  tracked = queued.finally(() => {
-    if (activePulse2Check === tracked) activePulse2Check = null;
-  });
-  activePulse2Check = tracked;
-  return tracked;
+function queueFollowUpWork(state) {
+  if (!state?.enabled) return;
+  const hasMonitoring = state.routes.some((route) => route.phase === "monitoring");
+  const rotatingIds = state.routes.filter((route) => route.phase === "rotating").map((route) => route.id);
+  if (hasMonitoring) void enqueueEngineOperation(() => performPulse2Sweep("start"));
+  for (const routeId of rotatingIds) {
+    void enqueueEngineOperation(() => performPulse2Rotation(routeId));
+  }
 }
 
-async function performPulse2Check(source) {
+async function performPulse2Sweep(source, onlyRouteId = null) {
   let state = await loadPulse2State();
-  if (!state.enabled || state.phase !== "monitoring") return;
-  if (source === "alarm") {
-    const nextAt = Date.parse(String(state.nextCheckAt || ""));
-    if (Number.isFinite(nextAt) && nextAt > Date.now() + 1_000) return;
-  }
+  if (!state.enabled) return state;
+  const routeIds = state.routes
+    .filter((route) => route.phase === "monitoring" && (!onlyRouteId || route.id === onlyRouteId))
+    .filter((route) => {
+      if (source !== "alarm") return true;
+      const nextAt = Date.parse(String(route.nextCheckAt || ""));
+      return !Number.isFinite(nextAt) || nextAt <= Date.now() + 1_000;
+    })
+    .map((route) => route.id);
 
+  for (const routeId of routeIds) {
+    await performPulse2RouteCheck(routeId);
+  }
+  state = await loadPulse2State();
+  state = settlePulse2Global(state);
+  state = await configurePulse2Alarms(state);
+  await persistPulse2State(state);
+  return state;
+}
+
+async function performPulse2RouteCheck(routeId) {
+  let state = await loadPulse2State();
+  let route = getPulse2Route(state, routeId);
+  if (!state.enabled || !route || route.phase !== "monitoring") return;
   const expectedSessionId = state.sessionId;
   const expectedRevision = state.controlRevision;
-  state = { ...state, checkInProgress: true, lastError: null };
+
+  route = { ...route, checkInProgress: true, lastError: null };
+  state = replacePulse2Route(state, routeId, route);
   await persistPulse2State(state);
 
   try {
-    let tab = await ensurePulse2ChatTab(state);
-    if (tab.id !== state.tabId) {
-      state = { ...state, tabId: tab.id };
+    let tab = await ensurePulse2ChatTab(state, routeId);
+    state = await loadPulse2State();
+    route = requireRoute(state, routeId);
+    if (tab.id !== route.tabId) {
+      state = replacePulse2Route(state, routeId, { ...route, tabId: tab.id });
       await persistPulse2State(state);
     }
+
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
     let snapshot = await inspectPulse2Tab(tab.id);
-    let observation = observePulse2Snapshot(state, snapshot);
+    state = await loadPulse2State();
+    assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
+    let observation = observePulse2Snapshot(state, routeId, snapshot);
     state = observation.state;
     await persistPulse2State(state);
 
-    if (observation.decision === "send-auto-response" || observation.decision === "rotate") {
-      const live = await loadPulse2State();
-      assertPulse2ExecutionStillCurrent(live, {
-        sessionId: expectedSessionId,
-        controlRevision: expectedRevision,
-        currentChatUrl: state.currentChatUrl
-      });
-      tab = await ensurePulse2ChatTab(live);
+    if (["send-auto-response", "rotate"].includes(observation.decision)) {
+      state = await loadPulse2State();
+      route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
+      tab = await ensurePulse2ChatTab(state, routeId);
       snapshot = await inspectPulse2Tab(tab.id);
-      observation = observePulse2Snapshot(live, snapshot);
+      observation = observePulse2Snapshot(state, routeId, snapshot);
       state = observation.state;
       await persistPulse2State(state);
     }
 
     if (observation.decision === "send-auto-response") {
-      await assertNoPulse1Collision(state.currentChatUrl);
-      const response = await sendToContent(state.tabId, {
+      state = await loadPulse2State();
+      route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
+      await assertNoPulse1Collision(route.currentChatUrl);
+      const response = await sendToContent(route.tabId, {
         type: "CHATPULSE_SEND",
         command: state.commandText
       }, { attempts: 2, timeoutMs: START_MESSAGE_TIMEOUT_MS });
       if (!response?.ok) throw new Error(response?.error || "Автоответ Pulse 2.0 не отправлен.");
       const outcome = response.outcome === "confirmed" ? "confirmed" : "submitted-unconfirmed";
-      state = recordPulse2Dispatch(state, observation.fingerprint, outcome);
+      state = recordPulse2Dispatch(state, routeId, observation.fingerprint, outcome);
       await persistPulse2State(state);
     } else if (observation.decision === "rotate") {
-      if (state.cycleNumber >= state.maxCycles) {
-        state = completePulse2State(state);
+      state = await loadPulse2State();
+      route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
+      if (route.cycleNumber >= state.maxCycles) {
+        state = completePulse2Route(state, routeId);
         state = await configurePulse2Alarms(state);
         await persistPulse2State(state);
         return;
       }
-      state = beginPulse2Rotation(state);
+      state = beginPulse2Rotation(state, routeId);
       state = await configurePulse2Alarms(state);
       await persistPulse2State(state);
-      await queuePulse2Rotation();
+      await performPulse2Rotation(routeId);
       return;
     }
   } catch (error) {
     const latest = await loadPulse2State();
-    if (latest.sessionId === expectedSessionId && latest.controlRevision === expectedRevision && latest.enabled) {
-      state = {
-        ...latest,
+    const latestRoute = getPulse2Route(latest, routeId);
+    if (latest.enabled && latestRoute && latest.sessionId === expectedSessionId && latest.controlRevision === expectedRevision) {
+      state = replacePulse2Route(latest, routeId, {
+        ...latestRoute,
         lastError: error instanceof Error ? error.message : String(error),
         lastCheckAt: new Date().toISOString()
-      };
+      });
       await persistPulse2State(state);
     }
   } finally {
     const latest = await loadPulse2State();
-    if (latest.sessionId === expectedSessionId && latest.checkInProgress) {
-      const finished = await configurePulse2Alarms({ ...latest, checkInProgress: false });
-      await persistPulse2State(finished);
+    const latestRoute = getPulse2Route(latest, routeId);
+    if (latestRoute?.checkInProgress && latest.sessionId === expectedSessionId) {
+      state = replacePulse2Route(latest, routeId, { ...latestRoute, checkInProgress: false });
+      state = await configurePulse2Alarms(state);
+      await persistPulse2State(state);
     }
   }
 }
 
-function queuePulse2Rotation() {
-  const previous = activePulse2Rotation;
-  const queued = (previous ? previous.catch(() => {}) : Promise.resolve())
-    .then(() => performPulse2Rotation());
-  let tracked = null;
-  tracked = queued.finally(() => {
-    if (activePulse2Rotation === tracked) activePulse2Rotation = null;
-  });
-  activePulse2Rotation = tracked;
-  return tracked;
-}
-
-async function performPulse2Rotation() {
+async function performPulse2Rotation(routeId) {
   let state = await loadPulse2State();
-  if (!state.enabled || state.phase !== "rotating") return;
+  let route = getPulse2Route(state, routeId);
+  if (!state.enabled || !route || route.phase !== "rotating") return;
   const expectedSessionId = state.sessionId;
   const expectedRevision = state.controlRevision;
 
   try {
     let tab = null;
-    if (Number.isInteger(state.tabId)) {
-      try {
-        tab = await chrome.tabs.get(state.tabId);
-      } catch {
-        tab = null;
-      }
+    if (Number.isInteger(route.tabId)) {
+      try { tab = await chrome.tabs.get(route.tabId); } catch { tab = null; }
     }
     if (!tab?.id) {
-      tab = await chrome.tabs.create({ url: state.projectUrl, active: false, pinned: false });
-      if (!Number.isInteger(tab?.id)) throw new Error("Не удалось создать вкладку проекта для Pulse 2.0.");
-      state = { ...state, tabId: tab.id };
+      tab = await chrome.tabs.create({ url: route.projectUrl, active: false, pinned: false });
+      if (!Number.isInteger(tab?.id)) throw new Error(`Не удалось создать вкладку проекта «${route.name}».`);
+      state = replacePulse2Route(state, routeId, { ...route, tabId: tab.id });
       await persistPulse2State(state);
     } else {
-      tab = await chrome.tabs.update(tab.id, { url: state.projectUrl, active: false });
+      tab = await chrome.tabs.update(tab.id, { url: route.projectUrl, active: false });
     }
 
     await protectManagedTab(tab.id);
@@ -303,59 +330,64 @@ async function performPulse2Rotation() {
 
     const prepared = await sendToContent(tab.id, {
       type: "PULSE2_PREPARE_PROJECT_CHAT",
-      projectUrl: state.projectUrl
+      projectUrl: route.projectUrl
     }, { attempts: 2, timeoutMs: PROJECT_PREPARE_TIMEOUT_MS });
     if (!prepared?.ok || prepared.ready !== true) {
       throw new Error(prepared?.error || "В проекте ChatGPT не найдено поле нового чата.");
     }
 
-    const live = await loadPulse2State();
-    assertPulse2ExecutionStillCurrent(live, {
-      sessionId: expectedSessionId,
-      controlRevision: expectedRevision,
-      phase: "rotating"
-    });
-
+    state = await loadPulse2State();
+    route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "rotating" });
     const response = await sendToContent(tab.id, {
       type: "CHATPULSE_SEND",
-      command: effectivePulse2StartMessage(live)
+      command: effectivePulse2StartMessage(state)
     }, { attempts: 2, timeoutMs: START_MESSAGE_TIMEOUT_MS });
     if (!response?.ok) throw new Error(response?.error || "Стартовое сообщение нового чата не отправлено.");
 
-    state = markPulse2CaptureWait({ ...live, tabId: tab.id });
+    state = markPulse2CaptureWait(state, routeId);
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
   } catch (error) {
     const latest = await loadPulse2State();
-    if (latest.sessionId !== expectedSessionId || latest.controlRevision !== expectedRevision) return;
-    state = failPulse2State(latest, error);
+    if (latest.sessionId !== expectedSessionId || latest.controlRevision !== expectedRevision || !getPulse2Route(latest, routeId)) return;
+    state = failPulse2Route(latest, routeId, error);
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
   }
 }
 
-async function handlePulse2CaptureAlarm() {
+async function performPulse2CaptureSweep() {
   let state = await loadPulse2State();
-  if (!state.enabled || state.phase !== "capture-wait") return;
+  if (!state.enabled) return state;
+  const now = Date.now();
+  const routeIds = state.routes.filter((route) => {
+    if (route.phase !== "capture-wait") return false;
+    const dueAt = Date.parse(String(route.captureDueAt || ""));
+    return !Number.isFinite(dueAt) || dueAt <= now + 500;
+  }).map((route) => route.id);
 
-  const dueAt = Date.parse(String(state.captureDueAt || ""));
-  if (Number.isFinite(dueAt) && dueAt > Date.now() + 500) {
-    state = await configurePulse2Alarms(state);
-    await persistPulse2State(state);
-    return;
-  }
+  for (const routeId of routeIds) await performPulse2Capture(routeId);
+  state = await loadPulse2State();
+  state = settlePulse2Global(state);
+  state = await configurePulse2Alarms(state);
+  await persistPulse2State(state);
+  return state;
+}
 
+async function performPulse2Capture(routeId) {
+  let state = await loadPulse2State();
+  let route = getPulse2Route(state, routeId);
+  if (!state.enabled || !route || route.phase !== "capture-wait") return;
   try {
-    if (!Number.isInteger(state.tabId)) throw new Error("Вкладка нового чата потеряна до захвата URL.");
-    const tab = await chrome.tabs.get(state.tabId);
+    if (!Number.isInteger(route.tabId)) throw new Error("Вкладка нового чата потеряна до захвата URL.");
+    const tab = await chrome.tabs.get(route.tabId);
     const normalizedURL = normalizeChatURL(tab.url);
+    const changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
     let snapshot = null;
-    if (normalizedURL && normalizedURL !== state.currentChatUrl) {
-      snapshot = await inspectPulse2Tab(tab.id);
-    }
-    if (normalizedURL && normalizedURL !== state.currentChatUrl && snapshot?.authenticated && snapshot?.messageCount > 0) {
+    if (changed) snapshot = await inspectPulse2Tab(tab.id);
+    if (changed && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
-      state = capturePulse2Chat(state, normalizedURL, {
+      state = capturePulse2Chat(state, routeId, normalizedURL, {
         title: snapshot.title || "",
         at: new Date().toISOString()
       });
@@ -364,62 +396,67 @@ async function handlePulse2CaptureAlarm() {
       return;
     }
 
-    if (state.captureAttempts + 1 >= PULSE2_MAX_CAPTURE_ATTEMPTS) {
+    route = requireRoute(state, routeId);
+    if (route.captureAttempts + 1 >= PULSE2_MAX_CAPTURE_ATTEMPTS) {
       throw new Error("Не удалось получить постоянную ссылку нового чата после двухминутной задержки и повторных проверок.");
     }
-    state = retryPulse2Capture(state);
+    state = retryPulse2Capture(state, routeId);
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
   } catch (error) {
-    if (state.captureAttempts + 1 < PULSE2_MAX_CAPTURE_ATTEMPTS && /content script|не ответ/i.test(String(error?.message || error))) {
-      state = retryPulse2Capture(state);
-      state = await configurePulse2Alarms(state);
-      await persistPulse2State(state);
-      return;
+    state = await loadPulse2State();
+    route = getPulse2Route(state, routeId);
+    if (!route) return;
+    if (route.captureAttempts + 1 < PULSE2_MAX_CAPTURE_ATTEMPTS && /content script|не ответ/i.test(String(error?.message || error))) {
+      state = retryPulse2Capture(state, routeId);
+    } else {
+      state = failPulse2Route(state, routeId, error);
     }
-    state = failPulse2State(state, error);
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
   }
 }
 
-async function openPulse2CurrentChat() {
+async function openPulse2CurrentChat(routeId) {
   let state = await loadPulse2State();
+  let route = requireRoute(state, routeId);
+  if (!route.currentChatUrl) throw new Error("Этот маршрут ещё не получил постоянную ссылку текущего чата.");
   let tab = null;
-  if (Number.isInteger(state.tabId)) {
-    try {
-      tab = await chrome.tabs.get(state.tabId);
-    } catch {
-      tab = null;
-    }
+  if (Number.isInteger(route.tabId)) {
+    try { tab = await chrome.tabs.get(route.tabId); } catch { tab = null; }
   }
-  if (!tab?.id || normalizeChatURL(tab.url) !== state.currentChatUrl) {
-    tab = await chrome.tabs.create({ url: state.currentChatUrl, active: true });
+  if (!tab?.id || normalizeChatURL(tab.url) !== route.currentChatUrl) {
+    tab = await chrome.tabs.create({ url: route.currentChatUrl, active: true });
   } else {
     tab = await chrome.tabs.update(tab.id, { active: true });
   }
   if (Number.isInteger(tab?.windowId)) {
-    try {
-      await chrome.windows.update(tab.windowId, { focused: true });
-    } catch {
-      // Фокус окна — необязательное улучшение.
-    }
+    try { await chrome.windows.update(tab.windowId, { focused: true }); } catch { /* optional */ }
   }
-  state = { ...state, tabId: tab?.id ?? state.tabId };
+  route = { ...route, tabId: tab?.id ?? route.tabId };
+  state = replacePulse2Route(state, routeId, route);
   await persistPulse2State(state);
   return state;
 }
 
-async function stopPulse2OnPulse1Collision() {
-  const state = await loadPulse2State();
-  if (!state.enabled || !state.currentChatUrl) return;
-  try {
-    await assertNoPulse1Collision(state.currentChatUrl);
-  } catch (error) {
-    let failed = failPulse2State(state, error);
-    failed = await configurePulse2Alarms(failed);
-    await persistPulse2State(failed);
+async function stopPulse2RoutesOnPulse1Collision() {
+  let state = await loadPulse2State();
+  if (!state.enabled) return state;
+  for (const route of state.routes) {
+    if (!route.currentChatUrl || isPulse2RouteTerminal(route)) continue;
+    try {
+      await assertNoPulse1Collision(route.currentChatUrl);
+    } catch (error) {
+      state = failPulse2Route(state, route.id, error);
+    }
   }
+  state = await configurePulse2Alarms(state);
+  await persistPulse2State(state);
+  return state;
+}
+
+async function assertNoPulse1Collisions(chatUrls) {
+  for (const url of chatUrls) await assertNoPulse1Collision(url);
 }
 
 async function assertNoPulse1Collision(chatUrl) {
@@ -429,38 +466,35 @@ async function assertNoPulse1Collision(chatUrl) {
   const pulse1 = stored[PULSE1_STORAGE_KEY];
   if (pulse1?.enabled === true && Array.isArray(pulse1?.chats)) {
     const conflict = pulse1.chats.some((chat) => chat?.enabled !== false && normalizeChatURL(chat?.url) === normalized);
-    if (conflict) {
-      throw new Error("Этот чат сейчас активен в Pulse 1.0. Отключите его там или выберите другой исходный чат, чтобы два автономных engine не управляли одной вкладкой.");
-    }
+    if (conflict) throw new Error("Этот чат сейчас активен в Pulse 1.0. Отключите его там или выберите другой чат.");
   }
 }
 
-function assertPulse2ExecutionStillCurrent(state, expected) {
+function assertPulse2ExecutionStillCurrent(state, routeId, expected) {
   if (!state.enabled) throw new Error("Pulse 2.0 был остановлен во время операции.");
-  if (expected.sessionId && state.sessionId !== expected.sessionId) throw new Error("Сессия Pulse 2.0 изменилась.");
-  if (Number.isInteger(expected.controlRevision) && state.controlRevision !== expected.controlRevision) {
+  if (expected.expectedSessionId && state.sessionId !== expected.expectedSessionId) throw new Error("Сессия Pulse 2.0 изменилась.");
+  if (Number.isInteger(expected.expectedRevision) && state.controlRevision !== expected.expectedRevision) {
     throw new Error("Настройки Pulse 2.0 изменились во время операции.");
   }
-  if (expected.currentChatUrl && state.currentChatUrl !== expected.currentChatUrl) {
-    throw new Error("Текущий чат Pulse 2.0 изменился во время операции.");
-  }
-  if (expected.phase && state.phase !== expected.phase) throw new Error("Фаза Pulse 2.0 изменилась во время операции.");
+  const route = requireRoute(state, routeId);
+  if (expected.phase && route.phase !== expected.phase) throw new Error(`Фаза маршрута «${route.name}» изменилась во время операции.`);
+  return route;
 }
 
-async function ensurePulse2ChatTab(state) {
-  if (Number.isInteger(state.tabId)) {
+async function ensurePulse2ChatTab(state, routeId) {
+  const route = requireRoute(state, routeId);
+  if (!route.currentChatUrl) throw new Error(`Маршрут «${route.name}» ещё не имеет текущего чата.`);
+  if (Number.isInteger(route.tabId)) {
     try {
-      const tab = await chrome.tabs.get(state.tabId);
-      if (normalizeChatURL(tab.url) === state.currentChatUrl) {
+      const tab = await chrome.tabs.get(route.tabId);
+      if (normalizeChatURL(tab.url) === route.currentChatUrl) {
         await protectManagedTab(tab.id);
         return tab;
       }
-    } catch {
-      // Вкладка могла быть закрыта пользователем.
-    }
+    } catch { /* closed by user */ }
   }
-  const tab = await chrome.tabs.create({ url: state.currentChatUrl, active: false, pinned: false });
-  if (!Number.isInteger(tab?.id)) throw new Error("Не удалось создать автономную вкладку Pulse 2.0.");
+  const tab = await chrome.tabs.create({ url: route.currentChatUrl, active: false, pinned: false });
+  if (!Number.isInteger(tab?.id)) throw new Error(`Не удалось создать автономную вкладку для «${route.name}».`);
   await protectManagedTab(tab.id);
   return tab;
 }
@@ -470,9 +504,7 @@ async function inspectPulse2Tab(tabId) {
     attempts: 2,
     timeoutMs: CONTENT_TIMEOUT_MS
   });
-  if (!response?.ok || !response.snapshot) {
-    throw new Error(response?.error || "Не удалось прочитать состояние страницы ChatGPT.");
-  }
+  if (!response?.ok || !response.snapshot) throw new Error(response?.error || "Не удалось прочитать состояние страницы ChatGPT.");
   return response.snapshot;
 }
 
@@ -494,9 +526,7 @@ async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT
             target: { tabId },
             files: ["content/content-script.js", "content/pulse2-content.js"]
           });
-        } catch {
-          // Повтор ниже вернёт исходную ошибку понятным текстом.
-        }
+        } catch { /* retry below */ }
       }
     }
     await delay(300);
@@ -505,11 +535,7 @@ async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT
 }
 
 async function protectManagedTab(tabId) {
-  try {
-    await chrome.tabs.update(tabId, { autoDiscardable: false });
-  } catch {
-    // Pulse 2.0 всё равно сможет восстановить вкладку на следующей проверке.
-  }
+  try { await chrome.tabs.update(tabId, { autoDiscardable: false }); } catch { /* recover later */ }
 }
 
 async function waitForTabComplete(tabId, timeoutMs) {
@@ -538,15 +564,15 @@ async function waitForTabComplete(tabId, timeoutMs) {
 }
 
 async function configurePulse2Alarms(state) {
-  const current = normalizePulse2State(state);
+  let current = normalizePulse2State(state);
   if (!current.enabled) {
     await clearAlarm(PULSE2_ALARM_NAME);
     await clearAlarm(PULSE2_CAPTURE_ALARM_NAME);
-    return { ...current, nextCheckAt: null, captureDueAt: null };
+    return current;
   }
 
-  if (current.phase === "monitoring") {
-    await clearAlarm(PULSE2_CAPTURE_ALARM_NAME);
+  const hasMonitoring = current.routes.some((route) => route.phase === "monitoring");
+  if (hasMonitoring) {
     const existing = await chrome.alarms.get(PULSE2_ALARM_NAME);
     if (!existing || Number(existing.periodInMinutes) !== Number(current.intervalMinutes)) {
       if (existing) await chrome.alarms.clear(PULSE2_ALARM_NAME);
@@ -555,25 +581,22 @@ async function configurePulse2Alarms(state) {
         periodInMinutes: current.intervalMinutes
       });
     }
-    const alarm = await chrome.alarms.get(PULSE2_ALARM_NAME);
-    const scheduled = Number(alarm?.scheduledTime);
-    return {
-      ...current,
-      nextCheckAt: Number.isFinite(scheduled) ? new Date(scheduled).toISOString() : current.nextCheckAt
-    };
+  } else {
+    await clearAlarm(PULSE2_ALARM_NAME);
   }
 
-  await clearAlarm(PULSE2_ALARM_NAME);
-  if (current.phase === "capture-wait") {
-    const dueAt = Date.parse(String(current.captureDueAt || ""));
-    const when = Number.isFinite(dueAt) ? Math.max(Date.now() + 1_000, dueAt) : Date.now() + PULSE2_CAPTURE_RETRY_MS;
+  const dueTimes = current.routes
+    .filter((route) => route.phase === "capture-wait")
+    .map((route) => Date.parse(String(route.captureDueAt || "")))
+    .filter(Number.isFinite);
+  if (dueTimes.length) {
+    const when = Math.max(Date.now() + 1_000, Math.min(...dueTimes));
     await clearAlarm(PULSE2_CAPTURE_ALARM_NAME);
     await chrome.alarms.create(PULSE2_CAPTURE_ALARM_NAME, { when });
-    return { ...current, captureDueAt: new Date(when).toISOString(), nextCheckAt: null };
+  } else {
+    await clearAlarm(PULSE2_CAPTURE_ALARM_NAME);
   }
-
-  await clearAlarm(PULSE2_CAPTURE_ALARM_NAME);
-  return { ...current, nextCheckAt: null };
+  return current;
 }
 
 async function clearAlarm(name) {
@@ -593,30 +616,32 @@ async function persistPulse2State(state) {
   return normalized;
 }
 
+function requireRoute(state, routeId) {
+  const route = getPulse2Route(state, routeId);
+  if (!route) throw new Error("Маршрут Pulse 2.0 не найден.");
+  return route;
+}
+
+function enqueueEngineOperation(work) {
+  const next = engineQueue.catch(() => {}).then(work);
+  engineQueue = next.catch(() => {});
+  return next;
+}
+
 function broadcastState(state) {
   for (const port of [...ports]) safePost(port, { kind: "state", state });
 }
 
 function safePost(port, message) {
-  try {
-    port.postMessage(message);
-  } catch {
-    ports.delete(port);
-  }
+  try { port.postMessage(message); } catch { ports.delete(port); }
 }
 
 function withTimeout(promise, timeoutMs, message) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
     Promise.resolve(promise).then(
-      (value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      }
+      (value) => { clearTimeout(timeout); resolve(value); },
+      (error) => { clearTimeout(timeout); reject(error); }
     );
   });
 }
