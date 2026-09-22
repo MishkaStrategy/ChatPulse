@@ -163,7 +163,11 @@ async function startPulse2() {
     for (const route of state.routes) {
       if (!route.projectUrl) throw new Error(`Укажите ссылку проекта для «${route.name}».`);
       const targetUrl = route.currentChatUrl || route.projectUrl;
-      const tab = await chrome.tabs.create({ url: targetUrl, active: false, pinned: false });
+      const tab = await chrome.tabs.create({
+        url: targetUrl,
+        active: !route.currentChatUrl,
+        pinned: false
+      });
       if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
       tabIds[route.id] = tab.id;
       createdTabIds.push(tab.id);
@@ -347,24 +351,28 @@ async function performPulse2Rotation(routeId) {
       try { tab = await chrome.tabs.get(route.tabId); } catch { tab = null; }
     }
 
-    if (tab?.id && await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
-      expectedSessionId,
-      expectedRevision
-    })) {
-      return;
+    if (tab?.id) {
+      tab = await activatePulse2ManagedTab(tab.id);
+      if (await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
+        expectedSessionId,
+        expectedRevision
+      })) {
+        return;
+      }
     }
 
     if (!tab?.id) {
-      tab = await chrome.tabs.create({ url: route.projectUrl, active: false, pinned: false });
+      tab = await chrome.tabs.create({ url: route.projectUrl, active: true, pinned: false });
       if (!Number.isInteger(tab?.id)) throw new Error(`Не удалось создать вкладку проекта «${route.name}».`);
       state = replacePulse2Route(state, routeId, { ...route, tabId: tab.id });
       await persistPulse2State(state);
     } else if (normalizePulse2ProjectURL(tab.url) !== route.projectUrl) {
-      tab = await chrome.tabs.update(tab.id, { url: route.projectUrl, active: false });
+      tab = await chrome.tabs.update(tab.id, { url: route.projectUrl, active: true });
     } else {
-      tab = await chrome.tabs.update(tab.id, { active: false });
+      tab = await chrome.tabs.update(tab.id, { active: true });
     }
 
+    tab = await activatePulse2ManagedTab(tab.id);
     await protectManagedTab(tab.id);
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
     await delay(PROJECT_SETTLE_MS);
@@ -591,6 +599,14 @@ async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT
     await delay(300);
   }
   throw new Error(`Не удалось связаться со страницей ChatGPT: ${lastError?.message || "content script недоступен"}`);
+}
+
+async function activatePulse2ManagedTab(tabId) {
+  const tab = await chrome.tabs.update(tabId, { active: true });
+  if (Number.isInteger(tab?.windowId)) {
+    try { await chrome.windows.update(tab.windowId, { focused: true }); } catch { /* tab activation is the required fallback */ }
+  }
+  return tab;
 }
 
 async function protectManagedTab(tabId) {
