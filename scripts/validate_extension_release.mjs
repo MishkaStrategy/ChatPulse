@@ -7,7 +7,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, "..");
 const sourcePath = path.join(scriptsDir, "validate_extension.mjs");
 const runtimePath = path.join(scriptsDir, ".validate_extension_release.runtime.mjs");
-const releaseVersion = "0.8.0";
+const releaseVersion = "0.8.1";
 
 const source = await readFile(sourcePath, "utf8");
 const releaseSource = source
@@ -33,7 +33,8 @@ const pulse2Files = [
   "chrome-extension/pulse2/pulse2.css",
   "chrome-extension/pulse2/pulse2.js",
   "tests/chrome-extension/pulse2-model.test.mjs",
-  "tests/chrome-extension/pulse2-runtime.test.mjs"
+  "tests/chrome-extension/pulse2-runtime.test.mjs",
+  "tests/browser/pulse2.chrome-e2e.mjs"
 ];
 for (const relativePath of pulse2Files) {
   const metadata = await stat(path.join(root, relativePath));
@@ -41,6 +42,7 @@ for (const relativePath of pulse2Files) {
 }
 
 const manifest = JSON.parse(await readFile(path.join(root, "chrome-extension/manifest.json"), "utf8"));
+assert.equal(manifest.version, releaseVersion);
 assert.equal(manifest.background?.service_worker, "background/service-worker-v3.js");
 assert.ok(
   manifest.content_scripts?.some((entry) => Array.isArray(entry.js) && entry.js.includes("content/pulse2-content.js")),
@@ -52,6 +54,7 @@ const engine = await readFile(path.join(root, "chrome-extension/background/pulse
 const model = await readFile(path.join(root, "chrome-extension/lib/pulse2-model.js"), "utf8");
 const content = await readFile(path.join(root, "chrome-extension/content/pulse2-content.js"), "utf8");
 const ui = await readFile(path.join(root, "chrome-extension/pulse2/pulse2.js"), "utf8");
+const page = await readFile(path.join(root, "chrome-extension/pulse2/pulse2.html"), "utf8");
 
 assert.ok(wrapper.includes('import "./service-worker-v2.js"'));
 assert.ok(wrapper.includes('import "./pulse2-engine.js"'));
@@ -61,11 +64,15 @@ assert.ok(engine.includes('export const PULSE2_ALARM_NAME = "chatpulse-pulse2-mo
 assert.ok(engine.includes('export const PULSE2_CAPTURE_ALARM_NAME = "chatpulse-pulse2-capture"'));
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
 assert.ok(!engine.includes('chrome.storage.local.set({ [PULSE1_STORAGE_KEY]'), "Pulse 2.0 must never write Pulse 1 state");
+assert.ok(engine.includes("enqueueEngineOperation"), "multi-route writes must be serialized");
+assert.ok(model.includes("PULSE2_SCHEMA_VERSION = 2"));
 assert.ok(model.includes("PULSE2_CAPTURE_DELAY_MS = 2 * 60_000"));
-assert.ok(model.includes("messagesPerCycle"));
-assert.ok(model.includes("maxCycles"));
-assert.ok(model.includes("rotationPending"));
-assert.ok(model.includes("capturePulse2Chat"));
+assert.ok(model.includes("PULSE2_MAX_ROUTES = 20"));
+assert.ok(model.includes("initializingChat"));
+assert.ok(model.includes("project-initial"));
 assert.ok(content.includes("PULSE2_PREPARE_PROJECT_CHAT"));
 assert.ok(ui.includes('const PORT_NAME = "chatpulse-pulse2"'));
-assert.ok(ui.includes('chrome.runtime.connect({ name: PORT_NAME })'));
+assert.ok(ui.includes("draftDirty"), "UI must protect unsaved settings draft from live state pushes");
+assert.ok(ui.includes("document.activeElement === control"), "focused settings controls must not be overwritten");
+assert.ok(page.includes("+ Добавить проект"));
+assert.ok(page.includes("Текущий чат <em>необязательно</em>"));
