@@ -90,6 +90,8 @@ test("managed tab lifecycle avoids duplicates and runtime errors back off", () =
   assert.match(engine, /PULSE2_MONITOR_ERROR_RETRY_MS/);
   assert.match(engine, /nextCheckAt: new Date\(Date\.now\(\) \+ PULSE2_MONITOR_ERROR_RETRY_MS\)\.toISOString\(\)/);
   assert.match(ui, /runAction\("OPEN_CURRENT_CHAT", \{ routeId: selectedRouteId \}, false\)/);
+  assert.match(engine, /state\.enabled && route\.phase !== "monitoring"/);
+  assert.match(ui, /running && live\?\.phase !== "monitoring"/);
   const openCurrentBody = ui.match(/async function openCurrentChat\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
   assert.doesNotMatch(openCurrentBody, /chrome\.tabs\.create/);
 });
