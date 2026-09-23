@@ -76,6 +76,7 @@ assert.ok(engine.includes("MONITOR_ALARM_PERIOD_MINUTES = 0.5"), "monitor schedu
 assert.ok(model.includes("PULSE2_MONITOR_RECHECK_MS = 30_000"), "post-capture and post-dispatch monitoring must recheck promptly");
 assert.ok(model.includes("PULSE2_MONITOR_ERROR_RETRY_MS = 5 * 60_000"), "monitor errors need a bounded retry backoff");
 assert.ok(engine.includes("reusablePulse2RouteTab"), "Stop/Start must reuse a still-valid managed tab");
+assert.ok(engine.includes("pulse2TabReadyForTarget"), "replacement tabs must reach the expected ChatGPT URL before inspection");
 assert.ok(engine.includes("PULSE2_MONITOR_ERROR_RETRY_MS"), "unexpected monitoring failures need bounded retry backoff");
 assert.ok(ui.includes('runAction("OPEN_CURRENT_CHAT", { routeId: selectedRouteId }, false)'), "Open Current Chat must go through the background engine");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
