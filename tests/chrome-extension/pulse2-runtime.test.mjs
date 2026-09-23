@@ -75,6 +75,9 @@ test("due monitoring foregrounds the route tab and restores the user's previous 
   assert.match(engine, /periodInMinutes: MONITOR_ALARM_PERIOD_MINUTES/);
   assert.match(model, /PULSE2_MONITOR_RECHECK_MS = 30_000/);
   assert.match(model, /PULSE2_MONITOR_ERROR_RETRY_MS = 5 \* 60_000/);
+  assert.match(model, /normalizedOutcome === "confirmed"/);
+  assert.match(model, /creditPulse2Continuation/);
+  assert.match(model, /confirmed-by-response/);
 });
 
 test("managed tab lifecycle avoids duplicates and runtime errors back off", () => {
