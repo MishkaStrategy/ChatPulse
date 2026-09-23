@@ -168,6 +168,7 @@ try {
 
   await sendPulse2Request(pulse2Page, "STOP");
   await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop after recovery regression");
+  await recoveredProjectTab.close();
 
   // Keep the retained full rotation scenario deterministic with one existing chat.
   await firstTab.click();
