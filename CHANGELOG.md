@@ -12,7 +12,8 @@
 - if a correct loaded chat still appears unauthenticated after that bounded hydration window, perform exactly one foreground reload and repeat target-URL + hydration checks before recording an auth failure;
 - close the event gap between the initial tab-state read and `tabs.onUpdated` listener registration so a fast load cannot be missed and turn into a false 45-second timeout;
 - reject unrelated ChatGPT chats during the two-minute URL capture window so manual navigation cannot attach a route to the wrong project;
-- refuse to adopt an arbitrary ChatGPT chat during rotation recovery unless its project-scoped URL belongs to the configured Project; otherwise return to the configured Project and create the correct chat;\n- when a previously managed chat tab is lost, adopt an already-open unclaimed tab for the exact same current-chat URL before creating another duplicate;
+- refuse to adopt an arbitrary ChatGPT chat during rotation recovery unless its project-scoped URL belongs to the configured Project; otherwise return to the configured Project and create the correct chat;
+- if a managed monitoring tab is lost, create a fresh route-owned replacement instead of hijacking an arbitrary user-owned tab that happens to show the same current chat;
 - foreground a due new-chat tab during permanent URL capture, then safely restore the user's previous tab after the capture check;
 - verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
 - verify that a user tab switch during a service check is respected and not overwritten by focus restoration;
