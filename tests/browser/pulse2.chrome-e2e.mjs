@@ -200,6 +200,9 @@ try {
   }, "Pulse 2.0 did not establish the initial assistant baseline");
   assert.equal(baseline.cycleNumber, 1);
   assert.equal(baseline.cycleContinuationCount, 0);
+
+  // Adversarial regression: closing the managed chat must not kill the route.
+  await initialChatPage.close();
   await pulse2Page.bringToFront();
   await agePulse2Observation(pulse2Page, routeId);
   await triggerMonitorAlarm(serviceWorker);
@@ -210,7 +213,12 @@ try {
     return route?.cycleContinuationCount === 1 && route.rotationPending === true ? route : null;
   }, "Pulse 2.0 did not record the configured N=1 auto-response");
   assert.equal(firstDispatch.totalContinuationCount, 1);
-  assert.equal(await latestUserMessage(initialChatPage), AUTO_COMMAND, "Pulse 2.0 auto-response text mismatch");
+  assert.notEqual(firstDispatch.tabId, retainedTabId, "closed managed chat tab id was not replaced");
+  const recoveredMonitoringPage = await waitFor(
+    async () => context.pages().find((page) => page.url() === CHAT_URL) || null,
+    "Pulse 2.0 did not recreate a closed managed chat tab"
+  );
+  assert.equal(await latestUserMessage(recoveredMonitoringPage), AUTO_COMMAND, "Pulse 2.0 auto-response text mismatch after managed-tab recovery");
   assert.equal(
     firstDispatch.lastPageVisibility,
     "visible",
@@ -221,7 +229,7 @@ try {
     "alarm-driven monitoring did not restore the user's previous Pulse 2.0 tab"
   );
 
-  await appendAssistantMessage(initialChatPage, "assistant-after-auto-response", "Final response before rotation.");
+  await appendAssistantMessage(recoveredMonitoringPage, "assistant-after-auto-response", "Final response before rotation.");
   await pulse2Page.locator("#checkButton").click();
   await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -262,6 +270,61 @@ try {
   assert.equal(captured.history.length, 2);
   assert.equal(captured.history.at(-1).source, "project");
 
+  // Adversarial regression: if the user switches tabs during a service check,
+  // focus restoration must not steal focus back afterwards.
+  await pulse2Page.bringToFront();
+  const guardedCheck = sendPulse2Request(pulse2Page, "CHECK_NOW", { routeId });
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === captured.tabId,
+    "manual focus-guard check never foregrounded the managed chat"
+  );
+  const userChoicePage = await context.newPage();
+  await userChoicePage.goto("about:blank");
+  await userChoicePage.bringToFront();
+  const userChoiceTabId = await tabIdForUrl(pulse2Page, "about:blank");
+  assert.ok(Number.isInteger(userChoiceTabId), "manual user-choice tab id missing");
+  await guardedCheck;
+  assert.equal(
+    await activeTabId(pulse2Page),
+    userChoiceTabId,
+    "Pulse 2.0 stole focus back after the user manually switched tabs"
+  );
+  await userChoicePage.close();
+
+  // Adversarial regression: Stop -> Start must reuse the same valid managed tab.
+  const managedBeforeRestart = (await getPulse2State(pulse2Page)).routes.find((item) => item.id === routeId).tabId;
+  const tabsBeforeRestart = await chatgptTabIds(pulse2Page);
+  await sendPulse2Request(pulse2Page, "STOP");
+  await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop before restart-reuse test");
+  await sendPulse2Request(pulse2Page, "START");
+  const restartedRoute = await waitFor(async () => {
+    const running = await getPulse2State(pulse2Page);
+    const route = running?.routes?.find((item) => item.id === routeId);
+    return running?.enabled && route?.tabId === managedBeforeRestart ? route : null;
+  }, "Pulse 2.0 did not reuse the existing managed tab after Stop -> Start");
+  assert.equal(restartedRoute.tabId, managedBeforeRestart);
+  assert.deepEqual(
+    await chatgptTabIds(pulse2Page),
+    tabsBeforeRestart,
+    "Stop -> Start created a duplicate ChatGPT managed tab"
+  );
+
+  await sendPulse2Request(pulse2Page, "STOP");
+  await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop before Open Current Chat test");
+  await pulse2Page.bringToFront();
+  await waitFor(async () => !(await pulse2Page.locator("#openCurrentButton").isDisabled()), "Open Current Chat button stayed disabled");
+  const tabsBeforeOpenCurrent = await chatgptTabIds(pulse2Page);
+  await pulse2Page.locator("#openCurrentButton").click();
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === managedBeforeRestart,
+    "Open Current Chat did not activate the engine-managed tab"
+  );
+  assert.deepEqual(
+    await chatgptTabIds(pulse2Page),
+    tabsBeforeOpenCurrent,
+    "Open Current Chat created a duplicate tab instead of reusing the managed tab"
+  );
+
   const pulse1After = await getPulse1State(pulse2Page);
   assert.equal(pulse1After.enabled, pulse1Before.enabled, "Pulse 2.0 mutated Pulse 1.0 enabled state");
   assert.deepEqual(pulse1After.chats, pulse1Before.chats, "Pulse 2.0 mutated Pulse 1.0 chat list/runtime");
@@ -274,6 +337,10 @@ try {
   console.log("pulse2_browser_e2e_project_foreground=PASS");
   console.log("pulse2_browser_e2e_overnight_monitor_alarm=PASS");
   console.log("pulse2_browser_e2e_monitor_focus_restore=PASS");
+  console.log("pulse2_browser_e2e_closed_tab_recovery=PASS");
+  console.log("pulse2_browser_e2e_manual_focus_guard=PASS");
+  console.log("pulse2_browser_e2e_restart_tab_reuse=PASS");
+  console.log("pulse2_browser_e2e_open_current_reuse=PASS");
   console.log("pulse2_browser_e2e_rotation=PASS");
   console.log("pulse2_browser_e2e_isolation=PASS");
   console.log("pulse2_browser_e2e_result=PASS");
@@ -374,6 +441,19 @@ async function activeTabId(extensionPage) {
   return extensionPage.evaluate(async () => {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     return tabs[0]?.id ?? null;
+  });
+}
+
+async function chatgptTabIds(extensionPage) {
+  return extensionPage.evaluate(async () => {
+    const tabs = await chrome.tabs.query({});
+    return tabs
+      .filter((tab) => {
+        try { return new URL(tab.url || "").hostname === "chatgpt.com"; } catch { return false; }
+      })
+      .map((tab) => tab.id)
+      .filter(Number.isInteger)
+      .sort((left, right) => left - right);
   });
 }
 
