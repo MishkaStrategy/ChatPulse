@@ -726,6 +726,13 @@ async function waitForTabComplete(tabId, timeoutMs, expectedUrl = null) {
     }
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.tabs.onRemoved.addListener(onRemoved);
+
+    // Close the gap between the pre-listener read and listener registration.
+    void chrome.tabs.get(tabId).then((tab) => {
+      if (pulse2TabReadyForTarget(tab, expectedUrl)) finish(null, tab);
+    }).catch(() => {
+      finish(new Error("Автономная вкладка Pulse 2.0 была закрыта во время операции."));
+    });
   });
 }
 
