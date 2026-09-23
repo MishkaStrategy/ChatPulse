@@ -2,7 +2,7 @@
   if (globalThis.__chatPulseContentScriptInstalled) return;
   globalThis.__chatPulseContentScriptInstalled = true;
 
-  const CONTENT_SCRIPT_VERSION = "0.5.5";
+  const CONTENT_SCRIPT_VERSION = "0.5.6";
   const MESSAGE_SELECTOR = "[data-message-author-role], article[data-testid^='conversation-turn-']";
   const INPUT_SELECTORS = [
     "#prompt-textarea",
@@ -75,14 +75,14 @@
   function isRelevantMutation(mutation) {
     const target = mutation.target instanceof Element ? mutation.target : mutation.target?.parentElement;
     if (target?.closest?.(MESSAGE_SELECTOR)) return true;
-    if (target?.closest?.("#prompt-textarea, button[data-testid='stop-button'], button[data-testid='send-button']")) {
+    if (target?.closest?.("#prompt-textarea, button[data-testid='stop-button'], button[data-testid='send-button'], button[data-testid='composer-speech-button']")) {
       return true;
     }
     return [...(mutation.addedNodes || [])].some((node) => {
       if (!(node instanceof Element)) return false;
       return node.matches?.(MESSAGE_SELECTOR)
         || Boolean(node.querySelector?.(MESSAGE_SELECTOR))
-        || Boolean(node.matches?.("button[data-testid='stop-button'], button[data-testid='send-button']"));
+        || Boolean(node.matches?.("button[data-testid='stop-button'], button[data-testid='send-button'], button[data-testid='composer-speech-button']"));
     });
   }
 
@@ -105,6 +105,7 @@
     const input = findInput();
     const now = Date.now();
     const generating = updateGenerationClock(now);
+    const readyForNewInput = !generating && detectReadyForNewInput();
     const pageError = detectPageError();
 
     const title = (document.title || "Чат ChatGPT")
@@ -122,6 +123,7 @@
         && !generating
         && phraseMatches(latestText, stopPhrase),
       isGenerating: generating,
+      readyForNewInput,
       generationAgeMs: generating && generationStartedAt !== null ? now - generationStartedAt : 0,
       errorDetected: pageError.detected,
       reloadRequested: pageError.reloadRequested,
@@ -225,6 +227,24 @@
     return [...document.querySelectorAll("button")].some((button) => {
       const label = normalize(button.getAttribute("aria-label") || button.innerText).toLowerCase();
       return /^(stop|остановить|停止|detener)/i.test(label);
+    });
+  }
+
+  function detectReadyForNewInput() {
+    const speechButton = document.querySelector("button[data-testid='composer-speech-button']");
+    if (speechButton
+      && isVisible(speechButton)
+      && !speechButton.disabled
+      && speechButton.getAttribute("aria-disabled") !== "true") {
+      return true;
+    }
+
+    return [...document.querySelectorAll("button")].some((button) => {
+      if (!isVisible(button) || button.disabled || button.getAttribute("aria-disabled") === "true") {
+        return false;
+      }
+      const label = normalize(button.getAttribute("aria-label") || button.innerText).toLowerCase();
+      return /^(start voice|start voice mode|voice mode|начать голосовой режим|голосовой режим)$/iu.test(label);
     });
   }
 
