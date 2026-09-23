@@ -247,6 +247,15 @@ try {
   }, "Pulse 2.0 did not create the next project chat and enter capture wait");
   assert.equal(captureWait.completedCycles, 1);
   assert.ok(Date.parse(captureWait.captureDueAt) - Date.parse(captureWait.rotationStartedAt) >= 119_000);
+  await waitFor(
+    async () => await pulse2Page.locator("#openCurrentButton").isDisabled(),
+    "Open Current Chat must be disabled while the route is waiting to capture a new chat URL"
+  );
+  await assert.rejects(
+    () => sendPulse2Request(pulse2Page, "OPEN_CURRENT_CHAT", { routeId }),
+    /Дождитесь завершения создания нового чата/,
+    "background engine allowed Open Current Chat to replace the managed rotation tab"
+  );
 
   const projectTab = await waitFor(async () => context.pages().find((page) => page.url() === CREATED_CHAT_URL) || null,
     "project fixture never transitioned to the newly created persistent chat URL");
@@ -340,6 +349,7 @@ try {
   console.log("pulse2_browser_e2e_closed_tab_recovery=PASS");
   console.log("pulse2_browser_e2e_manual_focus_guard=PASS");
   console.log("pulse2_browser_e2e_restart_tab_reuse=PASS");
+  console.log("pulse2_browser_e2e_open_current_rotation_guard=PASS");
   console.log("pulse2_browser_e2e_open_current_reuse=PASS");
   console.log("pulse2_browser_e2e_rotation=PASS");
   console.log("pulse2_browser_e2e_isolation=PASS");
