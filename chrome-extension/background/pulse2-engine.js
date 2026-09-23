@@ -265,7 +265,7 @@ async function performPulse2RouteCheck(routeId) {
     await protectManagedTab(tab.id);
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
     await delay(CHAT_MONITOR_SETTLE_MS);
-    let snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    let snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
     state = await loadPulse2State();
     assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
     let observation = observePulse2Snapshot(state, routeId, snapshot);
@@ -280,7 +280,7 @@ async function performPulse2RouteCheck(routeId) {
       tab = await activatePulse2ManagedTab(tab.id);
       await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
       await delay(CHAT_MONITOR_SETTLE_MS);
-      snapshot = await inspectPulse2TabAfterHydration(tab.id);
+      snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
       observation = observePulse2Snapshot(state, routeId, snapshot);
       state = observation.state;
       await persistPulse2State(state);
@@ -493,7 +493,7 @@ async function performPulse2Capture(routeId) {
       await protectManagedTab(tab.id);
       await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, normalizedURL);
       await delay(CHAT_MONITOR_SETTLE_MS);
-      snapshot = await inspectPulse2TabAfterHydration(tab.id);
+      snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
     }
     if (belongsToProject && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
@@ -707,6 +707,17 @@ async function inspectPulse2TabAfterHydration(tabId) {
   if (lastSnapshot) return lastSnapshot;
   if (lastError) throw lastError;
   throw new Error("Страница ChatGPT не завершила гидратацию интерфейса.");
+}
+
+async function inspectPulse2TabWithReloadRecovery(tabId, expectedUrl) {
+  let snapshot = await inspectPulse2TabAfterHydration(tabId);
+  if (snapshot?.authenticated || snapshot?.errorDetected) return snapshot;
+
+  await chrome.tabs.reload(tabId);
+  await waitForTabComplete(tabId, TAB_LOAD_TIMEOUT_MS, expectedUrl);
+  await delay(CHAT_MONITOR_SETTLE_MS);
+  snapshot = await inspectPulse2TabAfterHydration(tabId);
+  return snapshot;
 }
 
 async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT_TIMEOUT_MS } = {}) {
