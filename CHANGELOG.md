@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.6 beta — adversarial managed-tab hardening
+
+- reuse a still-valid route-owned managed tab across Stop → Start instead of unconditionally opening another ChatGPT tab;
+- route the Pulse 2.0 **Open current chat** action through the background engine so it activates the managed route tab rather than creating an unmanaged duplicate;
+- protect a replacement/opened managed tab from Chrome auto-discard;
+- apply a bounded 5-minute retry to unexpected monitoring runtime failures so a broken page cannot steal focus every 30 seconds indefinitely;
+- verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
+- verify that a user tab switch during a service check is respected and not overwritten by focus restoration;
+- extend loaded-Chromium regression coverage for tab reuse, closed-tab recovery, manual focus guard and engine-managed Open Current Chat;
+- move deterministic beta package/provenance output to ChatPulse 0.8.6.
+
 ## 0.8.5 beta — reliable overnight monitoring after first project chat
 
 - foreground each due Pulse 2.0 managed chat tab before reading assistant state or sending an auto-response, then restore the user's previous tab when it is still safe to do so;
