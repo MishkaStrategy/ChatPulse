@@ -35,6 +35,7 @@ Additional inspection and test design found:
 11. **Background URL-capture hydration could fail after the two-minute wait** — if the user switched away from the newly created chat before capture, the capture path inspected its DOM in the background even though ChatGPT can defer hydration there.
 12. **Transient unauthenticated snapshot could survive the hydration window** — even a correct foregrounded chat can occasionally remain incompletely hydrated; immediately recording auth failure after one hydration window makes recovery too brittle.
 13. **Recovered monitoring could falsely advance counters without proven DOM delivery** — the adversarial closed-tab test observed runtime continuation counters advancing while the user message was absent from the expected page. Fixed: `submitted-unconfirmed` no longer increments continuation counters; only confirmed delivery counts immediately, while a later new assistant response can promote the prior send to `confirmed-by-response`.
+14. **SPA URL metadata race during capture** — `history.replaceState()` can change the real page URL before `chrome.tabs.get().url` catches up. Capture could therefore persist a stale project chat URL after the managed page had already navigated elsewhere.
 
 ## 0.8.6 Release Contract
 
@@ -50,6 +51,7 @@ Additional inspection and test design found:
 - During `capture-wait`, persist a changed chat URL only when it belongs to the configured Project; unrelated ChatGPT chats are rejected and retried.
 - When a previously managed chat tab is lost, create a fresh route-owned replacement. Never adopt an arbitrary matching tab merely because no other Pulse route claims it.
 - Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
+- URL capture uses the content snapshot URL (`location.href`) as authoritative and re-validates Project ownership after any reload; lagging `chrome.tabs` URL metadata cannot authorize persistence.
 - If a correct loaded chat remains unauthenticated after the bounded hydration window, allow one single foreground reload + second bounded hydration attempt before surfacing auth failure.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
 - Unconfirmed dispatches never advance continuation counters or rotation thresholds; they use bounded retry observation and may be credited only when a later assistant response proves the dialogue continued.
@@ -92,6 +94,7 @@ Additional inspection and test design found:
 - [x] Preserve user-owned matching tabs after managed-tab loss; recover only by creating a fresh route-owned replacement.
 - [x] Prevent `submitted-unconfirmed` sends from falsely advancing counters; add inferred confirmation from a later assistant response.
 - [x] Foreground URL capture and restore user focus after the capture check.
+- [x] Use page snapshot `location.href` as authoritative during SPA URL capture and cover stale `chrome.tabs` metadata.
 - [x] Add adversarial loaded-browser scenarios.
 - [x] Add unit/static timing and lifecycle tests.
 - [x] Bump release tooling/docs to 0.8.6 beta.
