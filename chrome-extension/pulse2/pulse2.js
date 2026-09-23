@@ -150,15 +150,11 @@ async function useCurrentChat() {
 async function openCurrentChat() {
   const route = selectedDraftRoute();
   const url = route?.currentChatUrl?.trim();
-  if (!url) {
+  if (!url || !selectedRouteId) {
     showMessage("У выбранного маршрута ещё нет текущего чата.", "error");
     return;
   }
-  try {
-    await chrome.tabs.create({ url, active: true });
-  } catch (error) {
-    showMessage(errorMessage(error), "error");
-  }
+  await runAction("OPEN_CURRENT_CHAT", { routeId: selectedRouteId }, false);
 }
 
 async function checkSelectedRoute() {
