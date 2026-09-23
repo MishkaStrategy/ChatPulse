@@ -22,6 +22,7 @@
 - foreground a due new-chat tab during permanent URL capture, then safely restore the user's previous tab after the capture check;
 - verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
 - verify that a user tab switch during a service check is respected and not overwritten by focus restoration;
+- defer the second monitoring recheck when the user switches away after Pulse foregrounds the managed chat, preventing a later internal re-activation from stealing focus back;
 - extend loaded-Chromium regression coverage for tab reuse, closed-tab recovery, manual focus guard and engine-managed Open Current Chat;
 - move deterministic beta package/provenance output to ChatPulse 0.8.6.
 
