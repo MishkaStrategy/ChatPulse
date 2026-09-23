@@ -42,6 +42,7 @@ const CHAT_HYDRATION_TIMEOUT_MS = 8_000;
 const CHAT_HYDRATION_RETRY_MS = 500;
 const MONITOR_ALARM_PERIOD_MINUTES = 0.5;
 const ROTATION_RECOVERY_PERIOD_MINUTES = 0.5;
+const ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS = 5 * 60_000;
 
 const ports = new Set();
 let engineQueue = Promise.resolve();
@@ -382,12 +383,11 @@ async function performPulse2Rotation(routeId) {
 
     if (tab?.id) {
       tab = await activatePulse2ManagedTab(tab.id);
-      if (await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
+      const recovery = await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
         expectedSessionId,
         expectedRevision
-      })) {
-        return;
-      }
+      });
+      if (recovery === "adopted" || recovery === "pending") return;
     }
 
     if (!tab?.id) {
@@ -450,23 +450,42 @@ async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected)
     ...expected,
     phase: "rotating"
   });
-  const concreteChatUrl = normalizeChatURL(tab?.url);
-  if (!route.rotationDispatchAt
-    || !concreteChatUrl
-    || concreteChatUrl === route.currentChatUrl
-    || pulse2RouteHistoryIncludesChat(route, concreteChatUrl)
-    || !pulse2ChatBelongsToProject(concreteChatUrl, route.projectUrl)) {
-    return false;
+  if (!route.rotationDispatchAt) return "none";
+
+  let concreteChatUrl = normalizeChatURL(tab?.url);
+  try {
+    const snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    concreteChatUrl = normalizeChatURL(snapshot?.url) || concreteChatUrl;
+  } catch {
+    /* A confirmed send checkpoint is stronger than a transient inspect failure. */
   }
 
-  let next = markPulse2CaptureWait(state, routeId);
-  next = replacePulse2Route(next, routeId, {
-    ...requireRoute(next, routeId),
-    lastError: null
-  });
-  next = await configurePulse2Alarms(next);
-  await persistPulse2State(next);
-  return true;
+  if (concreteChatUrl
+    && concreteChatUrl !== route.currentChatUrl
+    && !pulse2RouteHistoryIncludesChat(route, concreteChatUrl)
+    && pulse2ChatBelongsToProject(concreteChatUrl, route.projectUrl)) {
+    let next = markPulse2CaptureWait(state, routeId);
+    next = replacePulse2Route(next, routeId, {
+      ...requireRoute(next, routeId),
+      lastError: null
+    });
+    next = await configurePulse2Alarms(next);
+    await persistPulse2State(next);
+    return "adopted";
+  }
+
+  const dispatchedAt = Date.parse(String(route.rotationDispatchAt || ""));
+  if (Number.isFinite(dispatchedAt) && Date.now() - dispatchedAt < ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS) {
+    let next = replacePulse2Route(state, routeId, {
+      ...route,
+      lastError: "Стартовое сообщение подтверждено; ожидаю постоянную ссылку нового чата."
+    });
+    next = await configurePulse2Alarms(next);
+    await persistPulse2State(next);
+    return "pending";
+  }
+
+  throw new Error("Стартовое сообщение было подтверждено, но постоянная ссылка нового чата не появилась в течение 5 минут.");
 }
 
 async function performPulse2CaptureSweep() {
