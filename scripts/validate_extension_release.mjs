@@ -69,6 +69,9 @@ assert.ok(engine.includes("recoverPulse2RotationAfterDispatch"), "rotation recov
 assert.ok(engine.includes("markPulse2RotationDispatch"), "confirmed start-message send must persist a recovery checkpoint");
 assert.ok(engine.includes("route.rotationDispatchAt"), "rotation recovery must require the persisted start-message checkpoint");
 assert.ok(engine.includes("pulse2RouteHistoryIncludesChat"), "rotation recovery must reject previously used route-history chats");
+assert.ok(engine.includes("ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS = 5 * 60_000"), "post-send recovery wait must remain bounded");
+assert.ok(engine.includes("normalizeChatURL(snapshot?.url) || concreteChatUrl"), "post-send recovery must prefer page-authoritative SPA URL");
+assert.ok(engine.includes('recovery === "adopted" || recovery === "pending"'), "checkpointed recovery must not create duplicate chats while URL is still pending");
 assert.ok(engine.includes("pulse2ChatBelongsToProject"), "rotation recovery must reject unrelated ChatGPT chats");
 assert.ok(engine.includes("chatKey === projectKey"), "rotation recovery ownership must match the configured Project");
 assert.ok(engine.includes("targetUrl = route.currentChatUrl || route.projectUrl"), "START must synchronously create a managed tab even when current chat is empty");
