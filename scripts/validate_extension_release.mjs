@@ -7,7 +7,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, "..");
 const sourcePath = path.join(scriptsDir, "validate_extension.mjs");
 const runtimePath = path.join(scriptsDir, ".validate_extension_release.runtime.mjs");
-const releaseVersion = "0.8.5";
+const releaseVersion = "0.8.6";
 
 const source = await readFile(sourcePath, "utf8");
 const releaseSource = source
@@ -75,6 +75,9 @@ assert.ok(engine.includes("restorePulse2PreviousFocus"), "due monitoring must re
 assert.ok(engine.includes("MONITOR_ALARM_PERIOD_MINUTES = 0.5"), "monitor scheduler must wake frequently enough to observe assistant completion promptly");
 assert.ok(model.includes("PULSE2_MONITOR_RECHECK_MS = 30_000"), "post-capture and post-dispatch monitoring must recheck promptly");
 assert.ok(model.includes("PULSE2_MONITOR_ERROR_RETRY_MS = 5 * 60_000"), "monitor errors need a bounded retry backoff");
+assert.ok(engine.includes("reusablePulse2RouteTab"), "Stop/Start must reuse a still-valid managed tab");
+assert.ok(engine.includes("PULSE2_MONITOR_ERROR_RETRY_MS"), "unexpected monitoring failures need bounded retry backoff");
+assert.ok(ui.includes('runAction("OPEN_CURRENT_CHAT", { routeId: selectedRouteId }, false)'), "Open Current Chat must go through the background engine");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
 assert.ok(!engine.includes('chrome.storage.local.set({ [PULSE1_STORAGE_KEY]'), "Pulse 2.0 must never write Pulse 1 state");
 assert.ok(engine.includes("enqueueEngineOperation"), "multi-route writes must be serialized");
