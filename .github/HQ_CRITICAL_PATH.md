@@ -32,6 +32,7 @@ Additional inspection and test design found:
 8. **Rotation recovery could adopt an unrelated ChatGPT chat** — a stale/manually navigated managed `tabId` pointing at any new `/c/...` URL could be mistaken for the just-created project chat.
 9. **Capture-wait could adopt an unrelated ChatGPT chat** — after a valid project chat was created but before its two-minute URL capture completed, manual navigation to another `/c/...` URL could be persisted as the next project cycle.
 10. **Lost managed-tab recovery could duplicate an already-open current chat** — after the stored managed `tabId` disappeared, monitoring created a fresh tab even when the exact same current chat was already open elsewhere and unclaimed by any other Pulse 2.0 route.
+11. **Background URL-capture hydration could fail after the two-minute wait** — if the user switched away from the newly created chat before capture, the capture path inspected its DOM in the background even though ChatGPT can defer hydration there.
 
 ## 0.8.6 Release Contract
 
@@ -46,6 +47,7 @@ Additional inspection and test design found:
 - During crash recovery, adopt a concrete chat only when its project-scoped URL belongs to the configured Project; otherwise rebuild from the configured Project page.
 - During `capture-wait`, persist a changed chat URL only when it belongs to the configured Project; unrelated ChatGPT chats are rejected and retried.
 - When a previously managed chat tab is lost, adopt an already-open unclaimed exact-current-chat tab before creating another duplicate; never steal a tab claimed by another route.
+- Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
 - Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
 - Add loaded-Chromium adversarial scenarios:
@@ -84,6 +86,7 @@ Additional inspection and test design found:
 - [x] Reject unrelated ChatGPT chats during rotation recovery and cover this with loaded Chromium.
 - [x] Reject unrelated ChatGPT chats during capture-wait and require later recovery to the correct project URL.
 - [x] Reuse an unclaimed exact-current-chat tab after managed-tab loss instead of spawning another duplicate.
+- [x] Foreground URL capture and restore user focus after the capture check.
 - [x] Add adversarial loaded-browser scenarios.
 - [x] Add unit/static timing and lifecycle tests.
 - [x] Bump release tooling/docs to 0.8.6 beta.
