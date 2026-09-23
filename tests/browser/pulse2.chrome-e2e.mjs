@@ -188,6 +188,9 @@ try {
     "authenticated ChatGPT fixture was not installed in the route-owned managed tab"
   );
 
+  const pulse2TabId = await tabIdForUrl(pulse2Page, pulse2Page.url());
+  assert.ok(Number.isInteger(pulse2TabId), "Pulse 2.0 UI tab id missing");
+
   await sendPulse2Request(pulse2Page, "CHECK_NOW", { routeId });
   const baseline = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -197,9 +200,11 @@ try {
   }, "Pulse 2.0 did not establish the initial assistant baseline");
   assert.equal(baseline.cycleNumber, 1);
   assert.equal(baseline.cycleContinuationCount, 0);
+  const visibleBeforeAlarm = await chatVisibleTransitionCount(initialChatPage);
 
+  await pulse2Page.bringToFront();
   await agePulse2Observation(pulse2Page, routeId);
-  await pulse2Page.locator("#checkButton").click();
+  await triggerMonitorAlarm(serviceWorker);
   const firstDispatch = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
@@ -208,6 +213,14 @@ try {
   }, "Pulse 2.0 did not record the configured N=1 auto-response");
   assert.equal(firstDispatch.totalContinuationCount, 1);
   assert.equal(await latestUserMessage(initialChatPage), AUTO_COMMAND, "Pulse 2.0 auto-response text mismatch");
+  assert.ok(
+    await chatVisibleTransitionCount(initialChatPage) > visibleBeforeAlarm,
+    "alarm-driven monitoring never foregrounded the managed chat tab"
+  );
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === pulse2TabId,
+    "alarm-driven monitoring did not restore the user's previous Pulse 2.0 tab"
+  );
 
   await appendAssistantMessage(initialChatPage, "assistant-after-auto-response", "Final response before rotation.");
   await pulse2Page.locator("#checkButton").click();
@@ -260,6 +273,8 @@ try {
   console.log("pulse2_browser_e2e_multi_route_save=PASS");
   console.log("pulse2_browser_e2e_rotation_recovery=PASS");
   console.log("pulse2_browser_e2e_project_foreground=PASS");
+  console.log("pulse2_browser_e2e_overnight_monitor_alarm=PASS");
+  console.log("pulse2_browser_e2e_monitor_focus_restore=PASS");
   console.log("pulse2_browser_e2e_rotation=PASS");
   console.log("pulse2_browser_e2e_isolation=PASS");
   console.log("pulse2_browser_e2e_result=PASS");
@@ -381,6 +396,12 @@ async function agePulse2Observation(extensionPage, routeId) {
   }, routeId);
 }
 
+async function triggerMonitorAlarm(serviceWorker) {
+  await serviceWorker.evaluate(async () => {
+    await chrome.alarms.create("chatpulse-pulse2-monitor", { when: Date.now() + 100 });
+  });
+}
+
 async function expireCaptureDelayAndTrigger(serviceWorker, routeId) {
   await serviceWorker.evaluate(async (id) => {
     const stored = await chrome.storage.local.get("chatpulse2State");
@@ -405,6 +426,10 @@ async function appendAssistantMessage(page, id, text) {
 
 async function latestUserMessage(page) {
   return page.evaluate(() => [...document.querySelectorAll("[data-message-author-role='user']")].at(-1)?.textContent?.trim() || "");
+}
+
+async function chatVisibleTransitionCount(page) {
+  return page.evaluate(() => Number(globalThis.__pulse2VisibleTransitions || 0));
 }
 
 async function projectComposerActivationCount(page) {
@@ -437,6 +462,10 @@ async function waitFor(check, message, timeoutMs = WAIT_MS) {
 
 function chatFixtureHtml() {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Pulse 2.0 E2E</title></head><body>
+  <script>
+    globalThis.__pulse2VisibleTransitions=0;
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')globalThis.__pulse2VisibleTransitions+=1;});
+  <\/script>
   <button data-testid="profile-button" type="button" style="width:40px;height:40px">Profile</button>
   <main><section id="messages"><article data-message-author-role="assistant" data-message-id="assistant-baseline">Initial assistant response complete.</article></section>
   <textarea id="prompt-textarea" aria-label="Message ChatGPT" style="width:500px;height:80px"></textarea>
