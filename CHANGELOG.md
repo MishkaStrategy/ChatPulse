@@ -7,6 +7,7 @@
 - disable and reject **Open current chat** while a running route is rotating or waiting for URL capture, preventing the old chat from replacing the new-chat managed tab;
 - protect a replacement/opened managed tab from Chrome auto-discard;
 - apply a bounded 5-minute retry to unexpected monitoring runtime failures so a broken page cannot steal focus every 30 seconds indefinitely;
+- never advance continuation counters for `submitted-unconfirmed` sends; only confirmed DOM delivery counts immediately, while a later assistant response can retrospectively confirm the prior send;
 - wait for a replacement tab to reach the expected ChatGPT chat/project URL before inspection, avoiding false authentication failures on transient blank documents;
 - after the correct URL loads, retry ChatGPT DOM/auth hydration for a bounded 8-second window before deciding that the profile is unauthenticated;
 - if a correct loaded chat still appears unauthenticated after that bounded hydration window, perform exactly one foreground reload and repeat target-URL + hydration checks before recording an auth failure;
