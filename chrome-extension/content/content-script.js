@@ -101,7 +101,7 @@
     const latestId = latest?.getAttribute?.("data-message-id")
       || latest?.getAttribute?.("data-testid")
       || latest?.id
-      || "";
+      || (latest ? `message-position-${Math.max(0, messages.length - 1)}` : "");
     const input = findInput();
     const now = Date.now();
     const generating = updateGenerationClock(now);
