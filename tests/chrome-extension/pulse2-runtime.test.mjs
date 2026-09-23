@@ -77,6 +77,16 @@ test("due monitoring foregrounds the route tab and restores the user's previous 
   assert.match(model, /PULSE2_MONITOR_ERROR_RETRY_MS = 5 \* 60_000/);
 });
 
+test("managed tab lifecycle avoids duplicates and runtime errors back off", () => {
+  assert.match(engine, /reusablePulse2RouteTab/);
+  assert.match(engine, /let tab = await reusablePulse2RouteTab\(route, targetUrl\)/);
+  assert.match(engine, /PULSE2_MONITOR_ERROR_RETRY_MS/);
+  assert.match(engine, /nextCheckAt: new Date\(Date\.now\(\) \+ PULSE2_MONITOR_ERROR_RETRY_MS\)\.toISOString\(\)/);
+  assert.match(ui, /runAction\("OPEN_CURRENT_CHAT", \{ routeId: selectedRouteId \}, false\)/);
+  const openCurrentBody = ui.match(/async function openCurrentChat\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(openCurrentBody, /chrome\.tabs\.create/);
+});
+
 test("project rotation foregrounds the managed tab before composer lookup", () => {
   assert.match(engine, /active: !route\.currentChatUrl/);
   assert.match(engine, /chrome\.tabs\.create\(\{ url: route\.projectUrl, active: true/);
