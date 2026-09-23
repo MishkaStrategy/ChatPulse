@@ -34,7 +34,7 @@ Additional inspection and test design found:
 10. **Lost managed-tab recovery must not hijack a user-owned matching tab** — avoiding duplicate tabs by adopting any unclaimed matching URL can unexpectedly turn the user's own ChatGPT tab into a Pulse service tab, overwrite its composer and send automation into it.
 11. **Background URL-capture hydration could fail after the two-minute wait** — if the user switched away from the newly created chat before capture, the capture path inspected its DOM in the background even though ChatGPT can defer hydration there.
 12. **Transient unauthenticated snapshot could survive the hydration window** — even a correct foregrounded chat can occasionally remain incompletely hydrated; immediately recording auth failure after one hydration window makes recovery too brittle.
-13. **Recovered monitoring could falsely advance counters without proven DOM delivery** — the adversarial closed-tab test observed runtime continuation counters advancing while the user message was absent from the expected page. The release gate now requires `lastDispatchOutcome=confirmed` and a real user message in the route-owned replacement tab.
+13. **Recovered monitoring could falsely advance counters without proven DOM delivery** — the adversarial closed-tab test observed runtime continuation counters advancing while the user message was absent from the expected page. Fixed: `submitted-unconfirmed` no longer increments continuation counters; only confirmed delivery counts immediately, while a later new assistant response can promote the prior send to `confirmed-by-response`.
 
 ## 0.8.6 Release Contract
 
@@ -52,6 +52,7 @@ Additional inspection and test design found:
 - Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
 - If a correct loaded chat remains unauthenticated after the bounded hydration window, allow one single foreground reload + second bounded hydration attempt before surfacing auth failure.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
+- Unconfirmed dispatches never advance continuation counters or rotation thresholds; they use bounded retry observation and may be credited only when a later assistant response proves the dialogue continued.
 - Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
 - Add loaded-Chromium adversarial scenarios:
   - manually close the managed chat during monitoring and require recovery + successful auto-response;
@@ -72,7 +73,7 @@ Additional inspection and test design found:
 - Expected-target URL readiness implemented for monitoring and rotation waits.
 - Bounded post-load DOM/auth hydration retry implemented.
 - Tab-ready listener registration gap closed with an immediate post-subscription recheck.
-- Browser E2E extended with closed-tab recovery that preserves a separate user-owned matching tab, manual focus guard, restart reuse, Open Current Chat reuse, unrelated recovery rejection and unrelated capture-wait rejection.
+- Browser E2E extended with closed-tab recovery that preserves a separate user-owned matching tab, requires confirmed DOM delivery, manual focus guard, restart reuse, Open Current Chat reuse, unrelated recovery rejection and unrelated capture-wait rejection.
 - Unit/static tests extended for transient timing and tab lifecycle contracts.
 - Release metadata/tooling/docs bumped to 0.8.6 beta.
 
@@ -89,6 +90,7 @@ Additional inspection and test design found:
 - [x] Reject unrelated ChatGPT chats during rotation recovery and cover this with loaded Chromium.
 - [x] Reject unrelated ChatGPT chats during capture-wait and require later recovery to the correct project URL.
 - [x] Preserve user-owned matching tabs after managed-tab loss; recover only by creating a fresh route-owned replacement.
+- [x] Prevent `submitted-unconfirmed` sends from falsely advancing counters; add inferred confirmation from a later assistant response.
 - [x] Foreground URL capture and restore user focus after the capture check.
 - [x] Add adversarial loaded-browser scenarios.
 - [x] Add unit/static timing and lifecycle tests.
