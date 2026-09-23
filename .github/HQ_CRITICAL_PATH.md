@@ -2,88 +2,108 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 88
-updated_at: 2026-09-23T13:54:00Z
+critical_path_revision: 89
+updated_at: 2026-09-23T14:45:00Z
 project_state: DONE
 critical_path_status: VERIFIED
 release_contract_status: SATISFIED
 handoff_status: READY
 basis_ref: main
-basis_sha: 2726a8c3f93c2d3fd82cc16093d1c05d0b1b7d52
+basis_sha: 110ed24ed369fe0b703c0de17d913556c7e4de0d
 ---
 
 # HQ Critical Path
 
 ## Current Release
 
-ChatPulse 0.8.7 beta — reload recovery for explicit ChatGPT delivery interruption states in both Pulse 1.0 and Pulse 2.0.
+ChatPulse 0.8.8 beta — continue safely when ChatGPT returns to an idle composer without producing an assistant reply.
 
-This release preserves the verified 0.8.6 managed-tab/runtime hardening and adds a narrowly scoped recovery path for two owner-reported ChatGPT UI errors.
+This release preserves the verified 0.8.7 delivery-error reload recovery and fixes the owner-reported deadlock where the Stop control disappears, the blue Voice composer control returns, but no assistant message was created.
 
 ## Repository Basis
 
-- Previous verified release: 0.8.6.
-- Immutable 0.8.6 product merge / release basis: `8ee8977453ea2a4eb891d6d415810300f30433e9`.
-- 0.8.7 frozen candidate: `b5a7c75962167de815a122a75effe216cc9f2035`.
-- Canonical PR: #41, merged.
+- Previous verified release: 0.8.7.
 - Immutable 0.8.7 product merge / release basis: `2726a8c3f93c2d3fd82cc16093d1c05d0b1b7d52`.
-- This state-only document may advance `main` after the immutable product basis without changing release payload.
+- 0.8.8 frozen candidate: `4354cc9036fe538d14fc2d75567416185b51351e`.
+- Product PR: #42, merged.
+- Immutable 0.8.8 product merge / release basis: `10fa22809c92b5dab5b517e5dc7a5b4f4780238c`.
+- Test-harness stabilization PR: #43, merged.
+- Verified main test-state basis before this state-only update: `110ed24ed369fe0b703c0de17d913556c7e4de0d`.
+- PR #43 changes only browser E2E timing; it does not change extension/package payload.
+- This state-only document may advance `main` without changing release payload.
 
-## Owner-Reported Errors Covered
+## Owner-Reported Deadlock Fixed
 
-1. `Время доставки сообщения истекло. Попробуйте еще раз.`
-2. `Соединение прервано. Ожидание полного ответа`
+The failing runtime state was:
 
-The detector also accepts the spelling `ещё`.
+1. the latest conversation item is a user message;
+2. ChatGPT never creates an assistant reply;
+3. the Stop button disappears;
+4. the blue Voice/composer button returns, showing that ChatGPT accepts new input again;
+5. older ChatPulse logic remained in `waiting-for-assistant` forever.
+
+0.8.8 removes that deadlock.
 
 ## Delivered Runtime Guarantees
 
-- The two explicit ChatGPT UI errors are marked as `reloadRequested` instead of being treated as a normal completed assistant response.
-- Pulse 1.0 reloads the affected chat even when its managed tab is active.
-- The existing generic `page-error` recovery contract remains unchanged; only the two explicit owner-reported errors bypass the active-tab reload guard.
-- Pulse 2.0 reloads the managed chat before normal monitoring continues.
-- Pulse 2.0 applies the same reload path during post-send rotation recovery and permanent-URL capture.
-- Normal conversation text and composer text are excluded from the explicit UI text scan, preventing ordinary discussion of those phrases from triggering recovery.
-- ARIA live/error/status regions remain eligible so ChatGPT can surface the same interruption state inside status UI adjacent to a conversation.
-- No auto-response or continuation command is sent while one of these reload-required errors is being handled.
+- The shared content script exposes `readyForNewInput` when a visible enabled Voice composer control is present and generation is not active.
+- Supported positive signals include current `composer-speech-button`, `voice-mode-button`, the speech-button container, and bounded Voice aria-label fallbacks.
+- The Stop control remains authoritative: while Stop is present, `readyForNewInput` is false and no continuation can be sent.
+- Absence of Stop alone is not considered enough evidence; a positive ready-for-input signal is required.
+- Pulse 1.0 may continue from a stable latest user message when `readyForNewInput=true`, even when no assistant message exists.
+- Pulse 1.0 still performs baseline/fingerprint stabilization first and preserves at-most-once dispatch.
+- Pulse 2.0 records an idle user state, applies the normal configured auto-response delay, and then may send the next auto-response.
+- Pulse 2.0 can enter rotation from the same idle no-response state when the per-cycle continuation limit is already reached, instead of waiting forever for an assistant reply.
+- Repeated same-text commands remain distinct through the real DOM message id and a message-position fallback when an id is absent.
+- Existing explicit delivery-error reload handling from 0.8.7 remains unchanged.
 
-## Candidate Evidence — PR #41
+## Candidate Evidence — PR #42
 
-- Frozen candidate SHA: `b5a7c75962167de815a122a75effe216cc9f2035`.
-- Release run `35869788871`: SUCCESS.
-- Dependency run `35869789214`: SUCCESS.
+- Frozen candidate SHA: `4354cc9036fe538d14fc2d75567416185b51351e`.
+- Release run `35874857010`: SUCCESS.
+- Dependency run `35874857009`: SUCCESS.
 - Five full extension audit cycles: 5/5 SUCCESS.
 - Chromium MV3 browser E2E: SUCCESS.
 - Reproducible package/provenance: SUCCESS.
-- Candidate artifact ID: `10754163167`.
-- Candidate ZIP SHA-256: `4d655166f823df7984b13188dcae52c448ea54fd7bdcef2902f42d945f349f34`.
-- Candidate source-manifest SHA-256: `efc1a62ad0670df4bbb0c654ac5a8701211929fd0b754544dfd7f8ac4bbb880b`.
+- Candidate artifact ID: `10756277377`.
+- Candidate ZIP SHA-256: `de5b129d21b02ab6c464c976d45b97175ed072fdc70f40bbee5f94e7832d8d47`.
+- Candidate source-manifest SHA-256: `232c628fd2028bd4ea2cf02c719eba36456e5a2e7702e373d1584541f26ab770`.
 
-## Exact Post-Merge Main Evidence
+## Post-Merge Validation and Harness Finding
 
-- Product merge SHA: `2726a8c3f93c2d3fd82cc16093d1c05d0b1b7d52`.
-- Release run `35870037937`: SUCCESS.
-- Dependency run `35870037939`: SUCCESS.
+- Product merge SHA: `10fa22809c92b5dab5b517e5dc7a5b4f4780238c`.
+- The first product-merge release run `35875198461` reproduced one false-negative browser assertion in the pre-existing alarm-recovery scenario.
+- Root cause: the immediately preceding focus-safety scenario can intentionally arm `monitorFocusSuppressedUntil` for 10 seconds; the next test sometimes triggered its alarm inside that grace window, where the product correctly ignored it.
+- No product/runtime code was changed to address this.
+- PR #43 changed only the browser E2E harness to wait 10.5 seconds before that explicit alarm trigger.
+- Test-harness merge SHA: `110ed24ed369fe0b703c0de17d913556c7e4de0d`.
+
+## Verified Main Evidence
+
+- Release run `35876191005`: SUCCESS.
 - Five full extension audit cycles: 5/5 SUCCESS.
-- Chromium MV3 browser E2E: SUCCESS.
+- Chromium MV3 browser E2E: SUCCESS with the focus-grace race removed.
 - Reproducible package/provenance: SUCCESS.
-- Exact-main artifact ID: `10754338398`.
-- Exact-main ZIP SHA-256: `4d655166f823df7984b13188dcae52c448ea54fd7bdcef2902f42d945f349f34`.
-- Exact-main source-manifest SHA-256: `efc1a62ad0670df4bbb0c654ac5a8701211929fd0b754544dfd7f8ac4bbb880b`.
-- Candidate and exact post-merge product `main` are byte-for-byte identical by canonical release hashes.
+- Verified-main artifact ID: `10758011699`.
+- Verified-main ZIP SHA-256: `de5b129d21b02ab6c464c976d45b97175ed072fdc70f40bbee5f94e7832d8d47`.
+- Verified-main source-manifest SHA-256: `232c628fd2028bd4ea2cf02c719eba36456e5a2e7702e373d1584541f26ab770`.
+- Candidate and verified-main package hashes are identical, proving the test-only PR did not change the extension payload.
 
 ## Critical Work
 
-- [x] Reproduce the requested behavior contract from the two owner-provided ChatGPT error strings.
-- [x] Add explicit reload-required detection without treating ordinary conversation text as a page error.
-- [x] Apply reload recovery to Pulse 1.0, including an active managed tab.
-- [x] Apply reload recovery to Pulse 2.0 monitoring, rotation recovery and URL capture.
-- [x] Add regression coverage for both error strings and both Pulse runtime paths.
-- [x] Move release metadata and deterministic packaging to 0.8.7 beta.
+- [x] Identify why latest-user-message chats could remain in `waiting-for-assistant` forever.
+- [x] Add a positive idle composer / Voice readiness signal.
+- [x] Keep Stop authoritative and reject absence-of-Stop as a standalone readiness signal.
+- [x] Apply no-assistant-reply progression to Pulse 1.0.
+- [x] Apply configured-delay progression and rotation recovery to Pulse 2.0.
+- [x] Preserve at-most-once behavior and repeated-message fingerprint distinction.
+- [x] Add unit/runtime regression tests for Voice-ready, Stop precedence, delay, duplicate protection and rotation.
 - [x] Pass candidate dependency gate, 5/5 audits, Chromium E2E and reproducible package/provenance.
-- [x] Merge PR #41 with exact-head guard.
-- [x] Repeat material validation on exact post-merge `main`.
-- [x] Verify candidate and post-merge package hashes are identical.
+- [x] Merge PR #42 with exact-head guard.
+- [x] Diagnose the post-merge E2E false negative without weakening product safety.
+- [x] Stabilize only the test harness in PR #43.
+- [x] Repeat the full release gate on verified `main`.
+- [x] Verify candidate and verified-main package hashes are identical.
 - [x] Persist DONE/VERIFIED evidence.
 
 ## Blockers
@@ -92,7 +112,7 @@ NONE.
 
 ## Active Execution
 
-NONE. ChatPulse 0.8.7 release contract is complete.
+NONE. ChatPulse 0.8.8 release contract is complete.
 
 ## Next Action
 
@@ -100,4 +120,4 @@ Await owner runtime verification or the next requested bug/feature.
 
 ## Recovery Note
 
-The explicit reload-required states are intentionally narrower than generic `page-error`. Do not broaden this rule to arbitrary assistant text or all page errors without new owner/runtime evidence.
+Do not broaden `readyForNewInput` to mean merely “Stop is absent.” The positive composer-ready signal is the safety boundary that permits no-assistant-reply progression.
