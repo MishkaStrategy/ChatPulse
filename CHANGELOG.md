@@ -9,7 +9,8 @@
 - apply a bounded 5-minute retry to unexpected monitoring runtime failures so a broken page cannot steal focus every 30 seconds indefinitely;
 - wait for a replacement tab to reach the expected ChatGPT chat/project URL before inspection, avoiding false authentication failures on transient blank documents;
 - after the correct URL loads, retry ChatGPT DOM/auth hydration for a bounded 8-second window before deciding that the profile is unauthenticated;
-- close the event gap between the initial tab-state read and `tabs.onUpdated` listener registration so a fast load cannot be missed and turn into a false 45-second timeout;\n- verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
+- close the event gap between the initial tab-state read and `tabs.onUpdated` listener registration so a fast load cannot be missed and turn into a false 45-second timeout;
+- refuse to adopt an arbitrary ChatGPT chat during rotation recovery unless its project-scoped URL belongs to the configured Project; otherwise return to the configured Project and create the correct chat;\n- verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
 - verify that a user tab switch during a service check is respected and not overwritten by focus restoration;
 - extend loaded-Chromium regression coverage for tab reuse, closed-tab recovery, manual focus guard and engine-managed Open Current Chat;
 - move deterministic beta package/provenance output to ChatPulse 0.8.6.
