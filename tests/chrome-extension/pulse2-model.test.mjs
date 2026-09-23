@@ -53,6 +53,19 @@ function assistantSnapshot(fingerprint) {
   };
 }
 
+function idleUserSnapshot(fingerprint) {
+  return {
+    pageReady: true,
+    authenticated: true,
+    errorDetected: false,
+    isGenerating: false,
+    readyForNewInput: true,
+    latestRole: "user",
+    latestFingerprint: fingerprint,
+    visibilityState: "visible"
+  };
+}
+
 test("project-scoped chat URLs remain valid current chats", () => {
   const scoped = "https://chatgpt.com/g/g-p-project-a/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   assert.equal(normalizeChatURL(scoped), scoped);
@@ -138,6 +151,78 @@ test("stable assistant response becomes eligible only after the configured delay
   assert.equal(result.decision, "waiting-delay");
   result = observePulse2Snapshot(result.state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T10:02:00.000Z"));
   assert.equal(result.decision, "send-auto-response");
+});
+
+test("idle Voice state after a user message becomes eligible after the configured delay", () => {
+  let state = startPulse2State(configured(undefined, { intervalMinutes: 2 }), {
+    at: "2026-09-23T00:00:00.000Z"
+  });
+
+  let observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    idleUserSnapshot("user-1"),
+    Date.parse("2026-09-23T00:00:00.000Z")
+  );
+  assert.equal(observed.decision, "input-ready-observed");
+  assert.equal(
+    Date.parse(route(observed.state, "route-a").nextCheckAt) - Date.parse("2026-09-23T00:00:00.000Z"),
+    2 * 60_000
+  );
+
+  observed = observePulse2Snapshot(
+    observed.state,
+    "route-a",
+    idleUserSnapshot("user-1"),
+    Date.parse("2026-09-23T00:01:59.000Z")
+  );
+  assert.equal(observed.decision, "waiting-delay");
+
+  observed = observePulse2Snapshot(
+    observed.state,
+    "route-a",
+    idleUserSnapshot("user-1"),
+    Date.parse("2026-09-23T00:02:00.000Z")
+  );
+  assert.equal(observed.decision, "send-auto-response");
+  assert.equal(observed.fingerprint, "user-1");
+});
+
+test("idle user state without the Voice readiness signal still waits for assistant", () => {
+  const state = startPulse2State(configured(undefined, { intervalMinutes: 1 }), {
+    at: "2026-09-23T00:00:00.000Z"
+  });
+  const observed = observePulse2Snapshot(state, "route-a", {
+    ...idleUserSnapshot("user-1"),
+    readyForNewInput: false
+  }, Date.parse("2026-09-23T00:00:00.000Z"));
+
+  assert.equal(observed.decision, "waiting-for-assistant");
+});
+
+test("rotation pending can progress from idle Voice state without an assistant reply", () => {
+  let state = startPulse2State(configured(undefined, {
+    intervalMinutes: 1,
+    messagesPerCycle: 1
+  }), { at: "2026-09-23T00:00:00.000Z" });
+
+  state = {
+    ...state,
+    routes: state.routes.map((item) => item.id === "route-a" ? {
+      ...item,
+      rotationPending: true,
+      lastObservedFingerprint: "user-1",
+      lastObservedAt: "2026-09-23T00:00:00.000Z"
+    } : item)
+  };
+
+  const observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    idleUserSnapshot("user-1"),
+    Date.parse("2026-09-23T00:01:00.000Z")
+  );
+  assert.equal(observed.decision, "rotate");
 });
 
 test("unconfirmed dispatch never advances counters and can be confirmed by the next assistant response", () => {

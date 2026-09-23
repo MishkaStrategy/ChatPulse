@@ -285,7 +285,9 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
     }, "no-messages");
   }
   const latestRole = String(snapshot?.latestRole || "unknown");
-  if (latestRole !== "assistant") {
+  const readyWithoutAssistant = latestRole === "user"
+    && snapshot?.readyForNewInput === true;
+  if (latestRole !== "assistant" && !readyWithoutAssistant) {
     if (route.lastObservedFingerprint !== fingerprint) {
       nextRoute = { ...nextRoute, lastObservedFingerprint: fingerprint, lastObservedAt: checkedAt };
     }
@@ -293,6 +295,43 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
       ...nextRoute,
       nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_RECHECK_MS)
     }, "waiting-for-assistant", fingerprint);
+  }
+
+  if (readyWithoutAssistant) {
+    if (route.lastObservedFingerprint !== fingerprint) {
+      nextRoute = {
+        ...nextRoute,
+        lastObservedFingerprint: fingerprint,
+        lastObservedAt: checkedAt,
+        nextCheckAt: addMinutes(now, current.intervalMinutes)
+      };
+      return routeDecision(current, nextRoute, "input-ready-observed", fingerprint);
+    }
+
+    if (route.lastCommandedFingerprint === fingerprint) {
+      if (route.lastDispatchOutcome === "submitted-unconfirmed") {
+        nextRoute = {
+          ...nextRoute,
+          nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_ERROR_RETRY_MS)
+        };
+      }
+      return routeDecision(current, nextRoute, "already-dispatched", fingerprint);
+    }
+
+    const observedAt = Date.parse(String(route.lastObservedAt || ""));
+    const thresholdMs = current.intervalMinutes * 60_000;
+    if (!Number.isFinite(observedAt) || now - observedAt < thresholdMs) {
+      nextRoute = {
+        ...nextRoute,
+        nextCheckAt: addMinutes(Number.isFinite(observedAt) ? observedAt : now, current.intervalMinutes)
+      };
+      return routeDecision(current, nextRoute, "waiting-delay", fingerprint);
+    }
+
+    if (route.rotationPending) {
+      return routeDecision(current, { ...nextRoute, nextCheckAt: null }, "rotate", fingerprint);
+    }
+    return routeDecision(current, { ...nextRoute, nextCheckAt: null }, "send-auto-response", fingerprint);
   }
 
   if (route.lastObservedFingerprint !== fingerprint) {

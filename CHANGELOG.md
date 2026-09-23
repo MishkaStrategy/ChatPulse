@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.8 beta — continue when ChatGPT returns to idle without an assistant reply
+
+- detect the idle ChatGPT composer by the visible `composer-speech-button` / Voice control after the Stop button disappears;
+- expose that state as `readyForNewInput` from the shared content script used by Pulse 1.0 and Pulse 2.0;
+- let Pulse 1.0 continue a stable latest user message when ChatGPT is idle and ready for new input, instead of waiting forever for an assistant message that never appeared;
+- let Pulse 2.0 apply the configured delay to the same idle no-response state and then send the next auto-response;
+- let Pulse 2.0 progress to rotation from the idle no-response state when the per-cycle continuation limit is already reached;
+- keep at-most-once fingerprint protection: the same user message cannot receive the same automatic continuation twice;
+- keep the Stop button authoritative: if generation is active, the Voice readiness signal is ignored;
+- do not infer readiness merely from the absence of Stop; the positive Voice/composer signal is required;
+- add unit/runtime coverage for the blue Voice-button state, delayed no-response continuation and rotation progression;
+- move deterministic beta package/provenance output to ChatPulse 0.8.8.
+
 ## 0.8.7 beta — reload recovery for ChatGPT delivery interruptions
 
 - recognize the ChatGPT UI state `Время доставки сообщения истекло. Попробуйте еще/ещё раз.` as an explicit reload-required error;

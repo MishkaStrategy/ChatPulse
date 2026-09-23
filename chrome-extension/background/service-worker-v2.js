@@ -1412,7 +1412,7 @@ function decisionDescription(decision) {
     "waiting-for-assistant": "последнее сообщение принадлежит пользователю",
     "already-continued": "этот ответ уже получил команду",
     "stop-phrase-matched": "обнаружена стоп-фраза; наблюдение за чатом отключено",
-    "send-continuation": "ответ стабилен и готов к продолжению"
+    "send-continuation": "чат стабилен и готов к продолжению"
   }[decision] || decision;
 }
 
