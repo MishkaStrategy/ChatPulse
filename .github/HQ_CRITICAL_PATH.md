@@ -2,116 +2,133 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 85
-updated_at: 2026-09-23T03:43:00Z
-project_state: DONE
-critical_path_status: VERIFIED
-release_contract_status: SATISFIED
+critical_path_revision: 86
+updated_at: 2026-09-23T04:10:00Z
+project_state: ACTIVE
+critical_path_status: EXECUTING
+release_contract_status: EXPLICIT
 handoff_status: READY
 basis_ref: main
-basis_sha: aad546080ebac191e424e05c4e583b2678ea30e4
+basis_sha: ffb0c5287780bfb41d218978d0f4fb1c47193e3f
 ---
 
 # HQ Critical Path
 
-## Current Release Contract
+## Current Goal
 
-Release target: ChatPulse 0.8.5 beta — make Pulse 2.0 continue reliably after the first automatically created project chat during long/overnight runs.
+Adversarially test ChatPulse 0.8.5 Pulse 2.0 beyond the existing release gate, fix newly discovered runtime defects, and release 0.8.6 beta if the hardened candidate passes full validation.
 
-## Repository Basis
+## Newly Discovered Bugs
 
-- Previous verified release: 0.8.4.
-- 0.8.4 product basis: `05fa17ee3c61998ca5a2a302e16e9d19a87bd60a`.
-- 0.8.5 frozen candidate: `8c89ac325287a89b6931ff65c3cf1d37d25e8035`.
-- Canonical PR: #39, merged.
-- Immutable 0.8.5 product merge / release basis: `aad546080ebac191e424e05c4e583b2678ea30e4`.
+Additional inspection and test design found:
 
-## Root Cause / Delivered Fix
+1. **Stop → Start managed-tab duplication** — persisted `tabId` survived STOP, but START unconditionally opened a new ChatGPT tab for every route.
+2. **Open Current Chat bypassed the engine** — the Pulse 2.0 UI directly called `chrome.tabs.create()`, creating an unmanaged duplicate while the route continued pointing to its hidden managed tab.
+3. **Unexpected monitor runtime failures could hammer every 30 seconds** — the generic catch path preserved a due/null `nextCheckAt`, so a broken page could repeatedly foreground the route on every monitor alarm.
+4. **Replacement-tab readiness race** — after a managed tab was manually closed, a replacement tab could transiently report `status=complete` before the requested ChatGPT URL was actually loaded. The engine could inspect that blank/intermediate document and report a false authentication error.
+5. **Post-load hydration race** — even after the correct ChatGPT URL reaches `complete`, profile/composer/auth DOM can appear later. Immediate inspection could still record a transient false unauthenticated state.
+6. **Tab-ready listener registration gap** — a tab could become ready after the initial state read but before `tabs.onUpdated` listener registration, causing a false 45-second timeout despite the page being ready.
+7. **Open Current Chat could corrupt an in-flight rotation** — during `rotating/capture-wait`, `currentChatUrl` still points at the previous chat while `tabId` belongs to the new-chat flow; opening the old current chat could replace the managed `tabId` and break URL capture.
+8. **Rotation recovery could adopt an unrelated ChatGPT chat** — a stale/manually navigated managed `tabId` pointing at any new `/c/...` URL could be mistaken for the just-created project chat.
+9. **Capture-wait could adopt an unrelated ChatGPT chat** — after a valid project chat was created but before its two-minute URL capture completed, manual navigation to another `/c/...` URL could be persisted as the next project cycle.
+10. **Lost managed-tab recovery must not hijack a user-owned matching tab** — avoiding duplicate tabs by adopting any unclaimed matching URL can unexpectedly turn the user's own ChatGPT tab into a Pulse service tab, overwrite its composer and send automation into it.
+11. **Background URL-capture hydration could fail after the two-minute wait** — if the user switched away from the newly created chat before capture, the capture path inspected its DOM in the background even though ChatGPT can defer hydration there.
+12. **Transient unauthenticated snapshot could survive the hydration window** — even a correct foregrounded chat can occasionally remain incompletely hydrated; immediately recording auth failure after one hydration window makes recovery too brittle.
+13. **Recovered monitoring could falsely advance counters without proven DOM delivery** — the adversarial closed-tab test observed runtime continuation counters advancing while the user message was absent from the expected page. Fixed: `submitted-unconfirmed` no longer increments continuation counters; only confirmed delivery counts immediately, while a later new assistant response can promote the prior send to `confirmed-by-response`.
+14. **Same-project recovery lacked proof of ownership** — a managed tab manually navigated to another new chat inside the same Project could satisfy the old project-ID guard and be mistaken for the chat just created by Pulse.
+15. **Post-send recovery still trusted stale tab URL** — ChatGPT SPA navigation can update `location.href` before `chrome.tabs.Tab.url`; after a confirmed start send, recovery could miss the already-created chat and create a duplicate.
+16. **Manual focus could still be stolen during the second monitoring recheck** — after the first foreground inspection, a user tab switch could occur before the engine's second send/rotate verification; the old code reactivated the managed tab again and later restored the pre-check tab, overriding the user's choice.
+17. **Queued monitor alarm could immediately undo a respected manual focus switch** — even after the active check correctly left the user's chosen tab alone, an alarm already queued behind it could run immediately and foreground the managed chat again.
+14. **SPA URL metadata race during capture** — `history.replaceState()` can change the real page URL before `chrome.tabs.get().url` catches up. Capture could therefore persist a stale project chat URL after the managed page had already navigated elsewhere.
 
-Owner evidence showed cycle 1 created successfully, but no subsequent overnight progress with a 1-hour delay.
+## 0.8.6 Release Contract
 
-0.8.4 had two relevant defects:
-- after project creation, ordinary monitoring again inspected/sent in a background ChatGPT tab;
-- the configured auto-response delay also doubled as polling cadence, adding an unintended extra observation interval for newly captured project chats.
+- Reuse an existing route-owned tab across Stop → Start when its URL still matches the saved chat/project target.
+- Create a replacement only when the saved managed tab is closed, unavailable or points somewhere else.
+- Route **Open Current Chat** through the background engine and reuse the managed route tab instead of creating a UI-owned duplicate.
+- Protect newly opened/replacement managed tabs from Chrome auto-discard.
+- Treat a tab as ready only when both `status=complete` and the actual URL matches the expected current chat/project target.
+- Retry ChatGPT DOM/auth hydration for a bounded 8-second window before deciding that a loaded page is unauthenticated.
+- Recheck tab readiness immediately after listener registration to close the missed-event gap.
+- Disable and reject **Open Current Chat** while a running route is not in `monitoring`.
+- During crash recovery, adopt a concrete chat only when its project-scoped URL belongs to the configured Project, a confirmed start-message dispatch checkpoint exists, and the URL is not already in route history; otherwise rebuild from the configured Project page.
+- Persist a confirmed start-message dispatch checkpoint immediately after the content sender confirms the project start message and before entering capture-wait.
+- Post-send recovery prefers authoritative content `location.href`; while a checkpointed send is waiting for a verifiable permanent URL, it does not create another chat and uses a bounded 5-minute wait before explicit failure.
+- During `capture-wait`, persist a changed chat URL only when it belongs to the configured Project; unrelated ChatGPT chats are rejected and retried.
+- When a previously managed chat tab is lost, create a fresh route-owned replacement. Never adopt an arbitrary matching tab merely because no other Pulse route claims it.
+- Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
+- URL capture uses the content snapshot URL (`location.href`) as authoritative and re-validates Project ownership after any reload; lagging `chrome.tabs` URL metadata cannot authorize persistence.
+- If a correct loaded chat remains unauthenticated after the bounded hydration window, allow one single foreground reload + second bounded hydration attempt before surfacing auth failure.
+- Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
+- A manual user tab switch during a due check cancels any second foreground re-activation for that check; the route is deferred to the next monitor tick.
+- After detecting that the user left the managed tab during a service check, periodic monitor alarms are suppressed for a bounded 10-second grace so an already-queued alarm cannot immediately steal focus back.
+- Unconfirmed dispatches never advance continuation counters or rotation thresholds; they use bounded retry observation and may be credited only when a later assistant response proves the dialogue continued.
+- Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
+- Add loaded-Chromium adversarial scenarios:
+  - manually close the managed chat during monitoring and require recovery + successful auto-response;
+  - manually switch to another user tab while a service check is running and require Pulse not to steal focus back;
+  - Stop → Start must retain the same valid managed `tabId` and not increase ChatGPT tab count;
+  - **Open Current Chat** must activate that same managed `tabId` and not increase ChatGPT tab count.
+- Retain full 5/5 extension audits, browser E2E, dependency gate and reproducible package/provenance on candidate and exact post-merge main.
 
-0.8.5 now:
-- foregrounds every due managed chat before inspection/send;
-- safely restores the user's previous tab when the user has not switched elsewhere;
-- keeps the managed chat active if monitoring transitions into project rotation;
-- runs the monitor alarm every 30 seconds while still touching only routes whose `nextCheckAt` is due;
-- schedules a 30-second recheck after chat capture and after each auto-response so the next assistant response is discovered promptly;
-- preserves the configured interval as the actual stability delay after a completed assistant response is observed;
-- retries transient/generating/waiting states at 30 seconds and auth/page errors at a 5-minute backoff;
-- persists the page visibility observed during monitoring for diagnosability;
-- preserves project-scoped `/g/<project>/c/<chat-id>` URLs, 0.8.4 project foregrounding, rotation recovery, multi-route isolation and Pulse 1.0 isolation.
+## Current State
 
-## Candidate / PR #39 Evidence
-
-- Candidate SHA: `8c89ac325287a89b6931ff65c3cf1d37d25e8035`.
-- Release run `35814740744`: SUCCESS.
-- Dependency run `35814740811`: SUCCESS.
-- Five full extension audit cycles: 5/5 SUCCESS.
-- Loaded Chromium Pulse 1.0 watchdog E2E: SUCCESS.
-- Loaded Chromium Pulse 2.0:
-  - form draft: PASS;
-  - optional chat: PASS;
-  - multi-route save: PASS;
-  - rotation recovery: PASS;
-  - project foreground: PASS;
-  - overnight monitor alarm: PASS;
-  - monitor focus restore: PASS;
-  - normal rotation: PASS;
-  - Pulse 1 isolation: PASS.
-- Candidate artifact ID: `10731195565`.
-- Candidate ZIP SHA-256: `ecb256651a1e9f4cf6b01579cb9b104e3cc319b06abcfeefddc6d4de5e9796d4`.
-- Candidate source manifest SHA-256: `616655b77dcaf4e7645da6f2afb33e7aa4ab67ff5984eab5bc29148ee227e1cb`.
-
-## Exact Post-Merge Main Evidence
-
-- Product merge SHA: `aad546080ebac191e424e05c4e583b2678ea30e4`.
-- Release run `35815023317`: SUCCESS.
-- Dependency run `35815023312`: SUCCESS.
-- Five full extension audit cycles: 5/5 SUCCESS.
-- Loaded Chromium Pulse 1.0 watchdog E2E: SUCCESS.
-- Loaded Chromium Pulse 2.0 including `overnight_monitor_alarm=PASS` and `monitor_focus_restore=PASS`: SUCCESS.
-- Exact-main artifact ID: `10731685960`.
-- Exact-main ZIP SHA-256: `ecb256651a1e9f4cf6b01579cb9b104e3cc319b06abcfeefddc6d4de5e9796d4`.
-- Exact-main source manifest SHA-256: `616655b77dcaf4e7645da6f2afb33e7aa4ab67ff5984eab5bc29148ee227e1cb`.
-- Candidate and exact post-merge product main are byte-for-byte identical by canonical release hashes.
-
-## Audit Notes
-
-Two defects were caught by the stricter browser gate before release:
-- a missing `addMilliseconds` helper in the first implementation;
-- a brittle headless `visibilitychange` assertion, replaced by persisted `lastPageVisibility === "visible"` plus explicit focus-restore verification.
-
-No production safety check was weakened to make tests pass.
+- Previous verified release: 0.8.5.
+- 0.8.5 immutable product basis: `aad546080ebac191e424e05c4e583b2678ea30e4`.
+- Main state-only head before this work: `ffb0c5287780bfb41d218978d0f4fb1c47193e3f`.
+- Execution branch: `fix/pulse2-adversarial-hardening-0.8.6`.
+- Managed-tab reuse implemented in START.
+- UI Open Current Chat now delegates to engine action `OPEN_CURRENT_CHAT`.
+- Generic monitoring runtime failure backoff implemented.
+- Expected-target URL readiness implemented for monitoring and rotation waits.
+- Bounded post-load DOM/auth hydration retry implemented.
+- Tab-ready listener registration gap closed with an immediate post-subscription recheck.
+- Browser E2E extended with closed-tab recovery that preserves a separate user-owned matching tab, requires confirmed DOM delivery, manual focus guard, restart reuse, Open Current Chat reuse, unrelated recovery rejection and unrelated capture-wait rejection.
+- Unit/static tests extended for transient timing and tab lifecycle contracts.
+- Release metadata/tooling/docs bumped to 0.8.6 beta.
 
 ## Critical Work
 
-- [x] Root-cause the owner-reported overnight stall.
-- [x] Fix foreground monitoring and safe focus restore.
-- [x] Decouple response delay from observation cadence.
-- [x] Add short post-capture/post-dispatch rechecks and bounded error backoff.
-- [x] Add real alarm-driven loaded-browser regression.
-- [x] Pass candidate 5/5 audits, browser E2E, dependency and package gates.
-- [x] Merge PR #39 with exact-head guard.
-- [x] Repeat all material checks on exact post-merge main.
-- [x] Verify candidate and main package identity.
-- [x] Persist DONE/VERIFIED evidence.
+- [x] Read live 0.8.5 state and identify untested lifecycle surfaces.
+- [x] Find and fix Stop → Start duplicate-tab bug.
+- [x] Find and fix Open Current Chat unmanaged-duplicate bug.
+- [x] Add runtime failure backoff.
+- [x] Catch and fix replacement-tab readiness race exposed by the new browser test.
+- [x] Catch and fix post-load DOM/auth hydration race exposed by the same closed-tab scenario.
+- [x] Close the tab-ready listener registration event gap found in manual adversarial review.
+- [x] Guard Open Current Chat during rotating/capture-wait so it cannot corrupt the managed new-chat tab.
+- [x] Reject unrelated ChatGPT chats during rotation recovery and cover this with loaded Chromium.
+- [x] Reject unrelated ChatGPT chats during capture-wait and require later recovery to the correct project URL.
+- [x] Preserve user-owned matching tabs after managed-tab loss; recover only by creating a fresh route-owned replacement.
+- [x] Prevent `submitted-unconfirmed` sends from falsely advancing counters; add inferred confirmation from a later assistant response.
+- [x] Require explicit post-send provenance before adopting a same-project chat during rotation recovery; reject prior-history URLs.
+- [x] Make checkpointed post-send recovery SPA-authoritative and bounded so stale `Tab.url` cannot cause duplicate creation.
+- [x] Respect a manual focus change between first inspection and second send/rotate recheck; defer instead of stealing focus.
+- [x] Add bounded focus grace so a queued monitor alarm cannot immediately undo the user's manual tab switch.
+- [x] Foreground URL capture and restore user focus after the capture check.
+- [x] Use page snapshot `location.href` as authoritative during SPA URL capture and cover stale `chrome.tabs` metadata.
+- [x] Add adversarial loaded-browser scenarios.
+- [x] Add unit/static timing and lifecycle tests.
+- [x] Bump release tooling/docs to 0.8.6 beta.
+- [ ] Open canonical PR on exact candidate.
+- [ ] Pass adversarial browser E2E, 5/5 audits, dependency gate and reproducible package/provenance.
+- [ ] Review any newly exposed failures and fix without weakening acceptance.
+- [ ] Merge exact verified head.
+- [ ] Repeat material validation on exact post-merge main.
+- [ ] Persist DONE/VERIFIED evidence and deliver exact-main ZIP.
 
 ## Blockers
 
-NONE.
+NONE currently known.
 
 ## Active Execution
 
-NONE. ChatPulse 0.8.5 release contract is complete.
+HQ_DIRECT on `fix/pulse2-adversarial-hardening-0.8.6`.
 
 ## Next Action
 
-Await owner runtime verification or next requested bug/feature.
+Open the canonical PR and let the expanded Chromium E2E try to break the candidate.
 
 ## Recovery Note
 
-Local Chrome extensions cannot execute while Chrome or the computer is fully asleep/off. When Chrome is running, 0.8.5 no longer depends on long background-tab hydration or uses the configured auto-response delay as polling cadence.
+The additional tests intentionally go beyond prior release coverage. Do not accept a green static suite if any of the new real-tab lifecycle assertions fail.

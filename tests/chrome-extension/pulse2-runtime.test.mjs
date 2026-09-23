@@ -72,9 +72,51 @@ test("due monitoring foregrounds the route tab and restores the user's previous 
   assert.match(engine, /previousFocus = await capturePulse2PreviousFocus\(tab\.id\)/);
   assert.match(engine, /tab = await activatePulse2ManagedTab\(tab\.id\)/);
   assert.match(engine, /await restorePulse2PreviousFocus\(previousFocus, managedTabId\)/);
+  assert.match(engine, /pulse2ManagedTabIsActive/);
+  assert.match(engine, /deferPulse2MonitoringForUserFocus/);
+  assert.match(engine, /USER_FOCUS_GRACE_MS = 10_000/);
+  assert.match(engine, /monitorFocusSuppressedUntil/);
+  assert.match(engine, /source === "alarm" && Date\.now\(\) < monitorFocusSuppressedUntil/);
+  assert.match(engine, /PULSE2_MONITOR_RECHECK_MS/);
   assert.match(engine, /periodInMinutes: MONITOR_ALARM_PERIOD_MINUTES/);
   assert.match(model, /PULSE2_MONITOR_RECHECK_MS = 30_000/);
   assert.match(model, /PULSE2_MONITOR_ERROR_RETRY_MS = 5 \* 60_000/);
+  assert.match(model, /normalizedOutcome === "confirmed"/);
+  assert.match(model, /creditPulse2Continuation/);
+  assert.match(model, /confirmed-by-response/);
+});
+
+test("managed tab lifecycle avoids duplicates and runtime errors back off", () => {
+  assert.match(engine, /reusablePulse2RouteTab/);
+  assert.doesNotMatch(engine, /findUnclaimedPulse2ChatTab/);
+  assert.match(engine, /pulse2TabReadyForTarget/);
+  assert.match(engine, /CHAT_HYDRATION_TIMEOUT_MS = 8_000/);
+  assert.match(engine, /CHAT_HYDRATION_RETRY_MS = 500/);
+  assert.match(engine, /inspectPulse2TabAfterHydration/);
+  assert.match(engine, /inspectPulse2TabWithReloadRecovery/);
+  assert.match(engine, /chrome\.tabs\.reload\(tabId\)/);
+  assert.match(engine, /waitForTabComplete\(tabId, TAB_LOAD_TIMEOUT_MS, expectedUrl\)/);
+  assert.match(engine, /Close the gap between the pre-listener read and listener registration/);
+  assert.match(engine, /waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS, route\.currentChatUrl\)/);
+  assert.match(engine, /waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS, route\.projectUrl\)/);
+  assert.match(engine, /let tab = await reusablePulse2RouteTab\(route, targetUrl\)/);
+  assert.match(engine, /PULSE2_MONITOR_ERROR_RETRY_MS/);
+  assert.match(engine, /nextCheckAt: new Date\(Date\.now\(\) \+ PULSE2_MONITOR_ERROR_RETRY_MS\)\.toISOString\(\)/);
+  assert.match(ui, /runAction\("OPEN_CURRENT_CHAT", \{ routeId: selectedRouteId \}, false\)/);
+  assert.match(engine, /state\.enabled && route\.phase !== "monitoring"/);
+  assert.match(engine, /belongsToProject = changed && pulse2ChatBelongsToProject\(normalizedURL, route\.projectUrl\)/);
+  assert.match(ui, /running && live\?\.phase !== "monitoring"/);
+  const openCurrentBody = ui.match(/async function openCurrentChat\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(openCurrentBody, /chrome\.tabs\.create/);
+});
+
+test("URL capture foregrounds the managed new-chat tab and restores prior focus", () => {
+  assert.match(engine, /previousFocus = await capturePulse2PreviousFocus\(tab\.id\)/);
+  assert.match(engine, /normalizedURL = normalizeChatURL\(snapshot\?\.url\)/);
+  assert.match(engine, /await waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS\)/);
+  assert.match(engine, /visibilityState: snapshot\.visibilityState/);
+  assert.match(engine, /await restorePulse2PreviousFocus\(previousFocus, managedTabId\)/);
+  assert.match(model, /lastPageVisibility: normalizePageVisibility\(visibilityState\) \|\| route\.lastPageVisibility/);
 });
 
 test("project rotation foregrounds the managed tab before composer lookup", () => {
@@ -93,6 +135,14 @@ test("rotating routes have a persistent recovery alarm and crash-safe post-send 
   assert.match(engine, /alarm\.name === PULSE2_ROTATION_ALARM_NAME/);
   assert.match(engine, /periodInMinutes: ROTATION_RECOVERY_PERIOD_MINUTES/);
   assert.match(engine, /recoverPulse2RotationAfterDispatch/);
+  assert.match(engine, /route\.rotationDispatchAt/);
+  assert.match(engine, /markPulse2RotationDispatch/);
+  assert.match(engine, /pulse2RouteHistoryIncludesChat/);
+  assert.match(engine, /ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS = 5 \* 60_000/);
+  assert.match(engine, /normalizeChatURL\(snapshot\?\.url\) \|\| concreteChatUrl/);
+  assert.match(engine, /recovery === "adopted" \|\| recovery === "pending"/);
+  assert.match(engine, /pulse2ChatBelongsToProject/);
+  assert.match(engine, /chatKey === projectKey/);
   assert.match(engine, /normalizeChatURL\(tab\?\.url\)/);
   assert.match(engine, /lastCheckAt: new Date\(\)\.toISOString\(\)/);
   assert.match(engine, /targetUrl = route\.currentChatUrl \|\| route\.projectUrl/);

@@ -10,6 +10,7 @@ import {
   completePulse2Route,
   defaultPulse2State,
   markPulse2CaptureWait,
+  markPulse2RotationDispatch,
   normalizePulse2ProjectURL,
   normalizePulse2State,
   observePulse2Snapshot,
@@ -139,12 +140,98 @@ test("stable assistant response becomes eligible only after the configured delay
   assert.equal(result.decision, "send-auto-response");
 });
 
+test("unconfirmed dispatch never advances counters and can be confirmed by the next assistant response", () => {
+  let state = startPulse2State(configured(undefined, {
+    intervalMinutes: 1,
+    messagesPerCycle: 1
+  }), { at: "2026-09-23T00:00:00.000Z" });
+
+  let observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:00:00.000Z")
+  );
+  state = observed.state;
+  observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:01:00.000Z")
+  );
+  assert.equal(observed.decision, "send-auto-response");
+
+  state = recordPulse2Dispatch(
+    observed.state,
+    "route-a",
+    "answer-1",
+    "submitted-unconfirmed",
+    "2026-09-23T00:01:00.000Z"
+  );
+  assert.equal(route(state, "route-a").cycleContinuationCount, 0);
+  assert.equal(route(state, "route-a").totalContinuationCount, 0);
+  assert.equal(route(state, "route-a").rotationPending, false);
+  assert.equal(route(state, "route-a").lastDispatchOutcome, "submitted-unconfirmed");
+  assert.equal(
+    Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-23T00:01:00.000Z"),
+    5 * 60_000
+  );
+
+  observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-2"),
+    Date.parse("2026-09-23T00:02:00.000Z")
+  );
+  assert.equal(observed.decision, "response-changed");
+  assert.equal(route(observed.state, "route-a").cycleContinuationCount, 1);
+  assert.equal(route(observed.state, "route-a").totalContinuationCount, 1);
+  assert.equal(route(observed.state, "route-a").rotationPending, true);
+  assert.equal(route(observed.state, "route-a").lastDispatchOutcome, "confirmed-by-response");
+  assert.equal(route(observed.state, "route-a").lastError, null);
+});
+
+test("unconfirmed dispatch on the same assistant response backs off instead of hammering", () => {
+  let state = startPulse2State(configured(undefined, {
+    intervalMinutes: 1
+  }), { at: "2026-09-23T00:00:00.000Z" });
+  let observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:00:00.000Z")
+  );
+  state = recordPulse2Dispatch(
+    observed.state,
+    "route-a",
+    "answer-1",
+    "submitted-unconfirmed",
+    "2026-09-23T00:01:00.000Z"
+  );
+  observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:06:00.000Z")
+  );
+  assert.equal(observed.decision, "already-dispatched");
+  assert.equal(route(observed.state, "route-a").cycleContinuationCount, 0);
+  assert.equal(
+    Date.parse(route(observed.state, "route-a").nextCheckAt) - Date.parse("2026-09-23T00:06:00.000Z"),
+    5 * 60_000
+  );
+});
+
 test("capture and dispatch use a short recheck while configured delay remains response-based", () => {
   let state = startPulse2State(configured([
     { id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }
   ], { intervalMinutes: 60 }), { at: "2026-09-22T10:00:00.000Z" });
   state = markPulse2CaptureWait(state, "route-a", "2026-09-22T10:00:30.000Z");
-  state = capturePulse2Chat(state, "route-a", CHAT_A, { at: "2026-09-22T10:02:30.000Z" });
+  state = capturePulse2Chat(state, "route-a", CHAT_A, {
+    at: "2026-09-22T10:02:30.000Z",
+    visibilityState: "visible"
+  });
+  assert.equal(route(state, "route-a").lastPageVisibility, "visible");
   assert.equal(
     Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-22T10:02:30.000Z"),
     30_000
@@ -164,6 +251,56 @@ test("capture and dispatch use a short recheck while configured delay remains re
     Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-22T11:03:00.000Z"),
     30_000
   );
+});
+
+test("monitor transient and auth states use bounded retry timing", () => {
+  let state = startPulse2State(configured(undefined, { intervalMinutes: 60 }), {
+    at: "2026-09-23T00:00:00.000Z"
+  });
+  const now = Date.parse("2026-09-23T00:00:00.000Z");
+
+  let observed = observePulse2Snapshot(state, "route-a", {
+    pageReady: false,
+    visibilityState: "visible"
+  }, now);
+  assert.equal(observed.decision, "page-not-ready");
+  assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 30_000);
+
+  observed = observePulse2Snapshot(state, "route-a", {
+    pageReady: true,
+    authenticated: false,
+    visibilityState: "visible"
+  }, now);
+  assert.equal(observed.decision, "not-authenticated");
+  assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 5 * 60_000);
+
+  observed = observePulse2Snapshot(state, "route-a", {
+    pageReady: true,
+    authenticated: true,
+    errorDetected: false,
+    isGenerating: true,
+    visibilityState: "visible"
+  }, now);
+  assert.equal(observed.decision, "generating");
+  assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 30_000);
+});
+
+test("rotation dispatch checkpoint is explicit and cleared after capture", () => {
+  let state = startPulse2State(configured(), { at: "2026-09-23T00:00:00.000Z" });
+  state = beginPulse2Rotation(state, "route-a", "2026-09-23T00:01:00.000Z");
+  assert.equal(route(state, "route-a").rotationDispatchAt, null);
+
+  state = markPulse2RotationDispatch(state, "route-a", "2026-09-23T00:01:10.000Z");
+  assert.equal(route(state, "route-a").rotationDispatchAt, "2026-09-23T00:01:10.000Z");
+
+  state = markPulse2CaptureWait(state, "route-a", "2026-09-23T00:01:11.000Z");
+  assert.equal(route(state, "route-a").rotationDispatchAt, "2026-09-23T00:01:10.000Z");
+
+  const projectChat = "https://chatgpt.com/g/g-p-project-a/c/new-cycle";
+  state = capturePulse2Chat(state, "route-a", projectChat, {
+    at: "2026-09-23T00:03:11.000Z"
+  });
+  assert.equal(route(state, "route-a").rotationDispatchAt, null);
 });
 
 test("initial project-created chat becomes cycle 1 instead of cycle 2", () => {

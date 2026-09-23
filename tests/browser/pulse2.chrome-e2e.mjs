@@ -9,7 +9,10 @@ const EXTENSION_PATH = path.resolve("chrome-extension");
 const CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-initial";
 const PROJECT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/project";
 const PROJECT_URL_2 = "https://chatgpt.com/g/g-p-pulse2-browser-e2e-two/project";
-const CREATED_CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-created";
+const CREATED_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-created";
+const UNTRUSTED_PROJECT_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-untrusted";
+const CHECKPOINT_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-checkpoint";
+const UNRELATED_CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-unrelated";
 const AUTO_COMMAND = "PULSE2_BROWSER_E2E_CONTINUE";
 const START_MESSAGE = "PULSE2_BROWSER_E2E_START";
 const UNSAVED_DRAFT = "UNSAVED_DRAFT_MUST_SURVIVE_STATE_PUSH";
@@ -98,12 +101,12 @@ try {
   const routeId = blankSingleSaved.routes[0].id;
 
   const recoveryProjectPage = await context.newPage();
-  await recoveryProjectPage.goto(PROJECT_URL, { waitUntil: "domcontentloaded" });
+  await recoveryProjectPage.goto(UNTRUSTED_PROJECT_CHAT_URL, { waitUntil: "domcontentloaded" });
   await waitFor(
     async () => await recoveryProjectPage.locator("[data-testid='profile-button']").count() === 1,
-    "controlled project fixture was not installed before recovery"
+    "controlled same-project untrusted-chat fixture was not installed before recovery"
   );
-  const recoveryTabId = await tabIdForUrl(pulse2Page, PROJECT_URL);
+  const recoveryTabId = await tabIdForUrl(pulse2Page, UNTRUSTED_PROJECT_CHAT_URL);
   assert.ok(Number.isInteger(recoveryTabId), "controlled project fixture has no Chrome tab id");
 
   await pulse2Page.bringToFront();
@@ -139,6 +142,9 @@ try {
   );
   assert.ok(Date.parse(recoveredCaptureWait.captureDueAt) - Date.parse(recoveredCaptureWait.lastCheckAt) >= 119_000);
 
+  const recoveryPulseUiTabId = await tabIdForUrl(pulse2Page, pulse2Page.url());
+  assert.ok(Number.isInteger(recoveryPulseUiTabId), "Pulse 2.0 UI tab id missing before recovery capture");
+  await pulse2Page.bringToFront();
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const recoveredInitialChat = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -152,9 +158,46 @@ try {
   }, "Pulse 2.0 did not adopt the recovered first project chat as cycle 1");
   assert.equal(recoveredInitialChat.history.length, 1);
   assert.equal(recoveredInitialChat.history[0].source, "project-initial");
+  assert.equal(
+    recoveredInitialChat.lastPageVisibility,
+    "visible",
+    "recovery URL capture inspected the new chat while it was still backgrounded"
+  );
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === recoveryPulseUiTabId,
+    "recovery URL capture did not restore the previous Pulse 2.0 UI tab"
+  );
 
   await sendPulse2Request(pulse2Page, "STOP");
   await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop after recovery regression");
+  await recoveredProjectTab.close();
+  await recoveryProjectPage.close();
+
+  // Adversarial regression: a persisted post-send checkpoint may recover a new
+  // same-project chat, but only after the confirmed start-message checkpoint exists.
+  const checkpointPage = await context.newPage();
+  await checkpointPage.goto(CHECKPOINT_CHAT_URL, { waitUntil: "domcontentloaded" });
+  await appendUserMessage(checkpointPage, "checkpoint-start-message", START_MESSAGE);
+  const checkpointTabId = await tabIdForUrl(pulse2Page, CHECKPOINT_CHAT_URL);
+  assert.ok(Number.isInteger(checkpointTabId), "checkpoint recovery tab id missing");
+  await seedPersistedPostSendRotationAndTriggerRecovery(pulse2Page, routeId, checkpointTabId);
+  const checkpointRecovered = await waitFor(async () => {
+    const running = await getPulse2State(pulse2Page);
+    const route = running?.routes?.find((item) => item.id === routeId);
+    if (route?.phase === "error") throw new Error(`Pulse 2.0 checkpoint recovery failed: ${route.lastError}`);
+    return running?.enabled
+      && route?.phase === "capture-wait"
+      && route.tabId === checkpointTabId
+      && route.rotationDispatchAt
+      ? route
+      : null;
+  }, "Pulse 2.0 did not recover a checkpointed post-send project chat");
+  assert.equal(checkpointRecovered.currentChatUrl, CREATED_CHAT_URL);
+  assert.equal(await latestUserMessage(checkpointPage), START_MESSAGE);
+  assert.equal(await projectComposerActivationCount(checkpointPage), 0, "checkpoint recovery recreated a chat instead of adopting the confirmed post-send tab");
+  await sendPulse2Request(pulse2Page, "STOP");
+  await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop after checkpoint recovery regression");
+  await checkpointPage.close();
 
   // Keep the retained full rotation scenario deterministic with one existing chat.
   await firstTab.click();
@@ -200,6 +243,24 @@ try {
   }, "Pulse 2.0 did not establish the initial assistant baseline");
   assert.equal(baseline.cycleNumber, 1);
   assert.equal(baseline.cycleContinuationCount, 0);
+
+  // Prepare a user-owned copy of the same current chat. If the managed tab
+  // disappears, Pulse must leave this tab untouched and create a fresh
+  // route-owned replacement instead of hijacking the user's tab.
+  const recoverySparePage = await context.newPage();
+  await recoverySparePage.goto(CHAT_URL, { waitUntil: "domcontentloaded" });
+  await waitFor(
+    async () => await recoverySparePage.locator("[data-testid='profile-button']").count() === 1,
+    "controlled spare current-chat fixture was not rendered"
+  );
+  await recoverySparePage.route(PROJECT_URL, async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: projectFixtureHtml() });
+  });
+  const recoverySpareTabId = await tabIdForUrl(pulse2Page, CHAT_URL);
+  assert.ok(Number.isInteger(recoverySpareTabId), "spare current-chat tab id missing");
+
+  // Adversarial regression: closing the managed chat must not kill the route.
+  await initialChatPage.close();
   await pulse2Page.bringToFront();
   await agePulse2Observation(pulse2Page, routeId);
   await triggerMonitorAlarm(serviceWorker);
@@ -210,7 +271,29 @@ try {
     return route?.cycleContinuationCount === 1 && route.rotationPending === true ? route : null;
   }, "Pulse 2.0 did not record the configured N=1 auto-response");
   assert.equal(firstDispatch.totalContinuationCount, 1);
-  assert.equal(await latestUserMessage(initialChatPage), AUTO_COMMAND, "Pulse 2.0 auto-response text mismatch");
+  assert.equal(
+    firstDispatch.lastDispatchOutcome,
+    "confirmed",
+    "controlled fixture dispatch advanced counters without confirmed DOM delivery"
+  );
+  assert.notEqual(firstDispatch.tabId, retainedTabId, "closed managed chat tab id was not replaced");
+  assert.notEqual(
+    firstDispatch.tabId,
+    recoverySpareTabId,
+    "Pulse 2.0 hijacked a user-owned matching chat tab after managed-tab loss"
+  );
+  assert.equal(
+    await latestUserMessage(recoverySparePage),
+    "",
+    "Pulse 2.0 wrote into the user-owned matching chat tab"
+  );
+  const recoveredMonitoringPage = await waitFor(async () => {
+    for (const page of context.pages()) {
+      if (page === recoverySparePage || page.url() !== CHAT_URL) continue;
+      if (await latestUserMessage(page) === AUTO_COMMAND) return page;
+    }
+    return null;
+  }, "Pulse 2.0 did not create and send through a fresh route-owned replacement tab");
   assert.equal(
     firstDispatch.lastPageVisibility,
     "visible",
@@ -221,7 +304,7 @@ try {
     "alarm-driven monitoring did not restore the user's previous Pulse 2.0 tab"
   );
 
-  await appendAssistantMessage(initialChatPage, "assistant-after-auto-response", "Final response before rotation.");
+  await appendAssistantMessage(recoveredMonitoringPage, "assistant-after-auto-response", "Final response before rotation.");
   await pulse2Page.locator("#checkButton").click();
   await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -239,6 +322,15 @@ try {
   }, "Pulse 2.0 did not create the next project chat and enter capture wait");
   assert.equal(captureWait.completedCycles, 1);
   assert.ok(Date.parse(captureWait.captureDueAt) - Date.parse(captureWait.rotationStartedAt) >= 119_000);
+  await waitFor(
+    async () => await pulse2Page.locator("#openCurrentButton").isDisabled(),
+    "Open Current Chat must be disabled while the route is waiting to capture a new chat URL"
+  );
+  await assert.rejects(
+    () => sendPulse2Request(pulse2Page, "OPEN_CURRENT_CHAT", { routeId }),
+    /Дождитесь завершения создания нового чата/,
+    "background engine allowed Open Current Chat to replace the managed rotation tab"
+  );
 
   const projectTab = await waitFor(async () => context.pages().find((page) => page.url() === CREATED_CHAT_URL) || null,
     "project fixture never transitioned to the newly created persistent chat URL");
@@ -251,16 +343,118 @@ try {
     "ordinary rotation must foreground the managed Project tab before composer lookup"
   );
 
+  // Adversarial regression: capture-wait must never adopt a real navigation
+  // to a chat outside the selected project.
+  await navigateManagedTab(pulse2Page, captureWait.tabId, UNRELATED_CHAT_URL);
+  await waitFor(
+    async () => projectTab.url() === UNRELATED_CHAT_URL
+      && await projectTab.locator("[data-testid='profile-button']").count() === 1,
+    "managed capture tab did not navigate to the unrelated ChatGPT fixture"
+  );
+  await expireCaptureDelayAndTrigger(serviceWorker, routeId);
+  const rejectedUnrelatedCapture = await waitFor(async () => {
+    const running = await getPulse2State(pulse2Page);
+    const route = running?.routes?.find((item) => item.id === routeId);
+    if (!route) return null;
+    if (route.currentChatUrl === UNRELATED_CHAT_URL) {
+      throw new Error("Pulse 2.0 persisted an unrelated ChatGPT chat during capture-wait");
+    }
+    if (route.phase === "error") {
+      throw new Error(`Pulse 2.0 failed instead of retrying unrelated capture: ${route.lastError || "unknown error"}`);
+    }
+    return route.phase === "capture-wait"
+      && route.captureAttempts >= 1
+      && route.currentChatUrl === CHAT_URL
+      ? route
+      : null;
+  }, "Pulse 2.0 capture-wait did not retain the prior chat while rejecting a real unrelated navigation");
+  assert.match(rejectedUnrelatedCapture.lastError || "", /Новая ссылка чата ещё не появилась/);
+
+  await navigateManagedTab(pulse2Page, captureWait.tabId, CREATED_CHAT_URL);
+  await waitFor(
+    async () => projectTab.url() === CREATED_CHAT_URL
+      && await projectTab.locator("[data-testid='profile-button']").count() === 1,
+    "managed capture tab did not return to the correct project-scoped chat"
+  );
+  await appendUserMessage(projectTab, "restored-start-message", START_MESSAGE);
+  await pulse2Page.bringToFront();
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const captured = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
-    if (route?.lastError) throw new Error(`Pulse 2.0 URL capture failed: ${route.lastError}`);
+    if (route?.phase === "error") {
+      throw new Error(`Pulse 2.0 URL capture failed: ${route.lastError || "terminal route error"}`);
+    }
     return route?.phase === "monitoring" && route.cycleNumber === 2 && route.currentChatUrl === CREATED_CHAT_URL ? route : null;
   }, "Pulse 2.0 did not capture and adopt the new /c/... URL");
   assert.equal(captured.cycleContinuationCount, 0);
   assert.equal(captured.history.length, 2);
   assert.equal(captured.history.at(-1).source, "project");
+  assert.equal(
+    captured.lastPageVisibility,
+    "visible",
+    "URL capture inspected the newly created chat while it was still backgrounded"
+  );
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === pulse2TabId,
+    "URL capture did not restore the previous Pulse 2.0 UI tab"
+  );
+
+  // Adversarial regression: if the user switches tabs during a service check,
+  // focus restoration must not steal focus back afterwards.
+  await pulse2Page.bringToFront();
+  const guardedCheck = sendPulse2Request(pulse2Page, "CHECK_NOW", { routeId });
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === captured.tabId,
+    "manual focus-guard check never foregrounded the managed chat"
+  );
+  const userChoicePage = await context.newPage();
+  const userChoiceUrl = `data:text/html,${encodeURIComponent(`<title>Pulse2 Focus Guard ${Date.now()}</title>`)}`;
+  await userChoicePage.goto(userChoiceUrl, { waitUntil: "domcontentloaded" });
+  await userChoicePage.bringToFront();
+  const userChoiceTabId = await tabIdForUrl(pulse2Page, userChoicePage.url());
+  assert.ok(Number.isInteger(userChoiceTabId), "manual user-choice tab id missing");
+  await guardedCheck;
+  assert.equal(
+    await activeTabId(pulse2Page),
+    userChoiceTabId,
+    "Pulse 2.0 stole focus back after the user manually switched tabs"
+  );
+  await userChoicePage.close();
+
+  // Adversarial regression: Stop -> Start must reuse the same valid managed tab.
+  const managedBeforeRestart = (await getPulse2State(pulse2Page)).routes.find((item) => item.id === routeId).tabId;
+  const tabsBeforeRestart = await chatgptTabIds(pulse2Page);
+  await sendPulse2Request(pulse2Page, "STOP");
+  await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop before restart-reuse test");
+  await sendPulse2Request(pulse2Page, "START");
+  const restartedRoute = await waitFor(async () => {
+    const running = await getPulse2State(pulse2Page);
+    const route = running?.routes?.find((item) => item.id === routeId);
+    return running?.enabled && route?.tabId === managedBeforeRestart ? route : null;
+  }, "Pulse 2.0 did not reuse the existing managed tab after Stop -> Start");
+  assert.equal(restartedRoute.tabId, managedBeforeRestart);
+  assert.deepEqual(
+    await chatgptTabIds(pulse2Page),
+    tabsBeforeRestart,
+    "Stop -> Start created a duplicate ChatGPT managed tab"
+  );
+
+  await sendPulse2Request(pulse2Page, "STOP");
+  await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop before Open Current Chat test");
+  await pulse2Page.bringToFront();
+  await waitFor(async () => !(await pulse2Page.locator("#openCurrentButton").isDisabled()), "Open Current Chat button stayed disabled");
+  const tabsBeforeOpenCurrent = await chatgptTabIds(pulse2Page);
+  await pulse2Page.locator("#openCurrentButton").click();
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === managedBeforeRestart,
+    "Open Current Chat did not activate the engine-managed tab"
+  );
+  assert.deepEqual(
+    await chatgptTabIds(pulse2Page),
+    tabsBeforeOpenCurrent,
+    "Open Current Chat created a duplicate tab instead of reusing the managed tab"
+  );
 
   const pulse1After = await getPulse1State(pulse2Page);
   assert.equal(pulse1After.enabled, pulse1Before.enabled, "Pulse 2.0 mutated Pulse 1.0 enabled state");
@@ -271,9 +465,22 @@ try {
   console.log("pulse2_browser_e2e_optional_chat_save=PASS");
   console.log("pulse2_browser_e2e_multi_route_save=PASS");
   console.log("pulse2_browser_e2e_rotation_recovery=PASS");
+  console.log("pulse2_browser_e2e_same_project_untrusted_recovery_guard=PASS");
+  console.log("pulse2_browser_e2e_post_send_checkpoint_recovery=PASS");
+  console.log("pulse2_browser_e2e_unrelated_chat_recovery_guard=PASS");
   console.log("pulse2_browser_e2e_project_foreground=PASS");
   console.log("pulse2_browser_e2e_overnight_monitor_alarm=PASS");
   console.log("pulse2_browser_e2e_monitor_focus_restore=PASS");
+  console.log("pulse2_browser_e2e_capture_foreground=PASS");
+  console.log("pulse2_browser_e2e_capture_focus_restore=PASS");
+  console.log("pulse2_browser_e2e_closed_tab_recovery=PASS");
+  console.log("pulse2_browser_e2e_user_tab_isolation=PASS");
+  console.log("pulse2_browser_e2e_lost_tab_adoption=PASS");
+  console.log("pulse2_browser_e2e_manual_focus_guard=PASS");
+  console.log("pulse2_browser_e2e_restart_tab_reuse=PASS");
+  console.log("pulse2_browser_e2e_open_current_rotation_guard=PASS");
+  console.log("pulse2_browser_e2e_unrelated_capture_guard=PASS");
+  console.log("pulse2_browser_e2e_open_current_reuse=PASS");
   console.log("pulse2_browser_e2e_rotation=PASS");
   console.log("pulse2_browser_e2e_isolation=PASS");
   console.log("pulse2_browser_e2e_result=PASS");
@@ -350,12 +557,48 @@ async function seedPersistedRotationAndTriggerRecovery(extensionPage, routeId, t
       lastCheckAt: null,
       nextCheckAt: null,
       rotationStartedAt: now,
+      rotationDispatchAt: null,
       captureDueAt: null,
       captureAttempts: 0,
       lastCreatedChatAt: null,
       lastError: null,
       stopReason: null,
       history: []
+    });
+
+    await chrome.storage.local.set({ chatpulse2State: state });
+    await chrome.alarms.create("chatpulse-pulse2-rotation", { when: Date.now() + 100 });
+  }, { id: routeId, managedTabId: tabId });
+}
+
+async function seedPersistedPostSendRotationAndTriggerRecovery(extensionPage, routeId, tabId) {
+  await extensionPage.evaluate(async ({ id, managedTabId }) => {
+    const stored = await chrome.storage.local.get("chatpulse2State");
+    const state = stored.chatpulse2State;
+    const route = state.routes.find((item) => item.id === id);
+    if (!route) throw new Error("Pulse 2.0 checkpoint recovery route missing");
+    const now = new Date().toISOString();
+
+    state.enabled = true;
+    state.phase = "running";
+    state.sessionId = `e2e-post-send-recovery-${Date.now()}`;
+    state.controlRevision = Number(state.controlRevision || 0) + 1;
+    state.lastError = null;
+    Object.assign(route, {
+      phase: "rotating",
+      initializingChat: false,
+      completedCycles: Math.max(Number(route.completedCycles || 0), Number(route.cycleNumber || 1)),
+      rotationPending: true,
+      tabId: managedTabId,
+      checkInProgress: false,
+      lastCheckAt: null,
+      nextCheckAt: null,
+      rotationStartedAt: now,
+      rotationDispatchAt: now,
+      captureDueAt: null,
+      captureAttempts: 0,
+      lastError: null,
+      stopReason: null
     });
 
     await chrome.storage.local.set({ chatpulse2State: state });
@@ -374,6 +617,19 @@ async function activeTabId(extensionPage) {
   return extensionPage.evaluate(async () => {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     return tabs[0]?.id ?? null;
+  });
+}
+
+async function chatgptTabIds(extensionPage) {
+  return extensionPage.evaluate(async () => {
+    const tabs = await chrome.tabs.query({});
+    return tabs
+      .filter((tab) => {
+        try { return new URL(tab.url || "").hostname === "chatgpt.com"; } catch { return false; }
+      })
+      .map((tab) => tab.id)
+      .filter(Number.isInteger)
+      .sort((left, right) => left - right);
   });
 }
 
@@ -417,6 +673,16 @@ async function appendAssistantMessage(page, id, text) {
   await page.evaluate(({ messageId, messageText }) => {
     const message = document.createElement("article");
     message.setAttribute("data-message-author-role", "assistant");
+    message.setAttribute("data-message-id", messageId);
+    message.textContent = messageText;
+    document.querySelector("#messages").append(message);
+  }, { messageId: id, messageText: text });
+}
+
+async function appendUserMessage(page, id, text) {
+  await page.evaluate(({ messageId, messageText }) => {
+    const message = document.createElement("article");
+    message.setAttribute("data-message-author-role", "user");
     message.setAttribute("data-message-id", messageId);
     message.textContent = messageText;
     document.querySelector("#messages").append(message);

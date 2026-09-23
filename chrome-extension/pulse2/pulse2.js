@@ -150,15 +150,11 @@ async function useCurrentChat() {
 async function openCurrentChat() {
   const route = selectedDraftRoute();
   const url = route?.currentChatUrl?.trim();
-  if (!url) {
+  if (!url || !selectedRouteId) {
     showMessage("У выбранного маршрута ещё нет текущего чата.", "error");
     return;
   }
-  try {
-    await chrome.tabs.create({ url, active: true });
-  } catch (error) {
-    showMessage(errorMessage(error), "error");
-  }
+  await runAction("OPEN_CURRENT_CHAT", { routeId: selectedRouteId }, false);
 }
 
 async function checkSelectedRoute() {
@@ -403,8 +399,10 @@ function renderControlsState() {
   }
   ui.removeRouteButton.disabled = running || busy || !draft || draft.routes.length <= 1;
   const route = selectedDraftRoute();
-  ui.openCurrentButton.disabled = busy || !route?.currentChatUrl?.trim();
   const live = selectedStateRoute();
+  ui.openCurrentButton.disabled = busy
+    || !route?.currentChatUrl?.trim()
+    || (running && live?.phase !== "monitoring");
   ui.checkButton.disabled = busy || !running || live?.phase !== "monitoring";
   ui.toggleButton.disabled = busy;
 }

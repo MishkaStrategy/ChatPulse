@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.6 beta — adversarial managed-tab hardening
+
+- reuse a still-valid route-owned managed tab across Stop → Start instead of unconditionally opening another ChatGPT tab;
+- route the Pulse 2.0 **Open current chat** action through the background engine so it activates the managed route tab rather than creating an unmanaged duplicate;
+- disable and reject **Open current chat** while a running route is rotating or waiting for URL capture, preventing the old chat from replacing the new-chat managed tab;
+- protect a replacement/opened managed tab from Chrome auto-discard;
+- apply a bounded 5-minute retry to unexpected monitoring runtime failures so a broken page cannot steal focus every 30 seconds indefinitely;
+- never advance continuation counters for `submitted-unconfirmed` sends; only confirmed DOM delivery counts immediately, while a later assistant response can retrospectively confirm the prior send;
+- wait for a replacement tab to reach the expected ChatGPT chat/project URL before inspection, avoiding false authentication failures on transient blank documents;
+- after the correct URL loads, retry ChatGPT DOM/auth hydration for a bounded 8-second window before deciding that the profile is unauthenticated;
+- if a correct loaded chat still appears unauthenticated after that bounded hydration window, perform exactly one foreground reload and repeat target-URL + hydration checks before recording an auth failure;
+- close the event gap between the initial tab-state read and `tabs.onUpdated` listener registration so a fast load cannot be missed and turn into a false 45-second timeout;
+- reject unrelated ChatGPT chats during the two-minute URL capture window so manual navigation cannot attach a route to the wrong project;
+- treat the content snapshot `location.href` as authoritative during URL capture so SPA `history.replaceState()` cannot race lagging `chrome.tabs.get().url` metadata;
+- refuse to adopt an arbitrary ChatGPT chat during rotation recovery unless its project-scoped URL belongs to the configured Project; otherwise return to the configured Project and create the correct chat;
+- persist a confirmed start-message checkpoint before entering capture-wait and require that checkpoint for crash-recovery adoption, preventing an arbitrary same-project chat from being mistaken for the newly created cycle;
+- prefer the content page's authoritative `location.href` over a potentially stale `chrome.tabs.Tab.url` during post-send recovery; while a confirmed send is waiting for its permanent URL, do not create a duplicate chat, and fail explicitly after a bounded 5-minute recovery window;
+- reject any recovery URL already present in that route's history;
+- if a managed monitoring tab is lost, create a fresh route-owned replacement instead of hijacking an arbitrary user-owned tab that happens to show the same current chat;
+- foreground a due new-chat tab during permanent URL capture, then safely restore the user's previous tab after the capture check;
+- verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
+- verify that a user tab switch during a service check is respected and not overwritten by focus restoration;
+- defer the second monitoring recheck when the user switches away after Pulse foregrounds the managed chat, preventing a later internal re-activation from stealing focus back;
+- suppress already-queued periodic monitor alarms for a short 10-second grace after Pulse detects that the user manually left the managed tab during a service check;
+- extend loaded-Chromium regression coverage for tab reuse, closed-tab recovery, manual focus guard and engine-managed Open Current Chat;
+- move deterministic beta package/provenance output to ChatPulse 0.8.6.
+
 ## 0.8.5 beta — reliable overnight monitoring after first project chat
 
 - foreground each due Pulse 2.0 managed chat tab before reading assistant state or sending an auto-response, then restore the user's previous tab when it is still safe to do so;

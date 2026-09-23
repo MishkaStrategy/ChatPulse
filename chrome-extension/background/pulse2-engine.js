@@ -2,6 +2,8 @@ import { normalizeChatURL } from "../lib/model-v2.js";
 import {
   PULSE2_CAPTURE_RETRY_MS,
   PULSE2_MAX_CAPTURE_ATTEMPTS,
+  PULSE2_MONITOR_ERROR_RETRY_MS,
+  PULSE2_MONITOR_RECHECK_MS,
   applyPulse2SettingsPatch,
   beginPulse2Rotation,
   capturePulse2Chat,
@@ -12,6 +14,7 @@ import {
   getPulse2Route,
   isPulse2RouteTerminal,
   markPulse2CaptureWait,
+  markPulse2RotationDispatch,
   normalizePulse2ProjectURL,
   normalizePulse2State,
   observePulse2Snapshot,
@@ -36,11 +39,16 @@ const PROJECT_PREPARE_TIMEOUT_MS = 15_000;
 const START_MESSAGE_TIMEOUT_MS = 20_000;
 const PROJECT_SETTLE_MS = 1_000;
 const CHAT_MONITOR_SETTLE_MS = 1_000;
+const CHAT_HYDRATION_TIMEOUT_MS = 8_000;
+const CHAT_HYDRATION_RETRY_MS = 500;
 const MONITOR_ALARM_PERIOD_MINUTES = 0.5;
 const ROTATION_RECOVERY_PERIOD_MINUTES = 0.5;
+const ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS = 5 * 60_000;
+const USER_FOCUS_GRACE_MS = 10_000;
 
 const ports = new Set();
 let engineQueue = Promise.resolve();
+let monitorFocusSuppressedUntil = 0;
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port?.name !== PULSE2_PORT_NAME) return;
@@ -165,14 +173,19 @@ async function startPulse2() {
     for (const route of state.routes) {
       if (!route.projectUrl) throw new Error(`Укажите ссылку проекта для «${route.name}».`);
       const targetUrl = route.currentChatUrl || route.projectUrl;
-      const tab = await chrome.tabs.create({
-        url: targetUrl,
-        active: !route.currentChatUrl,
-        pinned: false
-      });
-      if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
+      let tab = await reusablePulse2RouteTab(route, targetUrl);
+      if (!tab?.id) {
+        tab = await chrome.tabs.create({
+          url: targetUrl,
+          active: !route.currentChatUrl,
+          pinned: false
+        });
+        if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
+        createdTabIds.push(tab.id);
+      } else if (!route.currentChatUrl) {
+        tab = await activatePulse2ManagedTab(tab.id);
+      }
       tabIds[route.id] = tab.id;
-      createdTabIds.push(tab.id);
       await protectManagedTab(tab.id);
     }
     state = startPulse2State(state, { tabIds });
@@ -208,6 +221,7 @@ function queueFollowUpWork(state) {
 async function performPulse2Sweep(source, onlyRouteId = null) {
   let state = await loadPulse2State();
   if (!state.enabled) return state;
+  if (source === "alarm" && Date.now() < monitorFocusSuppressedUntil) return state;
   const routeIds = state.routes
     .filter((route) => route.phase === "monitoring" && (!onlyRouteId || route.id === onlyRouteId))
     .filter((route) => {
@@ -255,9 +269,9 @@ async function performPulse2RouteCheck(routeId) {
     }
 
     await protectManagedTab(tab.id);
-    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
     await delay(CHAT_MONITOR_SETTLE_MS);
-    let snapshot = await inspectPulse2Tab(tab.id);
+    let snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
     state = await loadPulse2State();
     assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
     let observation = observePulse2Snapshot(state, routeId, snapshot);
@@ -269,13 +283,23 @@ async function performPulse2RouteCheck(routeId) {
       route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
       tab = await ensurePulse2ChatTab(state, routeId);
       managedTabId = tab.id;
-      tab = await activatePulse2ManagedTab(tab.id);
-      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+      if (!await pulse2ManagedTabIsActive(tab.id)) {
+        state = deferPulse2MonitoringForUserFocus(state, routeId);
+        await persistPulse2State(state);
+        return;
+      }
+      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
       await delay(CHAT_MONITOR_SETTLE_MS);
-      snapshot = await inspectPulse2Tab(tab.id);
+      snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
       observation = observePulse2Snapshot(state, routeId, snapshot);
       state = observation.state;
       await persistPulse2State(state);
+      if (["send-auto-response", "rotate"].includes(observation.decision)
+        && !await pulse2ManagedTabIsActive(tab.id)) {
+        state = deferPulse2MonitoringForUserFocus(state, routeId);
+        await persistPulse2State(state);
+        return;
+      }
     }
 
     if (observation.decision === "send-auto-response") {
@@ -313,7 +337,8 @@ async function performPulse2RouteCheck(routeId) {
       state = replacePulse2Route(latest, routeId, {
         ...latestRoute,
         lastError: error instanceof Error ? error.message : String(error),
-        lastCheckAt: new Date().toISOString()
+        lastCheckAt: new Date().toISOString(),
+        nextCheckAt: new Date(Date.now() + PULSE2_MONITOR_ERROR_RETRY_MS).toISOString()
       });
       await persistPulse2State(state);
     }
@@ -372,12 +397,11 @@ async function performPulse2Rotation(routeId) {
 
     if (tab?.id) {
       tab = await activatePulse2ManagedTab(tab.id);
-      if (await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
+      const recovery = await recoverPulse2RotationAfterDispatch(state, routeId, tab, {
         expectedSessionId,
         expectedRevision
-      })) {
-        return;
-      }
+      });
+      if (recovery === "adopted" || recovery === "pending") return;
     }
 
     if (!tab?.id) {
@@ -393,7 +417,7 @@ async function performPulse2Rotation(routeId) {
 
     tab = await activatePulse2ManagedTab(tab.id);
     await protectManagedTab(tab.id);
-    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.projectUrl);
     await delay(PROJECT_SETTLE_MS);
 
     const prepared = await sendToContent(tab.id, {
@@ -412,6 +436,17 @@ async function performPulse2Rotation(routeId) {
     }, { attempts: 2, timeoutMs: START_MESSAGE_TIMEOUT_MS });
     if (!response?.ok) throw new Error(response?.error || "Стартовое сообщение нового чата не отправлено.");
 
+    state = await loadPulse2State();
+    route = assertPulse2ExecutionStillCurrent(state, routeId, {
+      expectedSessionId,
+      expectedRevision,
+      phase: "rotating"
+    });
+    if (response.outcome === "confirmed") {
+      state = markPulse2RotationDispatch(state, routeId);
+      await persistPulse2State(state);
+    }
+
     state = markPulse2CaptureWait(state, routeId);
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
@@ -429,17 +464,42 @@ async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected)
     ...expected,
     phase: "rotating"
   });
-  const concreteChatUrl = normalizeChatURL(tab?.url);
-  if (!concreteChatUrl || concreteChatUrl === route.currentChatUrl) return false;
+  if (!route.rotationDispatchAt) return "none";
 
-  let next = markPulse2CaptureWait(state, routeId);
-  next = replacePulse2Route(next, routeId, {
-    ...requireRoute(next, routeId),
-    lastError: null
-  });
-  next = await configurePulse2Alarms(next);
-  await persistPulse2State(next);
-  return true;
+  let concreteChatUrl = normalizeChatURL(tab?.url);
+  try {
+    const snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    concreteChatUrl = normalizeChatURL(snapshot?.url) || concreteChatUrl;
+  } catch {
+    /* A confirmed send checkpoint is stronger than a transient inspect failure. */
+  }
+
+  if (concreteChatUrl
+    && concreteChatUrl !== route.currentChatUrl
+    && !pulse2RouteHistoryIncludesChat(route, concreteChatUrl)
+    && pulse2ChatBelongsToProject(concreteChatUrl, route.projectUrl)) {
+    let next = markPulse2CaptureWait(state, routeId);
+    next = replacePulse2Route(next, routeId, {
+      ...requireRoute(next, routeId),
+      lastError: null
+    });
+    next = await configurePulse2Alarms(next);
+    await persistPulse2State(next);
+    return "adopted";
+  }
+
+  const dispatchedAt = Date.parse(String(route.rotationDispatchAt || ""));
+  if (Number.isFinite(dispatchedAt) && Date.now() - dispatchedAt < ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS) {
+    let next = replacePulse2Route(state, routeId, {
+      ...route,
+      lastError: "Стартовое сообщение подтверждено; ожидаю постоянную ссылку нового чата."
+    });
+    next = await configurePulse2Alarms(next);
+    await persistPulse2State(next);
+    return "pending";
+  }
+
+  throw new Error("Стартовое сообщение было подтверждено, но постоянная ссылка нового чата не появилась в течение 5 минут.");
 }
 
 async function performPulse2CaptureSweep() {
@@ -464,17 +524,35 @@ async function performPulse2Capture(routeId) {
   let state = await loadPulse2State();
   let route = getPulse2Route(state, routeId);
   if (!state.enabled || !route || route.phase !== "capture-wait") return;
+  let previousFocus = null;
+  let managedTabId = null;
   try {
     if (!Number.isInteger(route.tabId)) throw new Error("Вкладка нового чата потеряна до захвата URL.");
-    const tab = await chrome.tabs.get(route.tabId);
-    const normalizedURL = normalizeChatURL(tab.url);
-    const changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
-    let snapshot = null;
-    if (changed) snapshot = await inspectPulse2Tab(tab.id);
-    if (changed && snapshot?.authenticated && snapshot?.messageCount > 0) {
+    let tab = await chrome.tabs.get(route.tabId);
+    managedTabId = tab.id;
+    previousFocus = await capturePulse2PreviousFocus(tab.id);
+    tab = await activatePulse2ManagedTab(tab.id);
+    await protectManagedTab(tab.id);
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await delay(CHAT_MONITOR_SETTLE_MS);
+
+    let snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    let normalizedURL = normalizeChatURL(snapshot?.url);
+    let changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
+    let belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
+
+    if (belongsToProject && !snapshot?.authenticated && !snapshot?.errorDetected) {
+      snapshot = await reloadAndInspectPulse2Tab(tab.id, normalizedURL);
+      normalizedURL = normalizeChatURL(snapshot?.url);
+      changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
+      belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
+    }
+
+    if (belongsToProject && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
       state = capturePulse2Chat(state, routeId, normalizedURL, {
         title: snapshot.title || "",
+        visibilityState: snapshot.visibilityState,
         at: new Date().toISOString()
       });
       state = await configurePulse2Alarms(state);
@@ -500,6 +578,10 @@ async function performPulse2Capture(routeId) {
     }
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
+  } finally {
+    if (Number.isInteger(managedTabId)) {
+      await restorePulse2PreviousFocus(previousFocus, managedTabId);
+    }
   }
 }
 
@@ -507,6 +589,9 @@ async function openPulse2CurrentChat(routeId) {
   let state = await loadPulse2State();
   let route = requireRoute(state, routeId);
   if (!route.currentChatUrl) throw new Error("Этот маршрут ещё не получил постоянную ссылку текущего чата.");
+  if (state.enabled && route.phase !== "monitoring") {
+    throw new Error("Дождитесь завершения создания нового чата перед открытием текущего чата.");
+  }
   let tab = null;
   if (Number.isInteger(route.tabId)) {
     try { tab = await chrome.tabs.get(route.tabId); } catch { tab = null; }
@@ -519,6 +604,7 @@ async function openPulse2CurrentChat(routeId) {
   if (Number.isInteger(tab?.windowId)) {
     try { await chrome.windows.update(tab.windowId, { focused: true }); } catch { /* optional */ }
   }
+  if (Number.isInteger(tab?.id)) await protectManagedTab(tab.id);
   route = { ...route, tabId: tab?.id ?? route.tabId };
   state = replacePulse2Route(state, routeId, route);
   await persistPulse2State(state);
@@ -567,6 +653,53 @@ function assertPulse2ExecutionStillCurrent(state, routeId, expected) {
   return route;
 }
 
+function pulse2RouteHistoryIncludesChat(route, chatUrl) {
+  const target = normalizeChatURL(chatUrl);
+  if (!target) return false;
+  return Array.isArray(route?.history)
+    && route.history.some((item) => normalizeChatURL(item?.url) === target);
+}
+
+function pulse2ChatBelongsToProject(chatUrl, projectUrl) {
+  const chat = safePulse2URL(chatUrl);
+  const project = safePulse2URL(projectUrl);
+  if (!chat || !project) return false;
+  const chatKey = pulse2ProjectKey(chat.pathname);
+  const projectKey = pulse2ProjectKey(project.pathname);
+  return Boolean(chatKey && projectKey && chatKey === projectKey);
+}
+
+function pulse2ProjectKey(pathname) {
+  const parts = String(pathname || "").split("/").filter(Boolean);
+  const explicit = parts.find((part) => /^g-p-[a-z0-9_-]+$/i.test(part));
+  if (explicit) return explicit.toLowerCase();
+  const projectIndex = parts.findIndex((part) => /^projects?$/i.test(part));
+  return projectIndex >= 0 && parts[projectIndex + 1]
+    ? parts[projectIndex + 1].toLowerCase()
+    : null;
+}
+
+function safePulse2URL(value) {
+  try {
+    return new URL(String(value || ""));
+  } catch {
+    return null;
+  }
+}
+
+async function reusablePulse2RouteTab(route, targetUrl) {
+  if (!Number.isInteger(route?.tabId)) return null;
+  try {
+    const tab = await chrome.tabs.get(route.tabId);
+    const matches = route.currentChatUrl
+      ? normalizeChatURL(tab?.url) === normalizeChatURL(targetUrl)
+      : normalizePulse2ProjectURL(tab?.url) === normalizePulse2ProjectURL(targetUrl);
+    return matches ? tab : null;
+  } catch {
+    return null;
+  }
+}
+
 async function ensurePulse2ChatTab(state, routeId) {
   const route = requireRoute(state, routeId);
   if (!route.currentChatUrl) throw new Error(`Маршрут «${route.name}» ещё не имеет текущего чата.`);
@@ -592,6 +725,38 @@ async function inspectPulse2Tab(tabId) {
   });
   if (!response?.ok || !response.snapshot) throw new Error(response?.error || "Не удалось прочитать состояние страницы ChatGPT.");
   return response.snapshot;
+}
+
+async function inspectPulse2TabAfterHydration(tabId) {
+  const startedAt = Date.now();
+  let lastSnapshot = null;
+  let lastError = null;
+  while (Date.now() - startedAt < CHAT_HYDRATION_TIMEOUT_MS) {
+    try {
+      lastSnapshot = await inspectPulse2Tab(tabId);
+      lastError = null;
+      if (lastSnapshot?.authenticated || lastSnapshot?.errorDetected) return lastSnapshot;
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(CHAT_HYDRATION_RETRY_MS);
+  }
+  if (lastSnapshot) return lastSnapshot;
+  if (lastError) throw lastError;
+  throw new Error("Страница ChatGPT не завершила гидратацию интерфейса.");
+}
+
+async function inspectPulse2TabWithReloadRecovery(tabId, expectedUrl) {
+  const snapshot = await inspectPulse2TabAfterHydration(tabId);
+  if (snapshot?.authenticated || snapshot?.errorDetected) return snapshot;
+  return reloadAndInspectPulse2Tab(tabId, expectedUrl);
+}
+
+async function reloadAndInspectPulse2Tab(tabId, expectedUrl) {
+  await chrome.tabs.reload(tabId);
+  await waitForTabComplete(tabId, TAB_LOAD_TIMEOUT_MS, expectedUrl);
+  await delay(CHAT_MONITOR_SETTLE_MS);
+  return inspectPulse2TabAfterHydration(tabId);
 }
 
 async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT_TIMEOUT_MS } = {}) {
@@ -620,6 +785,24 @@ async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT
   throw new Error(`Не удалось связаться со страницей ChatGPT: ${lastError?.message || "content script недоступен"}`);
 }
 
+async function pulse2ManagedTabIsActive(tabId) {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return activeTab?.id === tabId;
+  } catch {
+    return false;
+  }
+}
+
+function deferPulse2MonitoringForUserFocus(state, routeId) {
+  const route = requireRoute(state, routeId);
+  return replacePulse2Route(state, routeId, {
+    ...route,
+    nextCheckAt: new Date(Date.now() + PULSE2_MONITOR_RECHECK_MS).toISOString(),
+    lastError: null
+  });
+}
+
 async function capturePulse2PreviousFocus(managedTabId) {
   try {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -634,10 +817,16 @@ async function capturePulse2PreviousFocus(managedTabId) {
 }
 
 async function restorePulse2PreviousFocus(previousFocus, managedTabId) {
-  if (!Number.isInteger(previousFocus?.tabId)) return;
   try {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (activeTab?.id !== managedTabId) return;
+    if (activeTab?.id !== managedTabId) {
+      monitorFocusSuppressedUntil = Math.max(
+        monitorFocusSuppressedUntil,
+        Date.now() + USER_FOCUS_GRACE_MS
+      );
+      return;
+    }
+    if (!Number.isInteger(previousFocus?.tabId)) return;
     const previousTab = await chrome.tabs.get(previousFocus.tabId);
     await chrome.tabs.update(previousTab.id, { active: true });
     if (Number.isInteger(previousTab.windowId)) {
@@ -660,14 +849,16 @@ async function protectManagedTab(tabId) {
   try { await chrome.tabs.update(tabId, { autoDiscardable: false }); } catch { /* recover later */ }
 }
 
-async function waitForTabComplete(tabId, timeoutMs) {
+async function waitForTabComplete(tabId, timeoutMs, expectedUrl = null) {
   const current = await chrome.tabs.get(tabId);
-  if (current.status === "complete" && current.discarded !== true) return current;
+  if (pulse2TabReadyForTarget(current, expectedUrl)) return current;
   return new Promise((resolve, reject) => {
     let settled = false;
-    const timeout = setTimeout(() => finish(new Error("Вкладка ChatGPT не загрузилась за 45 секунд.")), timeoutMs);
-    const onUpdated = (updatedTabId, changeInfo, updatedTab) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") finish(null, updatedTab);
+    const timeout = setTimeout(() => finish(new Error("Вкладка ChatGPT не загрузила ожидаемый адрес за 45 секунд.")), timeoutMs);
+    const onUpdated = async (updatedTabId, changeInfo, updatedTab) => {
+      if (updatedTabId !== tabId) return;
+      const candidate = changeInfo.status === "complete" ? updatedTab : await chrome.tabs.get(tabId).catch(() => null);
+      if (pulse2TabReadyForTarget(candidate, expectedUrl)) finish(null, candidate);
     };
     const onRemoved = (removedTabId) => {
       if (removedTabId === tabId) finish(new Error("Автономная вкладка Pulse 2.0 была закрыта во время операции."));
@@ -682,7 +873,24 @@ async function waitForTabComplete(tabId, timeoutMs) {
     }
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.tabs.onRemoved.addListener(onRemoved);
+
+    // Close the gap between the pre-listener read and listener registration.
+    void chrome.tabs.get(tabId).then((tab) => {
+      if (pulse2TabReadyForTarget(tab, expectedUrl)) finish(null, tab);
+    }).catch(() => {
+      finish(new Error("Автономная вкладка Pulse 2.0 была закрыта во время операции."));
+    });
   });
+}
+
+function pulse2TabReadyForTarget(tab, expectedUrl) {
+  if (!tab || tab.status !== "complete" || tab.discarded === true) return false;
+  if (!expectedUrl) return true;
+  const expectedChat = normalizeChatURL(expectedUrl);
+  if (expectedChat) return normalizeChatURL(tab.url) === expectedChat;
+  const expectedProject = normalizePulse2ProjectURL(expectedUrl);
+  if (expectedProject) return normalizePulse2ProjectURL(tab.url) === expectedProject;
+  return String(tab.url || "") === String(expectedUrl || "");
 }
 
 async function configurePulse2Alarms(state) {
