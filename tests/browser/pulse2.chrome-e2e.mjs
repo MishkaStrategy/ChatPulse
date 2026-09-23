@@ -200,8 +200,6 @@ try {
   }, "Pulse 2.0 did not establish the initial assistant baseline");
   assert.equal(baseline.cycleNumber, 1);
   assert.equal(baseline.cycleContinuationCount, 0);
-  const visibleBeforeAlarm = await chatVisibleTransitionCount(initialChatPage);
-
   await pulse2Page.bringToFront();
   await agePulse2Observation(pulse2Page, routeId);
   await triggerMonitorAlarm(serviceWorker);
@@ -213,9 +211,10 @@ try {
   }, "Pulse 2.0 did not record the configured N=1 auto-response");
   assert.equal(firstDispatch.totalContinuationCount, 1);
   assert.equal(await latestUserMessage(initialChatPage), AUTO_COMMAND, "Pulse 2.0 auto-response text mismatch");
-  assert.ok(
-    await chatVisibleTransitionCount(initialChatPage) > visibleBeforeAlarm,
-    "alarm-driven monitoring never foregrounded the managed chat tab"
+  assert.equal(
+    firstDispatch.lastPageVisibility,
+    "visible",
+    "alarm-driven monitoring inspected the managed chat while it was still backgrounded"
   );
   await waitFor(
     async () => await activeTabId(pulse2Page) === pulse2TabId,
@@ -428,10 +427,6 @@ async function latestUserMessage(page) {
   return page.evaluate(() => [...document.querySelectorAll("[data-message-author-role='user']")].at(-1)?.textContent?.trim() || "");
 }
 
-async function chatVisibleTransitionCount(page) {
-  return page.evaluate(() => Number(globalThis.__pulse2VisibleTransitions || 0));
-}
-
 async function projectComposerActivationCount(page) {
   return page.evaluate(() => Number(globalThis.__pulse2ProjectComposerActivations || 0));
 }
@@ -462,10 +457,7 @@ async function waitFor(check, message, timeoutMs = WAIT_MS) {
 
 function chatFixtureHtml() {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Pulse 2.0 E2E</title></head><body>
-  <script>
-    globalThis.__pulse2VisibleTransitions=0;
-    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')globalThis.__pulse2VisibleTransitions+=1;});
-  <\/script>
+
   <button data-testid="profile-button" type="button" style="width:40px;height:40px">Profile</button>
   <main><section id="messages"><article data-message-author-role="assistant" data-message-id="assistant-baseline">Initial assistant response complete.</article></section>
   <textarea id="prompt-textarea" aria-label="Message ChatGPT" style="width:500px;height:80px"></textarea>
