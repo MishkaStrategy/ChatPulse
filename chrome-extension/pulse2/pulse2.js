@@ -399,8 +399,10 @@ function renderControlsState() {
   }
   ui.removeRouteButton.disabled = running || busy || !draft || draft.routes.length <= 1;
   const route = selectedDraftRoute();
-  ui.openCurrentButton.disabled = busy || !route?.currentChatUrl?.trim();
   const live = selectedStateRoute();
+  ui.openCurrentButton.disabled = busy
+    || !route?.currentChatUrl?.trim()
+    || (running && live?.phase !== "monitoring");
   ui.checkButton.disabled = busy || !running || live?.phase !== "monitoring";
   ui.toggleButton.disabled = busy;
 }
