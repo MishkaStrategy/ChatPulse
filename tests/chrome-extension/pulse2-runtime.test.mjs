@@ -106,7 +106,8 @@ test("managed tab lifecycle avoids duplicates and runtime errors back off", () =
 
 test("URL capture foregrounds the managed new-chat tab and restores prior focus", () => {
   assert.match(engine, /previousFocus = await capturePulse2PreviousFocus\(tab\.id\)/);
-  assert.match(engine, /await waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS, normalizedURL\)/);
+  assert.match(engine, /normalizedURL = normalizeChatURL\(snapshot\?\.url\)/);
+  assert.match(engine, /await waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS\)/);
   assert.match(engine, /visibilityState: snapshot\.visibilityState/);
   assert.match(engine, /await restorePulse2PreviousFocus\(previousFocus, managedTabId\)/);
   assert.match(model, /lastPageVisibility: normalizePageVisibility\(visibilityState\) \|\| route\.lastPageVisibility/);
