@@ -516,6 +516,9 @@ async function openPulse2CurrentChat(routeId) {
   let state = await loadPulse2State();
   let route = requireRoute(state, routeId);
   if (!route.currentChatUrl) throw new Error("Этот маршрут ещё не получил постоянную ссылку текущего чата.");
+  if (state.enabled && route.phase !== "monitoring") {
+    throw new Error("Дождитесь завершения создания нового чата перед открытием текущего чата.");
+  }
   let tab = null;
   if (Number.isInteger(route.tabId)) {
     try { tab = await chrome.tabs.get(route.tabId); } catch { tab = null; }
