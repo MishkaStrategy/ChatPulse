@@ -628,7 +628,8 @@ async function reusablePulse2RouteTab(route, targetUrl) {
 async function ensurePulse2ChatTab(state, routeId) {
   const route = requireRoute(state, routeId);
   if (!route.currentChatUrl) throw new Error(`Маршрут «${route.name}» ещё не имеет текущего чата.`);
-  if (Number.isInteger(route.tabId)) {
+  const hadManagedTab = Number.isInteger(route.tabId);
+  if (hadManagedTab) {
     try {
       const tab = await chrome.tabs.get(route.tabId);
       if (normalizeChatURL(tab.url) === route.currentChatUrl) {
@@ -636,11 +637,33 @@ async function ensurePulse2ChatTab(state, routeId) {
         return tab;
       }
     } catch { /* closed by user */ }
+
+    const reusable = await findUnclaimedPulse2ChatTab(state, routeId, route.currentChatUrl);
+    if (reusable?.id) {
+      await protectManagedTab(reusable.id);
+      return reusable;
+    }
   }
   const tab = await chrome.tabs.create({ url: route.currentChatUrl, active: false, pinned: false });
   if (!Number.isInteger(tab?.id)) throw new Error(`Не удалось создать автономную вкладку для «${route.name}».`);
   await protectManagedTab(tab.id);
   return tab;
+}
+
+async function findUnclaimedPulse2ChatTab(state, routeId, chatUrl) {
+  const target = normalizeChatURL(chatUrl);
+  if (!target) return null;
+  const claimedByOtherRoutes = new Set(
+    state.routes
+      .filter((route) => route.id !== routeId && Number.isInteger(route.tabId))
+      .map((route) => route.tabId)
+  );
+  const tabs = await chrome.tabs.query({});
+  return tabs.find((tab) =>
+    Number.isInteger(tab?.id)
+    && !claimedByOtherRoutes.has(tab.id)
+    && normalizeChatURL(tab.url) === target
+  ) || null;
 }
 
 async function inspectPulse2Tab(tabId) {
