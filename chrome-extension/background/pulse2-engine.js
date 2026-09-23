@@ -482,9 +482,10 @@ async function performPulse2Capture(routeId) {
     const tab = await chrome.tabs.get(route.tabId);
     const normalizedURL = normalizeChatURL(tab.url);
     const changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
+    const belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
     let snapshot = null;
-    if (changed) snapshot = await inspectPulse2TabAfterHydration(tab.id);
-    if (changed && snapshot?.authenticated && snapshot?.messageCount > 0) {
+    if (belongsToProject) snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    if (belongsToProject && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
       state = capturePulse2Chat(state, routeId, normalizedURL, {
         title: snapshot.title || "",
