@@ -236,7 +236,8 @@
       .join("\n");
 
     const uiText = collectNonMessageUiText().toLowerCase();
-    const reloadRequested = /(время доставки сообщения истекло\.?\s*попробуйте\s+ещ[её]\s+раз|соединение прервано\.?\s*ожидание полного ответа)/i.test(uiText);
+    const explicitErrorText = `${alertText}\n${uiText}`;
+    const reloadRequested = /(время доставки сообщения истекло\.?\s*попробуйте\s+ещ[её]\s+раз|соединение прервано\.?\s*ожидание полного ответа)/i.test(explicitErrorText);
     const detected = reloadRequested
       || /(something went wrong|network error|failed to load|произошла ошибка|ошибка сети|не удалось загрузить)/i.test(alertText);
 
