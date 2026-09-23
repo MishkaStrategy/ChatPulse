@@ -2,7 +2,7 @@
   if (globalThis.__chatPulseContentScriptInstalled) return;
   globalThis.__chatPulseContentScriptInstalled = true;
 
-  const CONTENT_SCRIPT_VERSION = "0.5.4";
+  const CONTENT_SCRIPT_VERSION = "0.5.5";
   const MESSAGE_SELECTOR = "[data-message-author-role], article[data-testid^='conversation-turn-']";
   const INPUT_SELECTORS = [
     "#prompt-textarea",
@@ -105,6 +105,7 @@
     const input = findInput();
     const now = Date.now();
     const generating = updateGenerationClock(now);
+    const pageError = detectPageError();
 
     const title = (document.title || "Чат ChatGPT")
       .replace(/\s*[-|]\s*ChatGPT\s*$/i, "")
@@ -122,7 +123,8 @@
         && phraseMatches(latestText, stopPhrase),
       isGenerating: generating,
       generationAgeMs: generating && generationStartedAt !== null ? now - generationStartedAt : 0,
-      errorDetected: hasPageError(),
+      errorDetected: pageError.detected,
+      reloadRequested: pageError.reloadRequested,
       pageReady: document.readyState === "interactive" || document.readyState === "complete",
       authenticated: isAuthenticated(),
       messageCount: messages.length,
@@ -226,14 +228,46 @@
     });
   }
 
-  function hasPageError() {
-    const text = [...document.querySelectorAll(
+  function detectPageError() {
+    const alertText = [...document.querySelectorAll(
       "[role='alert'], [aria-live='assertive'], [data-testid*='error' i]"
     )]
       .map((element) => normalize(element.innerText || element.textContent).toLowerCase())
       .join("\n");
 
-    return /(something went wrong|network error|failed to load|произошла ошибка|ошибка сети|не удалось загрузить)/i.test(text);
+    const uiText = collectNonMessageUiText().toLowerCase();
+    const explicitErrorText = `${alertText}\n${uiText}`;
+    const reloadRequested = /(время доставки сообщения истекло\.?\s*попробуйте\s+ещ[её]\s+раз|соединение прервано\.?\s*ожидание полного ответа)/i.test(explicitErrorText);
+    const detected = reloadRequested
+      || /(something went wrong|network error|failed to load|произошла ошибка|ошибка сети|не удалось загрузить)/i.test(alertText);
+
+    return { detected, reloadRequested };
+  }
+
+  function collectNonMessageUiText(maxLength = 50_000) {
+    const root = document.querySelector("main, [role='main']") || document.body;
+    if (!root) return "";
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const parts = [];
+    let length = 0;
+    let node = walker.nextNode();
+
+    while (node && length < maxLength) {
+      const parent = node.parentElement;
+      if (parent
+        && !parent.closest(MESSAGE_SELECTOR)
+        && !parent.closest("#prompt-textarea, textarea, input, [contenteditable='true'], script, style, noscript")) {
+        const value = normalize(node.nodeValue || "");
+        if (value) {
+          parts.push(value);
+          length += value.length + 1;
+        }
+      }
+      node = walker.nextNode();
+    }
+
+    return parts.join(" ").slice(0, maxLength);
   }
 
   function isAuthenticated() {

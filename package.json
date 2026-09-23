@@ -1,6 +1,6 @@
 {
   "name": "chatpulse",
-  "version": "0.8.6-beta.1",
+  "version": "0.8.7-beta.1",
   "private": true,
   "type": "module",
   "scripts": {

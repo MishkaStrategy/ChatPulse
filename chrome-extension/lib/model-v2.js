@@ -489,6 +489,10 @@ export function planTabRecovery({ tab, snapshot, chat, intervalMinutes, now = Da
   if (tab.discarded === true) return { refresh: true, reason: "discarded-tab" };
   if (tab.frozen === true) return { refresh: true, reason: "frozen-tab" };
 
+  if (snapshot?.reloadRequested === true) {
+    return { refresh: true, reason: "page-reload-required" };
+  }
+
   if (tab.active === true) return { refresh: false, reason: null };
   if (!snapshot) return { refresh: true, reason: "content-unreachable" };
 

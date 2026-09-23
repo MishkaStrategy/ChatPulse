@@ -468,7 +468,10 @@ async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected)
 
   let concreteChatUrl = normalizeChatURL(tab?.url);
   try {
-    const snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    let snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    if (snapshot?.reloadRequested === true) {
+      snapshot = await reloadAndInspectPulse2Tab(tab.id);
+    }
     concreteChatUrl = normalizeChatURL(snapshot?.url) || concreteChatUrl;
   } catch {
     /* A confirmed send checkpoint is stronger than a transient inspect failure. */
@@ -537,6 +540,9 @@ async function performPulse2Capture(routeId) {
     await delay(CHAT_MONITOR_SETTLE_MS);
 
     let snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    if (snapshot?.reloadRequested === true) {
+      snapshot = await reloadAndInspectPulse2Tab(tab.id);
+    }
     let normalizedURL = normalizeChatURL(snapshot?.url);
     let changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
     let belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
@@ -748,6 +754,9 @@ async function inspectPulse2TabAfterHydration(tabId) {
 
 async function inspectPulse2TabWithReloadRecovery(tabId, expectedUrl) {
   const snapshot = await inspectPulse2TabAfterHydration(tabId);
+  if (snapshot?.reloadRequested === true) {
+    return reloadAndInspectPulse2Tab(tabId, expectedUrl);
+  }
   if (snapshot?.authenticated || snapshot?.errorDetected) return snapshot;
   return reloadAndInspectPulse2Tab(tabId, expectedUrl);
 }
