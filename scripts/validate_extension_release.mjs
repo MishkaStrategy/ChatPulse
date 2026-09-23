@@ -73,6 +73,8 @@ assert.ok(engine.includes("activatePulse2ManagedTab"), "Project rotation must ex
 assert.ok(engine.includes("chrome.tabs.update(tabId, { active: true })"), "managed Project tab must become the active Chrome tab before composer lookup");
 assert.ok(engine.includes("chrome.windows.update(tab.windowId, { focused: true })"), "managed Project tab window should be focused when possible");
 assert.ok(engine.includes("capturePulse2PreviousFocus"), "due monitoring must remember the user tab before foregrounding ChatGPT");
+assert.ok(engine.includes("visibilityState: snapshot.visibilityState"), "URL capture must persist evidence from the foregrounded new-chat page");
+assert.ok(engine.includes("waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, normalizedURL)"), "URL capture must foreground and wait for the concrete new-chat URL");
 assert.ok(engine.includes("restorePulse2PreviousFocus"), "due monitoring must restore the previous user tab when safe");
 assert.ok(engine.includes("MONITOR_ALARM_PERIOD_MINUTES = 0.5"), "monitor scheduler must wake frequently enough to observe assistant completion promptly");
 assert.ok(model.includes("PULSE2_MONITOR_RECHECK_MS = 30_000"), "post-capture and post-dispatch monitoring must recheck promptly");
