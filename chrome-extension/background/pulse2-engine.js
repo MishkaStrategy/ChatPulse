@@ -3,6 +3,7 @@ import {
   PULSE2_CAPTURE_RETRY_MS,
   PULSE2_MAX_CAPTURE_ATTEMPTS,
   PULSE2_MONITOR_ERROR_RETRY_MS,
+  PULSE2_MONITOR_RECHECK_MS,
   applyPulse2SettingsPatch,
   beginPulse2Rotation,
   capturePulse2Chat,
@@ -279,13 +280,23 @@ async function performPulse2RouteCheck(routeId) {
       route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
       tab = await ensurePulse2ChatTab(state, routeId);
       managedTabId = tab.id;
-      tab = await activatePulse2ManagedTab(tab.id);
+      if (!await pulse2ManagedTabIsActive(tab.id)) {
+        state = deferPulse2MonitoringForUserFocus(state, routeId);
+        await persistPulse2State(state);
+        return;
+      }
       await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
       await delay(CHAT_MONITOR_SETTLE_MS);
       snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
       observation = observePulse2Snapshot(state, routeId, snapshot);
       state = observation.state;
       await persistPulse2State(state);
+      if (["send-auto-response", "rotate"].includes(observation.decision)
+        && !await pulse2ManagedTabIsActive(tab.id)) {
+        state = deferPulse2MonitoringForUserFocus(state, routeId);
+        await persistPulse2State(state);
+        return;
+      }
     }
 
     if (observation.decision === "send-auto-response") {
@@ -769,6 +780,24 @@ async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT
     await delay(300);
   }
   throw new Error(`Не удалось связаться со страницей ChatGPT: ${lastError?.message || "content script недоступен"}`);
+}
+
+async function pulse2ManagedTabIsActive(tabId) {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return activeTab?.id === tabId;
+  } catch {
+    return false;
+  }
+}
+
+function deferPulse2MonitoringForUserFocus(state, routeId) {
+  const route = requireRoute(state, routeId);
+  return replacePulse2Route(state, routeId, {
+    ...route,
+    nextCheckAt: new Date(Date.now() + PULSE2_MONITOR_RECHECK_MS).toISOString(),
+    lastError: null
+  });
 }
 
 async function capturePulse2PreviousFocus(managedTabId) {
