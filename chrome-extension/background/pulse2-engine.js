@@ -261,7 +261,7 @@ async function performPulse2RouteCheck(routeId) {
     }
 
     await protectManagedTab(tab.id);
-    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
     await delay(CHAT_MONITOR_SETTLE_MS);
     let snapshot = await inspectPulse2Tab(tab.id);
     state = await loadPulse2State();
@@ -276,7 +276,7 @@ async function performPulse2RouteCheck(routeId) {
       tab = await ensurePulse2ChatTab(state, routeId);
       managedTabId = tab.id;
       tab = await activatePulse2ManagedTab(tab.id);
-      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
       await delay(CHAT_MONITOR_SETTLE_MS);
       snapshot = await inspectPulse2Tab(tab.id);
       observation = observePulse2Snapshot(state, routeId, snapshot);
@@ -400,7 +400,7 @@ async function performPulse2Rotation(routeId) {
 
     tab = await activatePulse2ManagedTab(tab.id);
     await protectManagedTab(tab.id);
-    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.projectUrl);
     await delay(PROJECT_SETTLE_MS);
 
     const prepared = await sendToContent(tab.id, {
@@ -681,14 +681,16 @@ async function protectManagedTab(tabId) {
   try { await chrome.tabs.update(tabId, { autoDiscardable: false }); } catch { /* recover later */ }
 }
 
-async function waitForTabComplete(tabId, timeoutMs) {
+async function waitForTabComplete(tabId, timeoutMs, expectedUrl = null) {
   const current = await chrome.tabs.get(tabId);
-  if (current.status === "complete" && current.discarded !== true) return current;
+  if (pulse2TabReadyForTarget(current, expectedUrl)) return current;
   return new Promise((resolve, reject) => {
     let settled = false;
-    const timeout = setTimeout(() => finish(new Error("Вкладка ChatGPT не загрузилась за 45 секунд.")), timeoutMs);
-    const onUpdated = (updatedTabId, changeInfo, updatedTab) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") finish(null, updatedTab);
+    const timeout = setTimeout(() => finish(new Error("Вкладка ChatGPT не загрузила ожидаемый адрес за 45 секунд.")), timeoutMs);
+    const onUpdated = async (updatedTabId, changeInfo, updatedTab) => {
+      if (updatedTabId !== tabId) return;
+      const candidate = changeInfo.status === "complete" ? updatedTab : await chrome.tabs.get(tabId).catch(() => null);
+      if (pulse2TabReadyForTarget(candidate, expectedUrl)) finish(null, candidate);
     };
     const onRemoved = (removedTabId) => {
       if (removedTabId === tabId) finish(new Error("Автономная вкладка Pulse 2.0 была закрыта во время операции."));
@@ -704,6 +706,16 @@ async function waitForTabComplete(tabId, timeoutMs) {
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.tabs.onRemoved.addListener(onRemoved);
   });
+}
+
+function pulse2TabReadyForTarget(tab, expectedUrl) {
+  if (!tab || tab.status !== "complete" || tab.discarded === true) return false;
+  if (!expectedUrl) return true;
+  const expectedChat = normalizeChatURL(expectedUrl);
+  if (expectedChat) return normalizeChatURL(tab.url) === expectedChat;
+  const expectedProject = normalizePulse2ProjectURL(expectedUrl);
+  if (expectedProject) return normalizePulse2ProjectURL(tab.url) === expectedProject;
+  return String(tab.url || "") === String(expectedUrl || "");
 }
 
 async function configurePulse2Alarms(state) {
