@@ -83,6 +83,7 @@ test("managed tab lifecycle avoids duplicates and runtime errors back off", () =
   assert.match(engine, /CHAT_HYDRATION_TIMEOUT_MS = 8_000/);
   assert.match(engine, /CHAT_HYDRATION_RETRY_MS = 500/);
   assert.match(engine, /inspectPulse2TabAfterHydration/);
+  assert.match(engine, /Close the gap between the pre-listener read and listener registration/);
   assert.match(engine, /waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS, route\.currentChatUrl\)/);
   assert.match(engine, /waitForTabComplete\(tab\.id, TAB_LOAD_TIMEOUT_MS, route\.projectUrl\)/);
   assert.match(engine, /let tab = await reusablePulse2RouteTab\(route, targetUrl\)/);
