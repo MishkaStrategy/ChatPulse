@@ -129,6 +129,9 @@ test("rotating routes have a persistent recovery alarm and crash-safe post-send 
   assert.match(engine, /alarm\.name === PULSE2_ROTATION_ALARM_NAME/);
   assert.match(engine, /periodInMinutes: ROTATION_RECOVERY_PERIOD_MINUTES/);
   assert.match(engine, /recoverPulse2RotationAfterDispatch/);
+  assert.match(engine, /route\.rotationDispatchAt/);
+  assert.match(engine, /markPulse2RotationDispatch/);
+  assert.match(engine, /pulse2RouteHistoryIncludesChat/);
   assert.match(engine, /pulse2ChatBelongsToProject/);
   assert.match(engine, /chatKey === projectKey/);
   assert.match(engine, /normalizeChatURL\(tab\?\.url\)/);
