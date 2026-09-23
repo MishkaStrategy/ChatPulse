@@ -493,7 +493,7 @@ async function performPulse2Capture(routeId) {
       await protectManagedTab(tab.id);
       await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, normalizedURL);
       await delay(CHAT_MONITOR_SETTLE_MS);
-      snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, route.currentChatUrl);
+      snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, normalizedURL);
     }
     if (belongsToProject && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
