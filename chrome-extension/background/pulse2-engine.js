@@ -482,19 +482,25 @@ async function performPulse2Capture(routeId) {
   try {
     if (!Number.isInteger(route.tabId)) throw new Error("Вкладка нового чата потеряна до захвата URL.");
     let tab = await chrome.tabs.get(route.tabId);
-    const normalizedURL = normalizeChatURL(tab.url);
-    const changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
-    const belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
-    let snapshot = null;
-    if (belongsToProject) {
-      managedTabId = tab.id;
-      previousFocus = await capturePulse2PreviousFocus(tab.id);
-      tab = await activatePulse2ManagedTab(tab.id);
-      await protectManagedTab(tab.id);
-      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, normalizedURL);
-      await delay(CHAT_MONITOR_SETTLE_MS);
-      snapshot = await inspectPulse2TabWithReloadRecovery(tab.id, normalizedURL);
+    managedTabId = tab.id;
+    previousFocus = await capturePulse2PreviousFocus(tab.id);
+    tab = await activatePulse2ManagedTab(tab.id);
+    await protectManagedTab(tab.id);
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await delay(CHAT_MONITOR_SETTLE_MS);
+
+    let snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    let normalizedURL = normalizeChatURL(snapshot?.url);
+    let changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
+    let belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
+
+    if (belongsToProject && !snapshot?.authenticated && !snapshot?.errorDetected) {
+      snapshot = await reloadAndInspectPulse2Tab(tab.id, normalizedURL);
+      normalizedURL = normalizeChatURL(snapshot?.url);
+      changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
+      belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
     }
+
     if (belongsToProject && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
       state = capturePulse2Chat(state, routeId, normalizedURL, {
@@ -687,14 +693,16 @@ async function inspectPulse2TabAfterHydration(tabId) {
 }
 
 async function inspectPulse2TabWithReloadRecovery(tabId, expectedUrl) {
-  let snapshot = await inspectPulse2TabAfterHydration(tabId);
+  const snapshot = await inspectPulse2TabAfterHydration(tabId);
   if (snapshot?.authenticated || snapshot?.errorDetected) return snapshot;
+  return reloadAndInspectPulse2Tab(tabId, expectedUrl);
+}
 
+async function reloadAndInspectPulse2Tab(tabId, expectedUrl) {
   await chrome.tabs.reload(tabId);
   await waitForTabComplete(tabId, TAB_LOAD_TIMEOUT_MS, expectedUrl);
   await delay(CHAT_MONITOR_SETTLE_MS);
-  snapshot = await inspectPulse2TabAfterHydration(tabId);
-  return snapshot;
+  return inspectPulse2TabAfterHydration(tabId);
 }
 
 async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT_TIMEOUT_MS } = {}) {
