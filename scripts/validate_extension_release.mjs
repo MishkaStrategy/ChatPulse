@@ -79,6 +79,8 @@ assert.ok(engine.includes("restorePulse2PreviousFocus"), "due monitoring must re
 assert.ok(engine.includes("MONITOR_ALARM_PERIOD_MINUTES = 0.5"), "monitor scheduler must wake frequently enough to observe assistant completion promptly");
 assert.ok(model.includes("PULSE2_MONITOR_RECHECK_MS = 30_000"), "post-capture and post-dispatch monitoring must recheck promptly");
 assert.ok(model.includes("PULSE2_MONITOR_ERROR_RETRY_MS = 5 * 60_000"), "monitor errors need a bounded retry backoff");
+assert.ok(model.includes('normalizedOutcome === "confirmed"'), "unconfirmed sends must not advance continuation counters");
+assert.ok(model.includes("confirmed-by-response"), "a later assistant response may confirm a previously unconfirmed dispatch");
 assert.ok(engine.includes("reusablePulse2RouteTab"), "Stop/Start must reuse a still-valid managed tab");
 assert.ok(!engine.includes("findUnclaimedPulse2ChatTab"), "lost managed tabs must not hijack arbitrary user-owned matching chat tabs");
 assert.ok(engine.includes("pulse2TabReadyForTarget"), "replacement tabs must reach the expected ChatGPT URL before inspection");
