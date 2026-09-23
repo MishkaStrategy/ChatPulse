@@ -29,6 +29,7 @@ Additional inspection and test design found:
 5. **Post-load hydration race** — even after the correct ChatGPT URL reaches `complete`, profile/composer/auth DOM can appear later. Immediate inspection could still record a transient false unauthenticated state.
 6. **Tab-ready listener registration gap** — a tab could become ready after the initial state read but before `tabs.onUpdated` listener registration, causing a false 45-second timeout despite the page being ready.
 7. **Open Current Chat could corrupt an in-flight rotation** — during `rotating/capture-wait`, `currentChatUrl` still points at the previous chat while `tabId` belongs to the new-chat flow; opening the old current chat could replace the managed `tabId` and break URL capture.
+8. **Rotation recovery could adopt an unrelated ChatGPT chat** — a stale/manually navigated managed `tabId` pointing at any new `/c/...` URL could be mistaken for the just-created project chat.
 
 ## 0.8.6 Release Contract
 
@@ -40,6 +41,7 @@ Additional inspection and test design found:
 - Retry ChatGPT DOM/auth hydration for a bounded 8-second window before deciding that a loaded page is unauthenticated.
 - Recheck tab readiness immediately after listener registration to close the missed-event gap.
 - Disable and reject **Open Current Chat** while a running route is not in `monitoring`.
+- During crash recovery, adopt a concrete chat only when its project-scoped URL belongs to the configured Project; otherwise rebuild from the configured Project page.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
 - Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
 - Add loaded-Chromium adversarial scenarios:
@@ -75,6 +77,7 @@ Additional inspection and test design found:
 - [x] Catch and fix post-load DOM/auth hydration race exposed by the same closed-tab scenario.
 - [x] Close the tab-ready listener registration event gap found in manual adversarial review.
 - [x] Guard Open Current Chat during rotating/capture-wait so it cannot corrupt the managed new-chat tab.
+- [x] Reject unrelated ChatGPT chats during rotation recovery and cover this with loaded Chromium.
 - [x] Add adversarial loaded-browser scenarios.
 - [x] Add unit/static timing and lifecycle tests.
 - [x] Bump release tooling/docs to 0.8.6 beta.
