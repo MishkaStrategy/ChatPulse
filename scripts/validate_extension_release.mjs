@@ -85,6 +85,7 @@ assert.ok(engine.includes("Close the gap between the pre-listener read and liste
 assert.ok(engine.includes("PULSE2_MONITOR_ERROR_RETRY_MS"), "unexpected monitoring failures need bounded retry backoff");
 assert.ok(ui.includes('runAction("OPEN_CURRENT_CHAT", { routeId: selectedRouteId }, false)'), "Open Current Chat must go through the background engine");
 assert.ok(engine.includes('state.enabled && route.phase !== "monitoring"'), "Open Current Chat must not replace a rotating/capture managed tab");
+assert.ok(engine.includes("belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl)"), "capture-wait must reject chats outside the selected project");
 assert.ok(ui.includes('running && live?.phase !== "monitoring"'), "Open Current Chat UI must be disabled outside monitoring while running");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
 assert.ok(!engine.includes('chrome.storage.local.set({ [PULSE1_STORAGE_KEY]'), "Pulse 2.0 must never write Pulse 1 state");
