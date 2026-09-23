@@ -80,8 +80,7 @@ assert.ok(engine.includes("MONITOR_ALARM_PERIOD_MINUTES = 0.5"), "monitor schedu
 assert.ok(model.includes("PULSE2_MONITOR_RECHECK_MS = 30_000"), "post-capture and post-dispatch monitoring must recheck promptly");
 assert.ok(model.includes("PULSE2_MONITOR_ERROR_RETRY_MS = 5 * 60_000"), "monitor errors need a bounded retry backoff");
 assert.ok(engine.includes("reusablePulse2RouteTab"), "Stop/Start must reuse a still-valid managed tab");
-assert.ok(engine.includes("findUnclaimedPulse2ChatTab"), "lost managed tabs should adopt an unclaimed matching chat before opening another duplicate");
-assert.ok(engine.includes("claimedByOtherRoutes"), "lost-tab adoption must not steal another route's managed tab");
+assert.ok(!engine.includes("findUnclaimedPulse2ChatTab"), "lost managed tabs must not hijack arbitrary user-owned matching chat tabs");
 assert.ok(engine.includes("pulse2TabReadyForTarget"), "replacement tabs must reach the expected ChatGPT URL before inspection");
 assert.ok(engine.includes("inspectPulse2TabAfterHydration"), "ChatGPT DOM hydration must be retried before auth decisions");
 assert.ok(engine.includes("inspectPulse2TabWithReloadRecovery"), "loaded but unauthenticated chat snapshots need one bounded foreground reload retry");
