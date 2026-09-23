@@ -44,9 +44,11 @@ const CHAT_HYDRATION_RETRY_MS = 500;
 const MONITOR_ALARM_PERIOD_MINUTES = 0.5;
 const ROTATION_RECOVERY_PERIOD_MINUTES = 0.5;
 const ROTATION_POST_SEND_RECOVERY_TIMEOUT_MS = 5 * 60_000;
+const USER_FOCUS_GRACE_MS = 10_000;
 
 const ports = new Set();
 let engineQueue = Promise.resolve();
+let monitorFocusSuppressedUntil = 0;
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port?.name !== PULSE2_PORT_NAME) return;
@@ -219,6 +221,7 @@ function queueFollowUpWork(state) {
 async function performPulse2Sweep(source, onlyRouteId = null) {
   let state = await loadPulse2State();
   if (!state.enabled) return state;
+  if (source === "alarm" && Date.now() < monitorFocusSuppressedUntil) return state;
   const routeIds = state.routes
     .filter((route) => route.phase === "monitoring" && (!onlyRouteId || route.id === onlyRouteId))
     .filter((route) => {
@@ -817,7 +820,13 @@ async function restorePulse2PreviousFocus(previousFocus, managedTabId) {
   if (!Number.isInteger(previousFocus?.tabId)) return;
   try {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (activeTab?.id !== managedTabId) return;
+    if (activeTab?.id !== managedTabId) {
+      monitorFocusSuppressedUntil = Math.max(
+        monitorFocusSuppressedUntil,
+        Date.now() + USER_FOCUS_GRACE_MS
+      );
+      return;
+    }
     const previousTab = await chrome.tabs.get(previousFocus.tabId);
     await chrome.tabs.update(previousTab.id, { active: true });
     if (Number.isInteger(previousTab.windowId)) {
