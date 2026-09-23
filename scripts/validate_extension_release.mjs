@@ -7,7 +7,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptsDir, "..");
 const sourcePath = path.join(scriptsDir, "validate_extension.mjs");
 const runtimePath = path.join(scriptsDir, ".validate_extension_release.runtime.mjs");
-const releaseVersion = "0.8.7";
+const releaseVersion = "0.8.8";
 
 const source = await readFile(sourcePath, "utf8");
 const releaseSource = source
