@@ -10,6 +10,8 @@ const CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-initial";
 const PROJECT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/project";
 const PROJECT_URL_2 = "https://chatgpt.com/g/g-p-pulse2-browser-e2e-two/project";
 const CREATED_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-created";
+const UNTRUSTED_PROJECT_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-untrusted";
+const CHECKPOINT_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-checkpoint";
 const UNRELATED_CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-unrelated";
 const AUTO_COMMAND = "PULSE2_BROWSER_E2E_CONTINUE";
 const START_MESSAGE = "PULSE2_BROWSER_E2E_START";
@@ -99,12 +101,12 @@ try {
   const routeId = blankSingleSaved.routes[0].id;
 
   const recoveryProjectPage = await context.newPage();
-  await recoveryProjectPage.goto(UNRELATED_CHAT_URL, { waitUntil: "domcontentloaded" });
+  await recoveryProjectPage.goto(UNTRUSTED_PROJECT_CHAT_URL, { waitUntil: "domcontentloaded" });
   await waitFor(
     async () => await recoveryProjectPage.locator("[data-testid='profile-button']").count() === 1,
-    "controlled unrelated-chat fixture was not installed before recovery"
+    "controlled same-project untrusted-chat fixture was not installed before recovery"
   );
-  const recoveryTabId = await tabIdForUrl(pulse2Page, UNRELATED_CHAT_URL);
+  const recoveryTabId = await tabIdForUrl(pulse2Page, UNTRUSTED_PROJECT_CHAT_URL);
   assert.ok(Number.isInteger(recoveryTabId), "controlled project fixture has no Chrome tab id");
 
   await pulse2Page.bringToFront();
@@ -169,6 +171,33 @@ try {
   await sendPulse2Request(pulse2Page, "STOP");
   await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop after recovery regression");
   await recoveredProjectTab.close();
+  await recoveryProjectPage.close();
+
+  // Adversarial regression: a persisted post-send checkpoint may recover a new
+  // same-project chat, but only after the confirmed start-message checkpoint exists.
+  const checkpointPage = await context.newPage();
+  await checkpointPage.goto(CHECKPOINT_CHAT_URL, { waitUntil: "domcontentloaded" });
+  await appendUserMessage(checkpointPage, "checkpoint-start-message", START_MESSAGE);
+  const checkpointTabId = await tabIdForUrl(pulse2Page, CHECKPOINT_CHAT_URL);
+  assert.ok(Number.isInteger(checkpointTabId), "checkpoint recovery tab id missing");
+  await seedPersistedPostSendRotationAndTriggerRecovery(pulse2Page, routeId, checkpointTabId);
+  const checkpointRecovered = await waitFor(async () => {
+    const running = await getPulse2State(pulse2Page);
+    const route = running?.routes?.find((item) => item.id === routeId);
+    if (route?.phase === "error") throw new Error(`Pulse 2.0 checkpoint recovery failed: ${route.lastError}`);
+    return running?.enabled
+      && route?.phase === "capture-wait"
+      && route.tabId === checkpointTabId
+      && route.rotationDispatchAt
+      ? route
+      : null;
+  }, "Pulse 2.0 did not recover a checkpointed post-send project chat");
+  assert.equal(checkpointRecovered.currentChatUrl, CREATED_CHAT_URL);
+  assert.equal(await latestUserMessage(checkpointPage), START_MESSAGE);
+  assert.equal(await projectComposerActivationCount(checkpointPage), 0, "checkpoint recovery recreated a chat instead of adopting the confirmed post-send tab");
+  await sendPulse2Request(pulse2Page, "STOP");
+  await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop after checkpoint recovery regression");
+  await checkpointPage.close();
 
   // Keep the retained full rotation scenario deterministic with one existing chat.
   await firstTab.click();
@@ -435,6 +464,8 @@ try {
   console.log("pulse2_browser_e2e_optional_chat_save=PASS");
   console.log("pulse2_browser_e2e_multi_route_save=PASS");
   console.log("pulse2_browser_e2e_rotation_recovery=PASS");
+  console.log("pulse2_browser_e2e_same_project_untrusted_recovery_guard=PASS");
+  console.log("pulse2_browser_e2e_post_send_checkpoint_recovery=PASS");
   console.log("pulse2_browser_e2e_unrelated_chat_recovery_guard=PASS");
   console.log("pulse2_browser_e2e_project_foreground=PASS");
   console.log("pulse2_browser_e2e_overnight_monitor_alarm=PASS");
@@ -525,12 +556,48 @@ async function seedPersistedRotationAndTriggerRecovery(extensionPage, routeId, t
       lastCheckAt: null,
       nextCheckAt: null,
       rotationStartedAt: now,
+      rotationDispatchAt: null,
       captureDueAt: null,
       captureAttempts: 0,
       lastCreatedChatAt: null,
       lastError: null,
       stopReason: null,
       history: []
+    });
+
+    await chrome.storage.local.set({ chatpulse2State: state });
+    await chrome.alarms.create("chatpulse-pulse2-rotation", { when: Date.now() + 100 });
+  }, { id: routeId, managedTabId: tabId });
+}
+
+async function seedPersistedPostSendRotationAndTriggerRecovery(extensionPage, routeId, tabId) {
+  await extensionPage.evaluate(async ({ id, managedTabId }) => {
+    const stored = await chrome.storage.local.get("chatpulse2State");
+    const state = stored.chatpulse2State;
+    const route = state.routes.find((item) => item.id === id);
+    if (!route) throw new Error("Pulse 2.0 checkpoint recovery route missing");
+    const now = new Date().toISOString();
+
+    state.enabled = true;
+    state.phase = "running";
+    state.sessionId = `e2e-post-send-recovery-${Date.now()}`;
+    state.controlRevision = Number(state.controlRevision || 0) + 1;
+    state.lastError = null;
+    Object.assign(route, {
+      phase: "rotating",
+      initializingChat: false,
+      completedCycles: Math.max(Number(route.completedCycles || 0), Number(route.cycleNumber || 1)),
+      rotationPending: true,
+      tabId: managedTabId,
+      checkInProgress: false,
+      lastCheckAt: null,
+      nextCheckAt: null,
+      rotationStartedAt: now,
+      rotationDispatchAt: now,
+      captureDueAt: null,
+      captureAttempts: 0,
+      lastError: null,
+      stopReason: null
     });
 
     await chrome.storage.local.set({ chatpulse2State: state });
