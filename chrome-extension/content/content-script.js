@@ -231,7 +231,9 @@
   }
 
   function detectReadyForNewInput() {
-    const speechButton = document.querySelector("button[data-testid='composer-speech-button']");
+    const speechButton = document.querySelector(
+      "button[data-testid='composer-speech-button'], button[data-testid='voice-mode-button'], .composer-speech-button-container button"
+    );
     if (speechButton
       && isVisible(speechButton)
       && !speechButton.disabled
@@ -244,7 +246,7 @@
         return false;
       }
       const label = normalize(button.getAttribute("aria-label") || button.innerText).toLowerCase();
-      return /^(start voice|start voice mode|voice mode|начать голосовой режим|голосовой режим)$/iu.test(label);
+      return /^(start voice|start voice mode|voice|voice mode|начать голосовой режим|начать голосовой чат|голосовой режим|голосовой чат)$/iu.test(label);
     });
   }
 
