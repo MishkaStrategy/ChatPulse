@@ -139,6 +139,88 @@ test("stable assistant response becomes eligible only after the configured delay
   assert.equal(result.decision, "send-auto-response");
 });
 
+test("unconfirmed dispatch never advances counters and can be confirmed by the next assistant response", () => {
+  let state = startPulse2State(configured(undefined, {
+    intervalMinutes: 1,
+    messagesPerCycle: 1
+  }), { at: "2026-09-23T00:00:00.000Z" });
+
+  let observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:00:00.000Z")
+  );
+  state = observed.state;
+  observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:01:00.000Z")
+  );
+  assert.equal(observed.decision, "send-auto-response");
+
+  state = recordPulse2Dispatch(
+    observed.state,
+    "route-a",
+    "answer-1",
+    "submitted-unconfirmed",
+    "2026-09-23T00:01:00.000Z"
+  );
+  assert.equal(route(state, "route-a").cycleContinuationCount, 0);
+  assert.equal(route(state, "route-a").totalContinuationCount, 0);
+  assert.equal(route(state, "route-a").rotationPending, false);
+  assert.equal(route(state, "route-a").lastDispatchOutcome, "submitted-unconfirmed");
+  assert.equal(
+    Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-23T00:01:00.000Z"),
+    5 * 60_000
+  );
+
+  observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-2"),
+    Date.parse("2026-09-23T00:02:00.000Z")
+  );
+  assert.equal(observed.decision, "response-changed");
+  assert.equal(route(observed.state, "route-a").cycleContinuationCount, 1);
+  assert.equal(route(observed.state, "route-a").totalContinuationCount, 1);
+  assert.equal(route(observed.state, "route-a").rotationPending, true);
+  assert.equal(route(observed.state, "route-a").lastDispatchOutcome, "confirmed-by-response");
+  assert.equal(route(observed.state, "route-a").lastError, null);
+});
+
+test("unconfirmed dispatch on the same assistant response backs off instead of hammering", () => {
+  let state = startPulse2State(configured(undefined, {
+    intervalMinutes: 1
+  }), { at: "2026-09-23T00:00:00.000Z" });
+  let observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:00:00.000Z")
+  );
+  state = recordPulse2Dispatch(
+    observed.state,
+    "route-a",
+    "answer-1",
+    "submitted-unconfirmed",
+    "2026-09-23T00:01:00.000Z"
+  );
+  observed = observePulse2Snapshot(
+    state,
+    "route-a",
+    assistantSnapshot("answer-1"),
+    Date.parse("2026-09-23T00:06:00.000Z")
+  );
+  assert.equal(observed.decision, "already-dispatched");
+  assert.equal(route(observed.state, "route-a").cycleContinuationCount, 0);
+  assert.equal(
+    Date.parse(route(observed.state, "route-a").nextCheckAt) - Date.parse("2026-09-23T00:06:00.000Z"),
+    5 * 60_000
+  );
+});
+
 test("capture and dispatch use a short recheck while configured delay remains response-based", () => {
   let state = startPulse2State(configured([
     { id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }
