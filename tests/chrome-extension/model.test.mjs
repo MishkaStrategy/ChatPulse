@@ -84,6 +84,37 @@ test("стабильный завершённый ответ ассистент�
   assert.equal(result.fingerprint, "answer-2");
 });
 
+test("стабильное пользовательское сообщение с вернувшейся Voice-кнопкой тоже готово к продолжению", () => {
+  const chat = {
+    ...createChat({ title: "Ядро", url: "https://chatgpt.com/c/example" }),
+    lastObservedSessionId: "session-1",
+    lastObservedFingerprint: "user-2",
+    lastCommandedFingerprint: "answer-1"
+  };
+  const result = decide(chat, snapshot({
+    latestRole: "user",
+    latestFingerprint: "user-2",
+    readyForNewInput: true
+  }), "session-1");
+  assert.equal(result.decision, "send-continuation");
+  assert.equal(result.fingerprint, "user-2");
+});
+
+test("Voice-кнопка не обходит at-most-once для одного пользовательского сообщения", () => {
+  const chat = {
+    ...createChat({ title: "Ядро", url: "https://chatgpt.com/c/example" }),
+    lastObservedSessionId: "session-1",
+    lastObservedFingerprint: "user-2",
+    lastCommandedFingerprint: "user-2"
+  };
+  const result = decide(chat, snapshot({
+    latestRole: "user",
+    latestFingerprint: "user-2",
+    readyForNewInput: true
+  }), "session-1");
+  assert.equal(result.decision, "already-continued");
+});
+
 test("совпавшая стоп-фраза отключает только совпавший чат до отправки", () => {
   const matching = {
     ...createChat({ title: "Совпавший", url: "https://chatgpt.com/c/matching" }),
