@@ -10,6 +10,7 @@ import {
   completePulse2Route,
   defaultPulse2State,
   markPulse2CaptureWait,
+  markPulse2RotationDispatch,
   normalizePulse2ProjectURL,
   normalizePulse2State,
   observePulse2Snapshot,
@@ -282,6 +283,24 @@ test("monitor transient and auth states use bounded retry timing", () => {
   }, now);
   assert.equal(observed.decision, "generating");
   assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 30_000);
+});
+
+test("rotation dispatch checkpoint is explicit and cleared after capture", () => {
+  let state = startPulse2State(configured(), { at: "2026-09-23T00:00:00.000Z" });
+  state = beginPulse2Rotation(state, "route-a", "2026-09-23T00:01:00.000Z");
+  assert.equal(route(state, "route-a").rotationDispatchAt, null);
+
+  state = markPulse2RotationDispatch(state, "route-a", "2026-09-23T00:01:10.000Z");
+  assert.equal(route(state, "route-a").rotationDispatchAt, "2026-09-23T00:01:10.000Z");
+
+  state = markPulse2CaptureWait(state, "route-a", "2026-09-23T00:01:11.000Z");
+  assert.equal(route(state, "route-a").rotationDispatchAt, "2026-09-23T00:01:10.000Z");
+
+  const projectChat = "https://chatgpt.com/g/g-p-project-a/c/new-cycle";
+  state = capturePulse2Chat(state, "route-a", projectChat, {
+    at: "2026-09-23T00:03:11.000Z"
+  });
+  assert.equal(route(state, "route-a").rotationDispatchAt, null);
 });
 
 test("initial project-created chat becomes cycle 1 instead of cycle 2", () => {
