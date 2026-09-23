@@ -31,9 +31,10 @@ Additional inspection and test design found:
 7. **Open Current Chat could corrupt an in-flight rotation** — during `rotating/capture-wait`, `currentChatUrl` still points at the previous chat while `tabId` belongs to the new-chat flow; opening the old current chat could replace the managed `tabId` and break URL capture.
 8. **Rotation recovery could adopt an unrelated ChatGPT chat** — a stale/manually navigated managed `tabId` pointing at any new `/c/...` URL could be mistaken for the just-created project chat.
 9. **Capture-wait could adopt an unrelated ChatGPT chat** — after a valid project chat was created but before its two-minute URL capture completed, manual navigation to another `/c/...` URL could be persisted as the next project cycle.
-10. **Lost managed-tab recovery could duplicate an already-open current chat** — after the stored managed `tabId` disappeared, monitoring created a fresh tab even when the exact same current chat was already open elsewhere and unclaimed by any other Pulse 2.0 route.
+10. **Lost managed-tab recovery must not hijack a user-owned matching tab** — avoiding duplicate tabs by adopting any unclaimed matching URL can unexpectedly turn the user's own ChatGPT tab into a Pulse service tab, overwrite its composer and send automation into it.
 11. **Background URL-capture hydration could fail after the two-minute wait** — if the user switched away from the newly created chat before capture, the capture path inspected its DOM in the background even though ChatGPT can defer hydration there.
 12. **Transient unauthenticated snapshot could survive the hydration window** — even a correct foregrounded chat can occasionally remain incompletely hydrated; immediately recording auth failure after one hydration window makes recovery too brittle.
+13. **Recovered monitoring could falsely advance counters without proven DOM delivery** — the adversarial closed-tab test observed runtime continuation counters advancing while the user message was absent from the expected page. The release gate now requires `lastDispatchOutcome=confirmed` and a real user message in the route-owned replacement tab.
 
 ## 0.8.6 Release Contract
 
@@ -47,7 +48,7 @@ Additional inspection and test design found:
 - Disable and reject **Open Current Chat** while a running route is not in `monitoring`.
 - During crash recovery, adopt a concrete chat only when its project-scoped URL belongs to the configured Project; otherwise rebuild from the configured Project page.
 - During `capture-wait`, persist a changed chat URL only when it belongs to the configured Project; unrelated ChatGPT chats are rejected and retried.
-- When a previously managed chat tab is lost, adopt an already-open unclaimed exact-current-chat tab before creating another duplicate; never steal a tab claimed by another route.
+- When a previously managed chat tab is lost, create a fresh route-owned replacement. Never adopt an arbitrary matching tab merely because no other Pulse route claims it.
 - Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
 - If a correct loaded chat remains unauthenticated after the bounded hydration window, allow one single foreground reload + second bounded hydration attempt before surfacing auth failure.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
@@ -71,7 +72,7 @@ Additional inspection and test design found:
 - Expected-target URL readiness implemented for monitoring and rotation waits.
 - Bounded post-load DOM/auth hydration retry implemented.
 - Tab-ready listener registration gap closed with an immediate post-subscription recheck.
-- Browser E2E extended with closed-tab recovery through exact matching-tab adoption, manual focus guard, restart reuse, Open Current Chat reuse, unrelated recovery rejection and unrelated capture-wait rejection.
+- Browser E2E extended with closed-tab recovery that preserves a separate user-owned matching tab, manual focus guard, restart reuse, Open Current Chat reuse, unrelated recovery rejection and unrelated capture-wait rejection.
 - Unit/static tests extended for transient timing and tab lifecycle contracts.
 - Release metadata/tooling/docs bumped to 0.8.6 beta.
 
@@ -87,7 +88,7 @@ Additional inspection and test design found:
 - [x] Guard Open Current Chat during rotating/capture-wait so it cannot corrupt the managed new-chat tab.
 - [x] Reject unrelated ChatGPT chats during rotation recovery and cover this with loaded Chromium.
 - [x] Reject unrelated ChatGPT chats during capture-wait and require later recovery to the correct project URL.
-- [x] Reuse an unclaimed exact-current-chat tab after managed-tab loss instead of spawning another duplicate.
+- [x] Preserve user-owned matching tabs after managed-tab loss; recover only by creating a fresh route-owned replacement.
 - [x] Foreground URL capture and restore user focus after the capture check.
 - [x] Add adversarial loaded-browser scenarios.
 - [x] Add unit/static timing and lifecycle tests.
