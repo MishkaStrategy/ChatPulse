@@ -9,7 +9,8 @@ const EXTENSION_PATH = path.resolve("chrome-extension");
 const CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-initial";
 const PROJECT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/project";
 const PROJECT_URL_2 = "https://chatgpt.com/g/g-p-pulse2-browser-e2e-two/project";
-const CREATED_CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-created";
+const CREATED_CHAT_URL = "https://chatgpt.com/g/g-p-pulse2-browser-e2e/c/pulse2-browser-e2e-created";
+const UNRELATED_CHAT_URL = "https://chatgpt.com/c/pulse2-browser-e2e-unrelated";
 const AUTO_COMMAND = "PULSE2_BROWSER_E2E_CONTINUE";
 const START_MESSAGE = "PULSE2_BROWSER_E2E_START";
 const UNSAVED_DRAFT = "UNSAVED_DRAFT_MUST_SURVIVE_STATE_PUSH";
@@ -98,12 +99,12 @@ try {
   const routeId = blankSingleSaved.routes[0].id;
 
   const recoveryProjectPage = await context.newPage();
-  await recoveryProjectPage.goto(PROJECT_URL, { waitUntil: "domcontentloaded" });
+  await recoveryProjectPage.goto(UNRELATED_CHAT_URL, { waitUntil: "domcontentloaded" });
   await waitFor(
     async () => await recoveryProjectPage.locator("[data-testid='profile-button']").count() === 1,
-    "controlled project fixture was not installed before recovery"
+    "controlled unrelated-chat fixture was not installed before recovery"
   );
-  const recoveryTabId = await tabIdForUrl(pulse2Page, PROJECT_URL);
+  const recoveryTabId = await tabIdForUrl(pulse2Page, UNRELATED_CHAT_URL);
   assert.ok(Number.isInteger(recoveryTabId), "controlled project fixture has no Chrome tab id");
 
   await pulse2Page.bringToFront();
@@ -343,6 +344,7 @@ try {
   console.log("pulse2_browser_e2e_optional_chat_save=PASS");
   console.log("pulse2_browser_e2e_multi_route_save=PASS");
   console.log("pulse2_browser_e2e_rotation_recovery=PASS");
+  console.log("pulse2_browser_e2e_unrelated_chat_recovery_guard=PASS");
   console.log("pulse2_browser_e2e_project_foreground=PASS");
   console.log("pulse2_browser_e2e_overnight_monitor_alarm=PASS");
   console.log("pulse2_browser_e2e_monitor_focus_restore=PASS");
