@@ -84,6 +84,8 @@ assert.ok(engine.includes("findUnclaimedPulse2ChatTab"), "lost managed tabs shou
 assert.ok(engine.includes("claimedByOtherRoutes"), "lost-tab adoption must not steal another route's managed tab");
 assert.ok(engine.includes("pulse2TabReadyForTarget"), "replacement tabs must reach the expected ChatGPT URL before inspection");
 assert.ok(engine.includes("inspectPulse2TabAfterHydration"), "ChatGPT DOM hydration must be retried before auth decisions");
+assert.ok(engine.includes("inspectPulse2TabWithReloadRecovery"), "loaded but unauthenticated chat snapshots need one bounded foreground reload retry");
+assert.ok(engine.includes("chrome.tabs.reload(tabId)"), "reload recovery must explicitly reload the managed tab once");
 assert.ok(engine.includes("CHAT_HYDRATION_TIMEOUT_MS = 8_000"), "ChatGPT hydration wait must remain bounded");
 assert.ok(engine.includes("Close the gap between the pre-listener read and listener registration"), "tab readiness listener gap must stay closed");
 assert.ok(engine.includes("PULSE2_MONITOR_ERROR_RETRY_MS"), "unexpected monitoring failures need bounded retry backoff");
