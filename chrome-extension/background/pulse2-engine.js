@@ -439,7 +439,11 @@ async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected)
     phase: "rotating"
   });
   const concreteChatUrl = normalizeChatURL(tab?.url);
-  if (!concreteChatUrl || concreteChatUrl === route.currentChatUrl) return false;
+  if (!concreteChatUrl
+    || concreteChatUrl === route.currentChatUrl
+    || !pulse2ChatBelongsToProject(concreteChatUrl, route.projectUrl)) {
+    return false;
+  }
 
   let next = markPulse2CaptureWait(state, routeId);
   next = replacePulse2Route(next, routeId, {
@@ -578,6 +582,33 @@ function assertPulse2ExecutionStillCurrent(state, routeId, expected) {
   const route = requireRoute(state, routeId);
   if (expected.phase && route.phase !== expected.phase) throw new Error(`Фаза маршрута «${route.name}» изменилась во время операции.`);
   return route;
+}
+
+function pulse2ChatBelongsToProject(chatUrl, projectUrl) {
+  const chat = safePulse2URL(chatUrl);
+  const project = safePulse2URL(projectUrl);
+  if (!chat || !project) return false;
+  const chatKey = pulse2ProjectKey(chat.pathname);
+  const projectKey = pulse2ProjectKey(project.pathname);
+  return Boolean(chatKey && projectKey && chatKey === projectKey);
+}
+
+function pulse2ProjectKey(pathname) {
+  const parts = String(pathname || "").split("/").filter(Boolean);
+  const explicit = parts.find((part) => /^g-p-[a-z0-9_-]+$/i.test(part));
+  if (explicit) return explicit.toLowerCase();
+  const projectIndex = parts.findIndex((part) => /^projects?$/i.test(part));
+  return projectIndex >= 0 && parts[projectIndex + 1]
+    ? parts[projectIndex + 1].toLowerCase()
+    : null;
+}
+
+function safePulse2URL(value) {
+  try {
+    return new URL(String(value || ""));
+  } catch {
+    return null;
+  }
 }
 
 async function reusablePulse2RouteTab(route, targetUrl) {
