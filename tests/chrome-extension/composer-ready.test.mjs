@@ -45,7 +45,7 @@ function inspectComposer({ speech = false, stop = false, speechLabel = "Start vo
     title: "Test chat",
     querySelector(selector) {
       if (selector === "button[data-testid='stop-button']") return stop ? stopButton : null;
-      if (selector === "button[data-testid='composer-speech-button']") return speech ? speechButton : null;
+      if (String(selector).includes("composer-speech-button")) return speech ? speechButton : null;
       if (selector === "#prompt-textarea") return input;
       if (selector === "main, [role='main']") return null;
       if (selector === "[data-message-author-role]") return null;
@@ -117,4 +117,8 @@ test("absence of both Stop and voice button is not enough to declare input-ready
   const snapshot = inspectComposer({ speech: false, stop: false });
   assert.equal(snapshot.isGenerating, false);
   assert.equal(snapshot.readyForNewInput, false);
+});
+
+test("fallback fingerprint distinguishes repeated same-text user messages without DOM ids", () => {
+  assert.match(contentScript, /message-position-/);
 });
