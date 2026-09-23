@@ -477,18 +477,29 @@ async function performPulse2Capture(routeId) {
   let state = await loadPulse2State();
   let route = getPulse2Route(state, routeId);
   if (!state.enabled || !route || route.phase !== "capture-wait") return;
+  let previousFocus = null;
+  let managedTabId = null;
   try {
     if (!Number.isInteger(route.tabId)) throw new Error("Вкладка нового чата потеряна до захвата URL.");
-    const tab = await chrome.tabs.get(route.tabId);
+    let tab = await chrome.tabs.get(route.tabId);
     const normalizedURL = normalizeChatURL(tab.url);
     const changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
     const belongsToProject = changed && pulse2ChatBelongsToProject(normalizedURL, route.projectUrl);
     let snapshot = null;
-    if (belongsToProject) snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    if (belongsToProject) {
+      managedTabId = tab.id;
+      previousFocus = await capturePulse2PreviousFocus(tab.id);
+      tab = await activatePulse2ManagedTab(tab.id);
+      await protectManagedTab(tab.id);
+      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, normalizedURL);
+      await delay(CHAT_MONITOR_SETTLE_MS);
+      snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    }
     if (belongsToProject && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
       state = capturePulse2Chat(state, routeId, normalizedURL, {
         title: snapshot.title || "",
+        visibilityState: snapshot.visibilityState,
         at: new Date().toISOString()
       });
       state = await configurePulse2Alarms(state);
@@ -514,6 +525,10 @@ async function performPulse2Capture(routeId) {
     }
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
+  } finally {
+    if (Number.isInteger(managedTabId)) {
+      await restorePulse2PreviousFocus(previousFocus, managedTabId);
+    }
   }
 }
 
