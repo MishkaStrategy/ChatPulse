@@ -115,6 +115,22 @@ test("Voice-кнопка не обходит at-most-once для одного п
   assert.equal(result.decision, "already-continued");
 });
 
+test("новое пользовательское сообщение с Voice-кнопкой сначала только фиксируется", () => {
+  const chat = {
+    ...createChat({ title: "Ядро", url: "https://chatgpt.com/c/example" }),
+    lastObservedSessionId: "session-1",
+    lastObservedFingerprint: "answer-1",
+    lastCommandedFingerprint: "answer-1"
+  };
+  const result = decide(chat, snapshot({
+    latestRole: "user",
+    latestFingerprint: "user-2",
+    readyForNewInput: true
+  }), "session-1");
+  assert.equal(result.decision, "response-changed");
+  assert.equal(result.chat.lastObservedFingerprint, "user-2");
+});
+
 test("совпавшая стоп-фраза отключает только совпавший чат до отправки", () => {
   const matching = {
     ...createChat({ title: "Совпавший", url: "https://chatgpt.com/c/matching" }),
