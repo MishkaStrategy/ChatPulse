@@ -409,9 +409,10 @@ try {
     "manual focus-guard check never foregrounded the managed chat"
   );
   const userChoicePage = await context.newPage();
-  await userChoicePage.goto("about:blank");
+  const userChoiceUrl = `data:text/html,${encodeURIComponent(`<title>Pulse2 Focus Guard ${Date.now()}</title>`)}`;
+  await userChoicePage.goto(userChoiceUrl, { waitUntil: "domcontentloaded" });
   await userChoicePage.bringToFront();
-  const userChoiceTabId = await tabIdForUrl(pulse2Page, "about:blank");
+  const userChoiceTabId = await tabIdForUrl(pulse2Page, userChoicePage.url());
   assert.ok(Number.isInteger(userChoiceTabId), "manual user-choice tab id missing");
   await guardedCheck;
   assert.equal(
