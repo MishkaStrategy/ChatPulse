@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.7 beta — reload recovery for ChatGPT delivery interruptions
+
+- recognize the ChatGPT UI state `Время доставки сообщения истекло. Попробуйте еще/ещё раз.` as an explicit reload-required error;
+- recognize the ChatGPT UI state `Соединение прервано. Ожидание полного ответа` as an explicit reload-required error;
+- make Pulse 1.0 reload the affected chat even when that managed tab is currently active, while leaving existing generic page-error replacement behavior unchanged;
+- make Pulse 2.0 reload the affected managed chat before normal monitoring, rotation recovery or permanent-URL capture continues;
+- exclude ordinary conversation text and composer text from explicit UI scanning to avoid false reloads when those phrases are discussed inside a chat;
+- retain ARIA/error status-region detection so ChatGPT can surface the same errors inside status UI nested near a conversation turn;
+- add regression coverage for both Russian error strings and for Pulse 1.0/Pulse 2.0 reload routing;
+- move deterministic beta package/provenance output to ChatPulse 0.8.7.
+
 ## 0.8.6 beta — adversarial managed-tab hardening
 
 - reuse a still-valid route-owned managed tab across Stop → Start instead of unconditionally opening another ChatGPT tab;
