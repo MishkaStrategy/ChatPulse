@@ -75,6 +75,7 @@ export function defaultPulse2Route(index = 0) {
     lastCommandAt: null,
     lastDispatchOutcome: null,
     lastCheckAt: null,
+    lastPageVisibility: null,
     nextCheckAt: null,
     rotationStartedAt: null,
     captureDueAt: null,
@@ -193,6 +194,7 @@ export function startPulse2State(state, { tabIds = {}, at = new Date().toISOStri
       lastCommandAt: null,
       lastDispatchOutcome: null,
       lastCheckAt: null,
+      lastPageVisibility: null,
       nextCheckAt: hasChat ? at : null,
       rotationStartedAt: !hasChat ? at : null,
       captureDueAt: null,
@@ -239,7 +241,12 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
   const current = normalizePulse2State(state);
   const route = requireRoute(current, routeId);
   const checkedAt = new Date(now).toISOString();
-  let nextRoute = { ...route, lastCheckAt: checkedAt, lastError: null };
+  let nextRoute = {
+    ...route,
+    lastCheckAt: checkedAt,
+    lastPageVisibility: normalizePageVisibility(snapshot?.visibilityState),
+    lastError: null
+  };
   if (!current.enabled || route.phase !== "monitoring") return routeDecision(current, nextRoute, "inactive");
   if (!snapshot?.pageReady) {
     return routeDecision(current, {
@@ -512,6 +519,7 @@ function normalizePulse2Route(raw, index) {
     lastCommandAt: timestampOrNull(raw?.lastCommandAt),
     lastDispatchOutcome: stringOrNull(raw?.lastDispatchOutcome),
     lastCheckAt: timestampOrNull(raw?.lastCheckAt),
+    lastPageVisibility: normalizePageVisibility(raw?.lastPageVisibility),
     nextCheckAt: timestampOrNull(raw?.nextCheckAt),
     rotationStartedAt: timestampOrNull(raw?.rotationStartedAt),
     captureDueAt: timestampOrNull(raw?.captureDueAt),
@@ -665,6 +673,11 @@ function stringOrNull(value) {
 function timestampOrNull(value) {
   if (typeof value !== "string" || !value) return null;
   return Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+function normalizePageVisibility(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ["visible", "hidden", "prerender"].includes(normalized) ? normalized : null;
 }
 
 function normalizeHistory(raw) {
