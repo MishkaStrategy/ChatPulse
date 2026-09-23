@@ -36,6 +36,7 @@ Additional inspection and test design found:
 12. **Transient unauthenticated snapshot could survive the hydration window** — even a correct foregrounded chat can occasionally remain incompletely hydrated; immediately recording auth failure after one hydration window makes recovery too brittle.
 13. **Recovered monitoring could falsely advance counters without proven DOM delivery** — the adversarial closed-tab test observed runtime continuation counters advancing while the user message was absent from the expected page. Fixed: `submitted-unconfirmed` no longer increments continuation counters; only confirmed delivery counts immediately, while a later new assistant response can promote the prior send to `confirmed-by-response`.
 14. **Same-project recovery lacked proof of ownership** — a managed tab manually navigated to another new chat inside the same Project could satisfy the old project-ID guard and be mistaken for the chat just created by Pulse.
+15. **Post-send recovery still trusted stale tab URL** — ChatGPT SPA navigation can update `location.href` before `chrome.tabs.Tab.url`; after a confirmed start send, recovery could miss the already-created chat and create a duplicate.
 14. **SPA URL metadata race during capture** — `history.replaceState()` can change the real page URL before `chrome.tabs.get().url` catches up. Capture could therefore persist a stale project chat URL after the managed page had already navigated elsewhere.
 
 ## 0.8.6 Release Contract
@@ -50,6 +51,7 @@ Additional inspection and test design found:
 - Disable and reject **Open Current Chat** while a running route is not in `monitoring`.
 - During crash recovery, adopt a concrete chat only when its project-scoped URL belongs to the configured Project, a confirmed start-message dispatch checkpoint exists, and the URL is not already in route history; otherwise rebuild from the configured Project page.
 - Persist a confirmed start-message dispatch checkpoint immediately after the content sender confirms the project start message and before entering capture-wait.
+- Post-send recovery prefers authoritative content `location.href`; while a checkpointed send is waiting for a verifiable permanent URL, it does not create another chat and uses a bounded 5-minute wait before explicit failure.
 - During `capture-wait`, persist a changed chat URL only when it belongs to the configured Project; unrelated ChatGPT chats are rejected and retried.
 - When a previously managed chat tab is lost, create a fresh route-owned replacement. Never adopt an arbitrary matching tab merely because no other Pulse route claims it.
 - Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
@@ -96,6 +98,7 @@ Additional inspection and test design found:
 - [x] Preserve user-owned matching tabs after managed-tab loss; recover only by creating a fresh route-owned replacement.
 - [x] Prevent `submitted-unconfirmed` sends from falsely advancing counters; add inferred confirmation from a later assistant response.
 - [x] Require explicit post-send provenance before adopting a same-project chat during rotation recovery; reject prior-history URLs.
+- [x] Make checkpointed post-send recovery SPA-authoritative and bounded so stale `Tab.url` cannot cause duplicate creation.
 - [x] Foreground URL capture and restore user focus after the capture check.
 - [x] Use page snapshot `location.href` as authoritative during SPA URL capture and cover stale `chrome.tabs` metadata.
 - [x] Add adversarial loaded-browser scenarios.
