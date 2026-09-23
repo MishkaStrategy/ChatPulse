@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.5 beta — reliable overnight monitoring after first project chat
+
+- foreground each due Pulse 2.0 managed chat tab before reading assistant state or sending an auto-response, then restore the user's previous tab when it is still safe to do so;
+- keep the tab foregrounded when a due monitoring check transitions into project rotation;
+- decouple assistant-observation polling from the configured auto-response delay: monitoring wakes every 30 seconds but only routes whose `nextCheckAt` is due are touched;
+- after initial project-chat URL capture and after every auto-response dispatch, schedule a 30-second recheck so the next assistant response is discovered promptly instead of waiting the full configured delay before observation;
+- keep the configured delay (for example 1 hour) as the actual stability delay counted after a specific assistant response is first observed;
+- retry transient page/generation/waiting states at 30 seconds and authentication/page-error states at a bounded 5-minute backoff;
+- preserve project-scoped current chat URLs such as `/g/<project>/c/<chat-id>`;
+- add loaded-Chromium alarm-driven regression coverage for the overnight path and safe focus restoration;
+- move deterministic beta package/provenance output to ChatPulse 0.8.5.
+
 ## 0.8.4 beta — foreground Project tab before new-chat creation
 
 - when Pulse 2.0 starts a route without a current chat, open its Project tab as an active Chrome tab instead of leaving project initialization entirely in the background;

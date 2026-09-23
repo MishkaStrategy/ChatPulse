@@ -35,6 +35,8 @@ const CONTENT_TIMEOUT_MS = 6_000;
 const PROJECT_PREPARE_TIMEOUT_MS = 15_000;
 const START_MESSAGE_TIMEOUT_MS = 20_000;
 const PROJECT_SETTLE_MS = 1_000;
+const CHAT_MONITOR_SETTLE_MS = 1_000;
+const MONITOR_ALARM_PERIOD_MINUTES = 0.5;
 const ROTATION_RECOVERY_PERIOD_MINUTES = 0.5;
 
 const ports = new Set();
@@ -231,6 +233,9 @@ async function performPulse2RouteCheck(routeId) {
   if (!state.enabled || !route || route.phase !== "monitoring") return;
   const expectedSessionId = state.sessionId;
   const expectedRevision = state.controlRevision;
+  let previousFocus = null;
+  let managedTabId = null;
+  let keepManagedTabActive = false;
 
   route = { ...route, checkInProgress: true, lastError: null };
   state = replacePulse2Route(state, routeId, route);
@@ -238,6 +243,10 @@ async function performPulse2RouteCheck(routeId) {
 
   try {
     let tab = await ensurePulse2ChatTab(state, routeId);
+    managedTabId = tab.id;
+    previousFocus = await capturePulse2PreviousFocus(tab.id);
+    tab = await activatePulse2ManagedTab(tab.id);
+
     state = await loadPulse2State();
     route = requireRoute(state, routeId);
     if (tab.id !== route.tabId) {
@@ -245,7 +254,9 @@ async function performPulse2RouteCheck(routeId) {
       await persistPulse2State(state);
     }
 
+    await protectManagedTab(tab.id);
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    await delay(CHAT_MONITOR_SETTLE_MS);
     let snapshot = await inspectPulse2Tab(tab.id);
     state = await loadPulse2State();
     assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
@@ -257,6 +268,10 @@ async function performPulse2RouteCheck(routeId) {
       state = await loadPulse2State();
       route = assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
       tab = await ensurePulse2ChatTab(state, routeId);
+      managedTabId = tab.id;
+      tab = await activatePulse2ManagedTab(tab.id);
+      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+      await delay(CHAT_MONITOR_SETTLE_MS);
       snapshot = await inspectPulse2Tab(tab.id);
       observation = observePulse2Snapshot(state, routeId, snapshot);
       state = observation.state;
@@ -284,6 +299,7 @@ async function performPulse2RouteCheck(routeId) {
         await persistPulse2State(state);
         return;
       }
+      keepManagedTabActive = true;
       state = beginPulse2Rotation(state, routeId);
       state = await configurePulse2Alarms(state);
       await persistPulse2State(state);
@@ -308,6 +324,9 @@ async function performPulse2RouteCheck(routeId) {
       state = replacePulse2Route(latest, routeId, { ...latestRoute, checkInProgress: false });
       state = await configurePulse2Alarms(state);
       await persistPulse2State(state);
+    }
+    if (!keepManagedTabActive && Number.isInteger(managedTabId)) {
+      await restorePulse2PreviousFocus(previousFocus, managedTabId);
     }
   }
 }
@@ -601,6 +620,34 @@ async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT
   throw new Error(`Не удалось связаться со страницей ChatGPT: ${lastError?.message || "content script недоступен"}`);
 }
 
+async function capturePulse2PreviousFocus(managedTabId) {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!Number.isInteger(activeTab?.id) || activeTab.id === managedTabId) return null;
+    return {
+      tabId: activeTab.id,
+      windowId: Number.isInteger(activeTab.windowId) ? activeTab.windowId : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function restorePulse2PreviousFocus(previousFocus, managedTabId) {
+  if (!Number.isInteger(previousFocus?.tabId)) return;
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (activeTab?.id !== managedTabId) return;
+    const previousTab = await chrome.tabs.get(previousFocus.tabId);
+    await chrome.tabs.update(previousTab.id, { active: true });
+    if (Number.isInteger(previousTab.windowId)) {
+      try { await chrome.windows.update(previousTab.windowId, { focused: true }); } catch { /* best effort restore */ }
+    }
+  } catch {
+    /* user may have closed or moved the previous tab */
+  }
+}
+
 async function activatePulse2ManagedTab(tabId) {
   const tab = await chrome.tabs.update(tabId, { active: true });
   if (Number.isInteger(tab?.windowId)) {
@@ -650,11 +697,11 @@ async function configurePulse2Alarms(state) {
   const hasMonitoring = current.routes.some((route) => route.phase === "monitoring");
   if (hasMonitoring) {
     const existing = await chrome.alarms.get(PULSE2_ALARM_NAME);
-    if (!existing || Number(existing.periodInMinutes) !== Number(current.intervalMinutes)) {
+    if (!existing || Number(existing.periodInMinutes) !== MONITOR_ALARM_PERIOD_MINUTES) {
       if (existing) await chrome.alarms.clear(PULSE2_ALARM_NAME);
       await chrome.alarms.create(PULSE2_ALARM_NAME, {
-        delayInMinutes: current.intervalMinutes,
-        periodInMinutes: current.intervalMinutes
+        delayInMinutes: MONITOR_ALARM_PERIOD_MINUTES,
+        periodInMinutes: MONITOR_ALARM_PERIOD_MINUTES
       });
     }
   } else {

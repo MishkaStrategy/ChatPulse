@@ -2,120 +2,97 @@
 schema: hq-critical-path/v1
 repository: MishkaStrategy/ChatPulse
 default_branch: main
-critical_path_revision: 83
-updated_at: 2026-09-22T19:31:00Z
-project_state: DONE
-critical_path_status: VERIFIED
-release_contract_status: SATISFIED
+critical_path_revision: 84
+updated_at: 2026-09-23T03:45:00Z
+project_state: ACTIVE
+critical_path_status: EXECUTING
+release_contract_status: EXPLICIT
 handoff_status: READY
 basis_ref: main
-basis_sha: 05fa17ee3c61998ca5a2a302e16e9d19a87bd60a
+basis_sha: 352cb5e6a4b07916c5b1a536e4d9091a7fa050d9
 ---
 
 # HQ Critical Path
 
-## Current Release Contract
+## Current Goal
 
-Release target: ChatPulse 0.8.4 beta — ensure Pulse 2.0 foregrounds the route-owned ChatGPT Project tab before creating the first or next project chat.
+Release ChatPulse 0.8.5 beta fixing Pulse 2.0 routes that successfully create cycle 1 but then make no further overnight progress.
 
-Definition of DONE: a deliberately backgrounded Project tab is made active by Pulse before composer discovery, normal and recovery rotation both pass in loaded Chromium, existing-chat monitoring remains background-capable, and exact post-merge `main` reproduces the frozen candidate package identity.
+## Owner Evidence / Root Cause
 
-## Repository Basis
+Owner left Pulse 2.0 running overnight with:
+- one route;
+- auto-response text `go`;
+- 1-hour configured auto-response delay;
+- 3 auto-responses per cycle;
+- 4 cycles per project.
 
-- Previous verified release: 0.8.3.
-- 0.8.3 immutable product basis: `a3fb895bf5e89fe47faf9ede763be3c6a04b88b8`.
-- 0.8.4 frozen candidate: `95704df3e305bce8f02e3ea1217ff27b06fd99dc`.
-- Canonical PR: #38, merged.
-- Immutable 0.8.4 product merge / release basis: `05fa17ee3c61998ca5a2a302e16e9d19a87bd60a`.
-- This state document may advance `main` after the immutable product basis above without changing product release contents.
+By morning, history still contained only the first automatically created project chat and the owner observed only the initial start message.
 
-## Root Cause / Delivered Fix
+Live 0.8.4 investigation found two relevant gaps:
 
-Owner evidence showed **«Не найдено поле нового чата внутри проекта ChatGPT.»** while the newly opened Project tab remained in the background. Live 0.8.3 code confirmed that `performPulse2Rotation()` created, navigated and reused the Project tab with `active: false` before attempting composer discovery.
+1. Project-chat creation was foregrounded in 0.8.4, but once the route entered `monitoring`, ordinary assistant inspection and `go` dispatch again occurred entirely in a background tab. Real ChatGPT may freeze or incompletely update that DOM.
+2. The configured auto-response delay also doubled as the Chrome monitor alarm period. For a route created by Pulse itself, URL capture set the first monitoring check one full configured interval later; seeing the assistant response then started another full stability interval. With a 1-hour setting, this could add an unintended extra hour before the first `go`.
 
-0.8.4 now:
+The project-scoped current-chat URL form visible in owner evidence, `/g/<project>/c/<chat-id>`, is accepted by `normalizeChatURL` and is not the defect.
 
-- when a route starts without a current chat, opens its Project tab active instead of making project initialization purely background;
-- before every first-chat or next-chat rotation, explicitly activates the route-owned managed tab;
-- focuses the containing Chrome window when possible;
-- keeps the Project tab foregrounded through page completion, settle/hydration wait, Project-composer discovery and start-message submission;
-- applies the same foregrounding to 0.8.3 alarm-driven rotation recovery;
-- leaves ordinary monitoring of already existing chats background-capable;
-- preserves Pulse 1.0 isolation, multi-route serialization, auth/fail-closed behavior, durable rotation recovery and bounded permanent-URL capture.
+## 0.8.5 Release Contract
 
-## Validation Evidence
+- Every due monitoring check must foreground the route-owned managed chat before reading assistant state or sending an auto-response.
+- After a monitoring-only check or send, restore the user's previous tab when the managed tab is still active; do not override a manual user tab switch.
+- If monitoring transitions into rotation, keep the managed tab active so 0.8.4 Project-foreground behavior remains intact.
+- Decouple assistant observation cadence from the configured auto-response delay.
+- Monitor scheduler wakes at 30-second cadence but only executes routes whose persisted `nextCheckAt` is due.
+- After project-chat capture and after an auto-response dispatch, schedule a 30-second recheck to discover the next assistant response promptly.
+- Once a specific completed assistant response is observed, preserve the configured interval as the real stability delay before sending `go`.
+- Use 30-second retry for transient ready/generating/waiting states and bounded 5-minute retry for auth/page-error states.
+- Preserve 0.8.4 foreground Project rotation, durable rotation recovery, project-scoped chat URLs, multi-route serialization, Pulse 1.0 isolation, auth/fail-closed rules and URL capture.
+- Add loaded Chromium evidence using the real monitor alarm, not only manual `CHECK_NOW`.
+- Pass canonical PR release/dependency gates and exact post-merge main revalidation.
 
-### Candidate / PR #38
+## Current State
 
-- Candidate SHA: `95704df3e305bce8f02e3ea1217ff27b06fd99dc`.
-- PR release run `35773734998`: SUCCESS.
-- PR dependency run `35773735236`: SUCCESS.
-- Five full extension audit cycles: 5/5 SUCCESS.
-- Retained Pulse 1.0 loaded-extension Chromium E2E: SUCCESS.
-- Pulse 2.0 loaded-extension E2E:
-  - unsaved settings draft: PASS;
-  - optional current chat: PASS;
-  - multi-route save: PASS;
-  - rotation recovery: PASS;
-  - **Project foreground switching: PASS**;
-  - retained full rotation: PASS;
-  - Pulse 1.0 isolation: PASS.
-- Reproducible package/provenance: SUCCESS.
-- Candidate artifact ID: `10714549563`, name `ChatPulse-Chrome-v0.8.4-beta`.
-- Candidate ZIP SHA-256: `18fda3bc7715ae36c09497b01c022472365bb91aea64d86ba20c7638b6823435`.
-- Candidate source manifest SHA-256: `78c4e93c26e16f2b68c7a4e8e584c5f86c6396192a45e89f0d70df180f7faaa0`.
-
-### Exact post-merge product main
-
-- Product merge SHA: `05fa17ee3c61998ca5a2a302e16e9d19a87bd60a`.
-- Exact-main release run `35773934679`: SUCCESS.
-- Exact-main dependency run `35773934916`: SUCCESS.
-- Five full extension audit cycles: 5/5 SUCCESS.
-- Retained Pulse 1.0 loaded-extension Chromium E2E: SUCCESS.
-- Pulse 2.0 loaded-extension E2E including `project_foreground=PASS`: SUCCESS.
-- Reproducible package/provenance: SUCCESS.
-- Exact-main artifact ID: `10714843621`, name `ChatPulse-Chrome-v0.8.4-beta`.
-- Exact-main ZIP SHA-256: `18fda3bc7715ae36c09497b01c022472365bb91aea64d86ba20c7638b6823435`.
-- Exact-main source manifest SHA-256: `78c4e93c26e16f2b68c7a4e8e584c5f86c6396192a45e89f0d70df180f7faaa0`.
-- Candidate and exact post-merge product `main` are byte-for-byte identical by canonical release payload hashes.
-
-## Adversarial Review
-
-- Foreground switching is scoped to `rotating` / project-chat creation; ordinary existing-chat monitoring is not forced to the foreground.
-- Multi-route rotations remain serialized by the existing engine queue, so only the route currently creating a chat is foregrounded at that moment.
-- If alarm recovery resumes a route already on a newly created concrete `/c/...` URL, the same route-owned tab is activated before recovery adopts it.
-- Window focus is best-effort; active-tab selection is the required behavior and remains available if window focusing fails.
-- Composer/auth checks were not weakened.
-- No blocker remained after exact-main loaded-browser validation.
+- Previous verified release: 0.8.4.
+- 0.8.4 immutable product basis: `05fa17ee3c61998ca5a2a302e16e9d19a87bd60a`.
+- Main state-only head before this fix: `352cb5e6a4b07916c5b1a536e4d9091a7fa050d9`.
+- Execution branch: `fix/pulse2-overnight-monitoring-0.8.5`.
+- Foreground due-monitoring with safe previous-tab restoration implemented.
+- 30-second monitor scheduler implemented with due-route filtering retained.
+- 30-second post-capture/post-dispatch recheck implemented.
+- 5-minute bounded error backoff implemented.
+- Model tests cover 1-hour configured delay without an unintended extra observation hour.
+- Browser regression now drives first auto-response through the real monitor alarm and checks foreground/restore behavior.
+- Release metadata/tooling/docs bumped to 0.8.5 beta.
 
 ## Critical Work
 
-- [x] Confirm owner-reported failure corresponds to background Project-tab rotation.
-- [x] Foreground the managed Project tab before composer lookup.
-- [x] Focus the containing Chrome window when possible.
-- [x] Keep ordinary monitoring background-capable.
-- [x] Add static foreground-tab contract coverage.
-- [x] Add loaded-Chromium regression beginning with an intentionally backgrounded Project tab.
-- [x] Pass candidate dependency gate and 5/5 audits.
-- [x] Pass candidate loaded Chromium foreground/recovery/rotation E2E.
-- [x] Produce deterministic 0.8.4 candidate package.
-- [x] Merge PR #38 with exact-head guard.
-- [x] Repeat all material validation on exact post-merge `main`.
-- [x] Verify exact-main package hashes equal candidate byte-for-byte.
-- [x] Persist DONE/VERIFIED evidence.
+- [x] Verify project-scoped current-chat URL normalization.
+- [x] Root-cause background-monitoring and delay/polling coupling.
+- [x] Foreground due chat monitoring and safely restore previous user focus.
+- [x] Decouple 30-second observation cadence from configured response delay.
+- [x] Add short post-capture/post-dispatch rechecks and bounded error backoff.
+- [x] Add model/static tests.
+- [x] Add loaded-browser real-alarm overnight regression.
+- [x] Bump release tooling/docs to 0.8.5 beta.
+- [ ] Open canonical PR on exact candidate.
+- [ ] Pass 5/5 audits, loaded Chromium E2E, dependency gate and reproducible package/provenance.
+- [ ] Complete adversarial review.
+- [ ] Merge with exact-head guard.
+- [ ] Repeat material validation on exact post-merge main.
+- [ ] Persist DONE/VERIFIED evidence and deliver exact-main ZIP.
 
 ## Blockers
 
-NONE.
+NONE currently known.
 
 ## Active Execution
 
-NONE. ChatPulse 0.8.4 release contract is complete.
+HQ_DIRECT on `fix/pulse2-overnight-monitoring-0.8.5`.
 
 ## Next Action
 
-None for this release. Await owner runtime verification or next requested bug/feature.
+Open the canonical PR and validate the real alarm-driven monitoring path on loaded Chromium.
 
 ## Recovery Note
 
-Immutable 0.8.4 product release basis is `05fa17ee3c61998ca5a2a302e16e9d19a87bd60a`. The owner-requested behavior — switch to the managed Project tab before looking for the new-chat composer — is covered by loaded-Chromium foreground assertions on both PR and exact post-merge `main`.
+Do not weaken delay semantics. The configured delay remains time from observed stable assistant response to auto-response; only observation/retry cadence is shortened. Local Chrome extensions cannot execute while Chrome/the computer is fully asleep, so docs now state that limitation explicitly.

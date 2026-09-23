@@ -6,6 +6,8 @@ export const PULSE2_DEFAULT_MESSAGES_PER_CYCLE = 5;
 export const PULSE2_DEFAULT_MAX_CYCLES = 3;
 export const PULSE2_CAPTURE_DELAY_MS = 2 * 60_000;
 export const PULSE2_CAPTURE_RETRY_MS = 30_000;
+export const PULSE2_MONITOR_RECHECK_MS = 30_000;
+export const PULSE2_MONITOR_ERROR_RETRY_MS = 5 * 60_000;
 export const PULSE2_MAX_CAPTURE_ATTEMPTS = 10;
 export const PULSE2_MAX_MESSAGES_PER_CYCLE = 1_000;
 export const PULSE2_MAX_CYCLES = 1_000;
@@ -73,6 +75,7 @@ export function defaultPulse2Route(index = 0) {
     lastCommandAt: null,
     lastDispatchOutcome: null,
     lastCheckAt: null,
+    lastPageVisibility: null,
     nextCheckAt: null,
     rotationStartedAt: null,
     captureDueAt: null,
@@ -191,6 +194,7 @@ export function startPulse2State(state, { tabIds = {}, at = new Date().toISOStri
       lastCommandAt: null,
       lastDispatchOutcome: null,
       lastCheckAt: null,
+      lastPageVisibility: null,
       nextCheckAt: hasChat ? at : null,
       rotationStartedAt: !hasChat ? at : null,
       captureDueAt: null,
@@ -237,25 +241,56 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
   const current = normalizePulse2State(state);
   const route = requireRoute(current, routeId);
   const checkedAt = new Date(now).toISOString();
-  let nextRoute = { ...route, lastCheckAt: checkedAt, lastError: null };
+  let nextRoute = {
+    ...route,
+    lastCheckAt: checkedAt,
+    lastPageVisibility: normalizePageVisibility(snapshot?.visibilityState),
+    lastError: null
+  };
   if (!current.enabled || route.phase !== "monitoring") return routeDecision(current, nextRoute, "inactive");
-  if (!snapshot?.pageReady) return routeDecision(current, nextRoute, "page-not-ready");
+  if (!snapshot?.pageReady) {
+    return routeDecision(current, {
+      ...nextRoute,
+      nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_RECHECK_MS)
+    }, "page-not-ready");
+  }
   if (!snapshot?.authenticated) {
-    return routeDecision(current, { ...nextRoute, lastError: "В профиле Chrome не выполнен вход в ChatGPT." }, "not-authenticated");
+    return routeDecision(current, {
+      ...nextRoute,
+      lastError: "В профиле Chrome не выполнен вход в ChatGPT.",
+      nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_ERROR_RETRY_MS)
+    }, "not-authenticated");
   }
   if (snapshot?.errorDetected) {
-    return routeDecision(current, { ...nextRoute, lastError: "Страница ChatGPT сообщает об ошибке." }, "page-error");
+    return routeDecision(current, {
+      ...nextRoute,
+      lastError: "Страница ChatGPT сообщает об ошибке.",
+      nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_ERROR_RETRY_MS)
+    }, "page-error");
   }
-  if (snapshot?.isGenerating) return routeDecision(current, nextRoute, "generating");
+  if (snapshot?.isGenerating) {
+    return routeDecision(current, {
+      ...nextRoute,
+      nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_RECHECK_MS)
+    }, "generating");
+  }
 
   const fingerprint = stringOrNull(snapshot?.latestFingerprint);
-  if (!fingerprint) return routeDecision(current, nextRoute, "no-messages");
+  if (!fingerprint) {
+    return routeDecision(current, {
+      ...nextRoute,
+      nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_RECHECK_MS)
+    }, "no-messages");
+  }
   const latestRole = String(snapshot?.latestRole || "unknown");
   if (latestRole !== "assistant") {
     if (route.lastObservedFingerprint !== fingerprint) {
       nextRoute = { ...nextRoute, lastObservedFingerprint: fingerprint, lastObservedAt: checkedAt };
     }
-    return routeDecision(current, nextRoute, "waiting-for-assistant", fingerprint);
+    return routeDecision(current, {
+      ...nextRoute,
+      nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_RECHECK_MS)
+    }, "waiting-for-assistant", fingerprint);
   }
 
   if (route.lastObservedFingerprint !== fingerprint) {
@@ -300,7 +335,7 @@ export function recordPulse2Dispatch(state, routeId, fingerprint, outcome, at = 
     lastCommandedFingerprint: String(fingerprint || "") || route.lastCommandedFingerprint,
     lastCommandAt: at,
     lastDispatchOutcome: String(outcome || "submitted-unconfirmed"),
-    nextCheckAt: addMinutes(Date.parse(at), current.intervalMinutes),
+    nextCheckAt: addMilliseconds(Date.parse(at), PULSE2_MONITOR_RECHECK_MS),
     lastError: outcome === "confirmed" ? null : "Отправка нажата, но DOM не подтвердил сообщение. Повтор для этого ответа заблокирован."
   });
 }
@@ -378,7 +413,7 @@ export function capturePulse2Chat(state, routeId, url, { title = "", at = new Da
     lastCommandAt: null,
     lastDispatchOutcome: null,
     lastCheckAt: null,
-    nextCheckAt: addMinutes(Date.parse(at), current.intervalMinutes),
+    nextCheckAt: addMilliseconds(Date.parse(at), PULSE2_MONITOR_RECHECK_MS),
     rotationStartedAt: null,
     captureDueAt: null,
     captureAttempts: 0,
@@ -484,6 +519,7 @@ function normalizePulse2Route(raw, index) {
     lastCommandAt: timestampOrNull(raw?.lastCommandAt),
     lastDispatchOutcome: stringOrNull(raw?.lastDispatchOutcome),
     lastCheckAt: timestampOrNull(raw?.lastCheckAt),
+    lastPageVisibility: normalizePageVisibility(raw?.lastPageVisibility),
     nextCheckAt: timestampOrNull(raw?.nextCheckAt),
     rotationStartedAt: timestampOrNull(raw?.rotationStartedAt),
     captureDueAt: timestampOrNull(raw?.captureDueAt),
@@ -639,6 +675,11 @@ function timestampOrNull(value) {
   return Number.isFinite(Date.parse(value)) ? value : null;
 }
 
+function normalizePageVisibility(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ["visible", "hidden", "prerender"].includes(normalized) ? normalized : null;
+}
+
 function normalizeHistory(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => {
@@ -658,4 +699,9 @@ function normalizeHistory(raw) {
 function addMinutes(timestampMs, minutes) {
   const base = Number.isFinite(timestampMs) ? timestampMs : Date.now();
   return new Date(base + clampInterval(minutes) * 60_000).toISOString();
+}
+
+function addMilliseconds(timestampMs, milliseconds) {
+  const base = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  return new Date(base + Number(milliseconds)).toISOString();
 }
