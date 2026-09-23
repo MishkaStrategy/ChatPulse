@@ -386,7 +386,9 @@ export function decide(chat, snapshot, sessionId) {
   if (chat.lastObservedFingerprint !== fingerprint) {
     return decisionResult({ ...updated, lastObservedFingerprint: fingerprint }, "response-changed");
   }
-  if (snapshot.latestRole !== "assistant") {
+  const readyWithoutAssistant = snapshot.latestRole === "user"
+    && snapshot.readyForNewInput === true;
+  if (snapshot.latestRole !== "assistant" && !readyWithoutAssistant) {
     return decisionResult(updated, "waiting-for-assistant");
   }
   if (chat.lastCommandedFingerprint === fingerprint) {
