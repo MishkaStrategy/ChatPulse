@@ -468,7 +468,10 @@ async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected)
 
   let concreteChatUrl = normalizeChatURL(tab?.url);
   try {
-    const snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    let snapshot = await inspectPulse2TabAfterHydration(tab.id);
+    if (snapshot?.reloadRequested === true) {
+      snapshot = await reloadAndInspectPulse2Tab(tab.id);
+    }
     concreteChatUrl = normalizeChatURL(snapshot?.url) || concreteChatUrl;
   } catch {
     /* A confirmed send checkpoint is stronger than a transient inspect failure. */
