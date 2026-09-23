@@ -79,8 +79,7 @@ test("due monitoring foregrounds the route tab and restores the user's previous 
 
 test("managed tab lifecycle avoids duplicates and runtime errors back off", () => {
   assert.match(engine, /reusablePulse2RouteTab/);
-  assert.match(engine, /findUnclaimedPulse2ChatTab/);
-  assert.match(engine, /claimedByOtherRoutes/);
+  assert.doesNotMatch(engine, /findUnclaimedPulse2ChatTab/);
   assert.match(engine, /pulse2TabReadyForTarget/);
   assert.match(engine, /CHAT_HYDRATION_TIMEOUT_MS = 8_000/);
   assert.match(engine, /CHAT_HYDRATION_RETRY_MS = 500/);
