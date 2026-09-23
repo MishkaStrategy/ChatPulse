@@ -38,6 +38,7 @@ Additional inspection and test design found:
 14. **Same-project recovery lacked proof of ownership** — a managed tab manually navigated to another new chat inside the same Project could satisfy the old project-ID guard and be mistaken for the chat just created by Pulse.
 15. **Post-send recovery still trusted stale tab URL** — ChatGPT SPA navigation can update `location.href` before `chrome.tabs.Tab.url`; after a confirmed start send, recovery could miss the already-created chat and create a duplicate.
 16. **Manual focus could still be stolen during the second monitoring recheck** — after the first foreground inspection, a user tab switch could occur before the engine's second send/rotate verification; the old code reactivated the managed tab again and later restored the pre-check tab, overriding the user's choice.
+17. **Queued monitor alarm could immediately undo a respected manual focus switch** — even after the active check correctly left the user's chosen tab alone, an alarm already queued behind it could run immediately and foreground the managed chat again.
 14. **SPA URL metadata race during capture** — `history.replaceState()` can change the real page URL before `chrome.tabs.get().url` catches up. Capture could therefore persist a stale project chat URL after the managed page had already navigated elsewhere.
 
 ## 0.8.6 Release Contract
@@ -60,6 +61,7 @@ Additional inspection and test design found:
 - If a correct loaded chat remains unauthenticated after the bounded hydration window, allow one single foreground reload + second bounded hydration attempt before surfacing auth failure.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
 - A manual user tab switch during a due check cancels any second foreground re-activation for that check; the route is deferred to the next monitor tick.
+- After detecting that the user left the managed tab during a service check, periodic monitor alarms are suppressed for a bounded 10-second grace so an already-queued alarm cannot immediately steal focus back.
 - Unconfirmed dispatches never advance continuation counters or rotation thresholds; they use bounded retry observation and may be credited only when a later assistant response proves the dialogue continued.
 - Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
 - Add loaded-Chromium adversarial scenarios:
@@ -102,6 +104,7 @@ Additional inspection and test design found:
 - [x] Require explicit post-send provenance before adopting a same-project chat during rotation recovery; reject prior-history URLs.
 - [x] Make checkpointed post-send recovery SPA-authoritative and bounded so stale `Tab.url` cannot cause duplicate creation.
 - [x] Respect a manual focus change between first inspection and second send/rotate recheck; defer instead of stealing focus.
+- [x] Add bounded focus grace so a queued monitor alarm cannot immediately undo the user's manual tab switch.
 - [x] Foreground URL capture and restore user focus after the capture check.
 - [x] Use page snapshot `location.href` as authoritative during SPA URL capture and cover stale `chrome.tabs` metadata.
 - [x] Add adversarial loaded-browser scenarios.
