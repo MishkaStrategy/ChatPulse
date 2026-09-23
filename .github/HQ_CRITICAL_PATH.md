@@ -27,6 +27,7 @@ Additional inspection and test design found:
 3. **Unexpected monitor runtime failures could hammer every 30 seconds** — the generic catch path preserved a due/null `nextCheckAt`, so a broken page could repeatedly foreground the route on every monitor alarm.
 4. **Replacement-tab readiness race** — after a managed tab was manually closed, a replacement tab could transiently report `status=complete` before the requested ChatGPT URL was actually loaded. The engine could inspect that blank/intermediate document and report a false authentication error.
 5. **Post-load hydration race** — even after the correct ChatGPT URL reaches `complete`, profile/composer/auth DOM can appear later. Immediate inspection could still record a transient false unauthenticated state.
+6. **Tab-ready listener registration gap** — a tab could become ready after the initial state read but before `tabs.onUpdated` listener registration, causing a false 45-second timeout despite the page being ready.
 
 ## 0.8.6 Release Contract
 
@@ -36,6 +37,7 @@ Additional inspection and test design found:
 - Protect newly opened/replacement managed tabs from Chrome auto-discard.
 - Treat a tab as ready only when both `status=complete` and the actual URL matches the expected current chat/project target.
 - Retry ChatGPT DOM/auth hydration for a bounded 8-second window before deciding that a loaded page is unauthenticated.
+- Recheck tab readiness immediately after listener registration to close the missed-event gap.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
 - Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
 - Add loaded-Chromium adversarial scenarios:
@@ -56,6 +58,7 @@ Additional inspection and test design found:
 - Generic monitoring runtime failure backoff implemented.
 - Expected-target URL readiness implemented for monitoring and rotation waits.
 - Bounded post-load DOM/auth hydration retry implemented.
+- Tab-ready listener registration gap closed with an immediate post-subscription recheck.
 - Browser E2E extended with closed-tab recovery, manual focus guard, restart reuse and Open Current Chat reuse.
 - Unit/static tests extended for transient timing and tab lifecycle contracts.
 - Release metadata/tooling/docs bumped to 0.8.6 beta.
@@ -68,6 +71,7 @@ Additional inspection and test design found:
 - [x] Add runtime failure backoff.
 - [x] Catch and fix replacement-tab readiness race exposed by the new browser test.
 - [x] Catch and fix post-load DOM/auth hydration race exposed by the same closed-tab scenario.
+- [x] Close the tab-ready listener registration event gap found in manual adversarial review.
 - [x] Add adversarial loaded-browser scenarios.
 - [x] Add unit/static timing and lifecycle tests.
 - [x] Bump release tooling/docs to 0.8.6 beta.
