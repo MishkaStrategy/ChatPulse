@@ -214,9 +214,9 @@ try {
   assert.equal(baseline.cycleNumber, 1);
   assert.equal(baseline.cycleContinuationCount, 0);
 
-  // Prepare a separately rendered copy of the same current chat. If the managed
-  // tab disappears, Pulse should adopt this exact unclaimed tab instead of
-  // opening another duplicate.
+  // Prepare a user-owned copy of the same current chat. If the managed tab
+  // disappears, Pulse must leave this tab untouched and create a fresh
+  // route-owned replacement instead of hijacking the user's tab.
   const recoverySparePage = await context.newPage();
   await recoverySparePage.goto(CHAT_URL, { waitUntil: "domcontentloaded" });
   await waitFor(
@@ -247,16 +247,23 @@ try {
     "controlled fixture dispatch advanced counters without confirmed DOM delivery"
   );
   assert.notEqual(firstDispatch.tabId, retainedTabId, "closed managed chat tab id was not replaced");
-  assert.equal(
+  assert.notEqual(
     firstDispatch.tabId,
     recoverySpareTabId,
-    "Pulse 2.0 did not adopt the existing unclaimed copy of the lost current chat"
+    "Pulse 2.0 hijacked a user-owned matching chat tab after managed-tab loss"
   );
-  const recoveredMonitoringPage = recoverySparePage;
-  await waitFor(
-    async () => await latestUserMessage(recoveredMonitoringPage) === AUTO_COMMAND,
-    "Pulse 2.0 auto-response text mismatch after managed-tab recovery"
+  assert.equal(
+    await latestUserMessage(recoverySparePage),
+    "",
+    "Pulse 2.0 wrote into the user-owned matching chat tab"
   );
+  const recoveredMonitoringPage = await waitFor(async () => {
+    for (const page of context.pages()) {
+      if (page === recoverySparePage || page.url() !== CHAT_URL) continue;
+      if (await latestUserMessage(page) === AUTO_COMMAND) return page;
+    }
+    return null;
+  }, "Pulse 2.0 did not create and send through a fresh route-owned replacement tab");
   assert.equal(
     firstDispatch.lastPageVisibility,
     "visible",
@@ -413,6 +420,7 @@ try {
   console.log("pulse2_browser_e2e_capture_foreground=PASS");
   console.log("pulse2_browser_e2e_capture_focus_restore=PASS");
   console.log("pulse2_browser_e2e_closed_tab_recovery=PASS");
+  console.log("pulse2_browser_e2e_user_tab_isolation=PASS");
   console.log("pulse2_browser_e2e_lost_tab_adoption=PASS");
   console.log("pulse2_browser_e2e_manual_focus_guard=PASS");
   console.log("pulse2_browser_e2e_restart_tab_reuse=PASS");
