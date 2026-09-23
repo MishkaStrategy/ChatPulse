@@ -269,6 +269,21 @@ try {
     "ordinary rotation must foreground the managed Project tab before composer lookup"
   );
 
+  // Adversarial regression: capture-wait must never adopt a chat outside the selected project.
+  await projectTab.evaluate((url) => history.replaceState({}, "", url), UNRELATED_CHAT_URL);
+  await expireCaptureDelayAndTrigger(serviceWorker, routeId);
+  const rejectedUnrelatedCapture = await waitFor(async () => {
+    const running = await getPulse2State(pulse2Page);
+    const route = running?.routes?.find((item) => item.id === routeId);
+    return route?.phase === "capture-wait"
+      && route.captureAttempts === 1
+      && route.currentChatUrl === CHAT_URL
+      ? route
+      : null;
+  }, "Pulse 2.0 capture-wait adopted or failed to reject an unrelated ChatGPT chat");
+  assert.match(rejectedUnrelatedCapture.lastError || "", /Новая ссылка чата ещё не появилась/);
+
+  await projectTab.evaluate((url) => history.replaceState({}, "", url), CREATED_CHAT_URL);
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const captured = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -352,6 +367,7 @@ try {
   console.log("pulse2_browser_e2e_manual_focus_guard=PASS");
   console.log("pulse2_browser_e2e_restart_tab_reuse=PASS");
   console.log("pulse2_browser_e2e_open_current_rotation_guard=PASS");
+  console.log("pulse2_browser_e2e_unrelated_capture_guard=PASS");
   console.log("pulse2_browser_e2e_open_current_reuse=PASS");
   console.log("pulse2_browser_e2e_rotation=PASS");
   console.log("pulse2_browser_e2e_isolation=PASS");
