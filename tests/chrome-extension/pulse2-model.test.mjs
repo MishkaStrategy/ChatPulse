@@ -166,6 +166,38 @@ test("capture and dispatch use a short recheck while configured delay remains re
   );
 });
 
+test("monitor transient and auth states use bounded retry timing", () => {
+  let state = startPulse2State(configured(undefined, { intervalMinutes: 60 }), {
+    at: "2026-09-23T00:00:00.000Z"
+  });
+  const now = Date.parse("2026-09-23T00:00:00.000Z");
+
+  let observed = observePulse2Snapshot(state, "route-a", {
+    pageReady: false,
+    visibilityState: "visible"
+  }, now);
+  assert.equal(observed.decision, "page-not-ready");
+  assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 30_000);
+
+  observed = observePulse2Snapshot(state, "route-a", {
+    pageReady: true,
+    authenticated: false,
+    visibilityState: "visible"
+  }, now);
+  assert.equal(observed.decision, "not-authenticated");
+  assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 5 * 60_000);
+
+  observed = observePulse2Snapshot(state, "route-a", {
+    pageReady: true,
+    authenticated: true,
+    errorDetected: false,
+    isGenerating: true,
+    visibilityState: "visible"
+  }, now);
+  assert.equal(observed.decision, "generating");
+  assert.equal(Date.parse(route(observed.state, "route-a").nextCheckAt) - now, 30_000);
+});
+
 test("initial project-created chat becomes cycle 1 instead of cycle 2", () => {
   let state = startPulse2State(configured([
     { id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }
