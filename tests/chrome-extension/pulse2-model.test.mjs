@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { normalizeChatURL } from "../../chrome-extension/lib/model-v2.js";
 import {
   PULSE2_CAPTURE_DELAY_MS,
   applyPulse2SettingsPatch,
@@ -49,6 +50,11 @@ function assistantSnapshot(fingerprint) {
     latestFingerprint: fingerprint
   };
 }
+
+test("project-scoped chat URLs remain valid current chats", () => {
+  const scoped = "https://chatgpt.com/g/g-p-project-a/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  assert.equal(normalizeChatURL(scoped), scoped);
+});
 
 test("project URL normalization accepts project routes and rejects chat URLs", () => {
   assert.equal(normalizePulse2ProjectURL(PROJECT_A), PROJECT_A);
@@ -130,6 +136,33 @@ test("stable assistant response becomes eligible only after the configured delay
   assert.equal(result.decision, "waiting-delay");
   result = observePulse2Snapshot(result.state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T10:02:00.000Z"));
   assert.equal(result.decision, "send-auto-response");
+});
+
+test("capture and dispatch use a short recheck while configured delay remains response-based", () => {
+  let state = startPulse2State(configured([
+    { id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }
+  ], { intervalMinutes: 60 }), { at: "2026-09-22T10:00:00.000Z" });
+  state = markPulse2CaptureWait(state, "route-a", "2026-09-22T10:00:30.000Z");
+  state = capturePulse2Chat(state, "route-a", CHAT_A, { at: "2026-09-22T10:02:30.000Z" });
+  assert.equal(
+    Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-22T10:02:30.000Z"),
+    30_000
+  );
+
+  let observed = observePulse2Snapshot(state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T10:03:00.000Z"));
+  assert.equal(observed.decision, "response-changed");
+  assert.equal(
+    Date.parse(route(observed.state, "route-a").nextCheckAt) - Date.parse("2026-09-22T10:03:00.000Z"),
+    60 * 60_000
+  );
+
+  observed = observePulse2Snapshot(observed.state, "route-a", assistantSnapshot("answer-1"), Date.parse("2026-09-22T11:03:00.000Z"));
+  assert.equal(observed.decision, "send-auto-response");
+  state = recordPulse2Dispatch(observed.state, "route-a", "answer-1", "confirmed", "2026-09-22T11:03:00.000Z");
+  assert.equal(
+    Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-22T11:03:00.000Z"),
+    30_000
+  );
 });
 
 test("initial project-created chat becomes cycle 1 instead of cycle 2", () => {
