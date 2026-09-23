@@ -353,7 +353,9 @@ try {
   const captured = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
-    if (route?.lastError) throw new Error(`Pulse 2.0 URL capture failed: ${route.lastError}`);
+    if (route?.phase === "error") {
+      throw new Error(`Pulse 2.0 URL capture failed: ${route.lastError || "terminal route error"}`);
+    }
     return route?.phase === "monitoring" && route.cycleNumber === 2 && route.currentChatUrl === CREATED_CHAT_URL ? route : null;
   }, "Pulse 2.0 did not capture and adopt the new /c/... URL");
   assert.equal(captured.cycleContinuationCount, 0);
