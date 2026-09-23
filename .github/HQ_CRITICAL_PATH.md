@@ -33,6 +33,7 @@ Additional inspection and test design found:
 9. **Capture-wait could adopt an unrelated ChatGPT chat** — after a valid project chat was created but before its two-minute URL capture completed, manual navigation to another `/c/...` URL could be persisted as the next project cycle.
 10. **Lost managed-tab recovery could duplicate an already-open current chat** — after the stored managed `tabId` disappeared, monitoring created a fresh tab even when the exact same current chat was already open elsewhere and unclaimed by any other Pulse 2.0 route.
 11. **Background URL-capture hydration could fail after the two-minute wait** — if the user switched away from the newly created chat before capture, the capture path inspected its DOM in the background even though ChatGPT can defer hydration there.
+12. **Transient unauthenticated snapshot could survive the hydration window** — even a correct foregrounded chat can occasionally remain incompletely hydrated; immediately recording auth failure after one hydration window makes recovery too brittle.
 
 ## 0.8.6 Release Contract
 
@@ -48,6 +49,7 @@ Additional inspection and test design found:
 - During `capture-wait`, persist a changed chat URL only when it belongs to the configured Project; unrelated ChatGPT chats are rejected and retried.
 - When a previously managed chat tab is lost, adopt an already-open unclaimed exact-current-chat tab before creating another duplicate; never steal a tab claimed by another route.
 - Foreground due URL-capture before inspecting permanent URL/auth/message DOM, then safely restore the previous user tab.
+- If a correct loaded chat remains unauthenticated after the bounded hydration window, allow one single foreground reload + second bounded hydration attempt before surfacing auth failure.
 - Unexpected monitor runtime errors receive a bounded 5-minute retry instead of immediate 30-second hammering.
 - Preserve 0.8.5 overnight monitoring, 0.8.4 project foregrounding, durable rotation recovery, multi-route isolation and Pulse 1.0 isolation.
 - Add loaded-Chromium adversarial scenarios:
