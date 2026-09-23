@@ -1429,6 +1429,7 @@ function recoveryDescription(reason) {
     "frozen-tab": "Chrome заморозил вкладку",
     "content-unreachable": "content script перестал отвечать",
     "page-error": "страница сообщила об ошибке",
+    "page-reload-required": "ChatGPT сообщил об обрыве соединения или таймауте доставки",
     "periodic-freshness": "плановое обновление содержимого",
     "stuck-generation": "генерация зависла более 20 минут",
     "missing-tab": "вкладка была потеряна"
