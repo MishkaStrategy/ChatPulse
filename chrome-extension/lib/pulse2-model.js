@@ -687,3 +687,8 @@ function addMinutes(timestampMs, minutes) {
   const base = Number.isFinite(timestampMs) ? timestampMs : Date.now();
   return new Date(base + clampInterval(minutes) * 60_000).toISOString();
 }
+
+function addMilliseconds(timestampMs, milliseconds) {
+  const base = Number.isFinite(timestampMs) ? timestampMs : Date.now();
+  return new Date(base + Number(milliseconds)).toISOString();
+}
