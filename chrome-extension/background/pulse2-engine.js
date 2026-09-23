@@ -37,6 +37,8 @@ const PROJECT_PREPARE_TIMEOUT_MS = 15_000;
 const START_MESSAGE_TIMEOUT_MS = 20_000;
 const PROJECT_SETTLE_MS = 1_000;
 const CHAT_MONITOR_SETTLE_MS = 1_000;
+const CHAT_HYDRATION_TIMEOUT_MS = 8_000;
+const CHAT_HYDRATION_RETRY_MS = 500;
 const MONITOR_ALARM_PERIOD_MINUTES = 0.5;
 const ROTATION_RECOVERY_PERIOD_MINUTES = 0.5;
 
@@ -263,7 +265,7 @@ async function performPulse2RouteCheck(routeId) {
     await protectManagedTab(tab.id);
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
     await delay(CHAT_MONITOR_SETTLE_MS);
-    let snapshot = await inspectPulse2Tab(tab.id);
+    let snapshot = await inspectPulse2TabAfterHydration(tab.id);
     state = await loadPulse2State();
     assertPulse2ExecutionStillCurrent(state, routeId, { expectedSessionId, expectedRevision, phase: "monitoring" });
     let observation = observePulse2Snapshot(state, routeId, snapshot);
@@ -278,7 +280,7 @@ async function performPulse2RouteCheck(routeId) {
       tab = await activatePulse2ManagedTab(tab.id);
       await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS, route.currentChatUrl);
       await delay(CHAT_MONITOR_SETTLE_MS);
-      snapshot = await inspectPulse2Tab(tab.id);
+      snapshot = await inspectPulse2TabAfterHydration(tab.id);
       observation = observePulse2Snapshot(state, routeId, snapshot);
       state = observation.state;
       await persistPulse2State(state);
@@ -477,7 +479,7 @@ async function performPulse2Capture(routeId) {
     const normalizedURL = normalizeChatURL(tab.url);
     const changed = Boolean(normalizedURL) && (!route.currentChatUrl || normalizedURL !== route.currentChatUrl);
     let snapshot = null;
-    if (changed) snapshot = await inspectPulse2Tab(tab.id);
+    if (changed) snapshot = await inspectPulse2TabAfterHydration(tab.id);
     if (changed && snapshot?.authenticated && snapshot?.messageCount > 0) {
       await assertNoPulse1Collision(normalizedURL);
       state = capturePulse2Chat(state, routeId, normalizedURL, {
@@ -613,6 +615,25 @@ async function inspectPulse2Tab(tabId) {
   });
   if (!response?.ok || !response.snapshot) throw new Error(response?.error || "Не удалось прочитать состояние страницы ChatGPT.");
   return response.snapshot;
+}
+
+async function inspectPulse2TabAfterHydration(tabId) {
+  const startedAt = Date.now();
+  let lastSnapshot = null;
+  let lastError = null;
+  while (Date.now() - startedAt < CHAT_HYDRATION_TIMEOUT_MS) {
+    try {
+      lastSnapshot = await inspectPulse2Tab(tabId);
+      lastError = null;
+      if (lastSnapshot?.authenticated || lastSnapshot?.errorDetected) return lastSnapshot;
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(CHAT_HYDRATION_RETRY_MS);
+  }
+  if (lastSnapshot) return lastSnapshot;
+  if (lastError) throw lastError;
+  throw new Error("Страница ChatGPT не завершила гидратацию интерфейса.");
 }
 
 async function sendToContent(tabId, message, { attempts = 2, timeoutMs = CONTENT_TIMEOUT_MS } = {}) {
