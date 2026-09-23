@@ -260,8 +260,12 @@ try {
   assert.ok(Number.isInteger(recoverySpareTabId), "spare current-chat tab id missing");
 
   // Adversarial regression: closing the managed chat must not kill the route.
+  // A prior focus-restoration scenario can intentionally arm the 10-second
+  // monitorFocusSuppressedUntil grace. Wait it out so this test exercises the
+  // alarm-driven recovery itself instead of correctly hitting that guard.
   await initialChatPage.close();
   await pulse2Page.bringToFront();
+  await pulse2Page.waitForTimeout(10_500);
   await agePulse2Observation(pulse2Page, routeId);
   await triggerMonitorAlarm(serviceWorker);
   const firstDispatch = await waitFor(async () => {
