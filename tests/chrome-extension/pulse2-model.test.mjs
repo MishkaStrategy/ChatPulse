@@ -47,7 +47,8 @@ function assistantSnapshot(fingerprint) {
     errorDetected: false,
     isGenerating: false,
     latestRole: "assistant",
-    latestFingerprint: fingerprint
+    latestFingerprint: fingerprint,
+    visibilityState: "visible"
   };
 }
 
