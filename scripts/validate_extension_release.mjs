@@ -66,6 +66,8 @@ assert.ok(engine.includes('export const PULSE2_ROTATION_ALARM_NAME = "chatpulse-
 assert.ok(engine.includes("performPulse2RotationSweep"), "rotating routes need an alarm-recoverable sweep");
 assert.ok(engine.includes("ROTATION_RECOVERY_PERIOD_MINUTES = 0.5"), "rotation recovery watchdog must remain bounded");
 assert.ok(engine.includes("recoverPulse2RotationAfterDispatch"), "rotation recovery must adopt a concrete chat URL after a lost post-send checkpoint");
+assert.ok(engine.includes("pulse2ChatBelongsToProject"), "rotation recovery must reject unrelated ChatGPT chats");
+assert.ok(engine.includes("chatKey === projectKey"), "rotation recovery ownership must match the configured Project");
 assert.ok(engine.includes("targetUrl = route.currentChatUrl || route.projectUrl"), "START must synchronously create a managed tab even when current chat is empty");
 assert.ok(engine.includes("activatePulse2ManagedTab"), "Project rotation must explicitly foreground its managed tab");
 assert.ok(engine.includes("chrome.tabs.update(tabId, { active: true })"), "managed Project tab must become the active Chrome tab before composer lookup");
