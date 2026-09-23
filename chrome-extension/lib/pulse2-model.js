@@ -387,7 +387,11 @@ export function retryPulse2Capture(state, routeId, at = new Date().toISOString()
   });
 }
 
-export function capturePulse2Chat(state, routeId, url, { title = "", at = new Date().toISOString() } = {}) {
+export function capturePulse2Chat(state, routeId, url, {
+  title = "",
+  visibilityState = null,
+  at = new Date().toISOString()
+} = {}) {
   const current = normalizePulse2State(state);
   const route = requireRoute(current, routeId);
   const normalizedURL = normalizeChatURL(url);
@@ -413,6 +417,7 @@ export function capturePulse2Chat(state, routeId, url, { title = "", at = new Da
     lastCommandAt: null,
     lastDispatchOutcome: null,
     lastCheckAt: null,
+    lastPageVisibility: normalizePageVisibility(visibilityState) || route.lastPageVisibility,
     nextCheckAt: addMilliseconds(Date.parse(at), PULSE2_MONITOR_RECHECK_MS),
     rotationStartedAt: null,
     captureDueAt: null,
