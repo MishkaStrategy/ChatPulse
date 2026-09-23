@@ -294,6 +294,11 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
   }
 
   if (route.lastObservedFingerprint !== fingerprint) {
+    if (route.lastDispatchOutcome === "submitted-unconfirmed"
+      && route.lastCommandedFingerprint
+      && route.lastCommandedFingerprint !== fingerprint) {
+      nextRoute = creditPulse2Continuation(nextRoute, current, "confirmed-by-response");
+    }
     nextRoute = {
       ...nextRoute,
       lastObservedFingerprint: fingerprint,
@@ -304,6 +309,12 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
   }
 
   if (route.lastCommandedFingerprint === fingerprint) {
+    if (route.lastDispatchOutcome === "submitted-unconfirmed") {
+      nextRoute = {
+        ...nextRoute,
+        nextCheckAt: addMilliseconds(now, PULSE2_MONITOR_ERROR_RETRY_MS)
+      };
+    }
     return routeDecision(current, nextRoute, "already-dispatched", fingerprint);
   }
 
@@ -326,18 +337,35 @@ export function observePulse2Snapshot(state, routeId, snapshot, now = Date.now()
 export function recordPulse2Dispatch(state, routeId, fingerprint, outcome, at = new Date().toISOString()) {
   const current = normalizePulse2State(state);
   const route = requireRoute(current, routeId);
-  const cycleContinuationCount = route.cycleContinuationCount + 1;
+  const normalizedOutcome = outcome === "confirmed" ? "confirmed" : "submitted-unconfirmed";
+  const credited = normalizedOutcome === "confirmed"
+    ? creditPulse2Continuation(route, current, normalizedOutcome)
+    : route;
   return replaceRoute(current, routeId, {
+    ...credited,
+    lastCommandedFingerprint: String(fingerprint || "") || route.lastCommandedFingerprint,
+    lastCommandAt: at,
+    lastDispatchOutcome: normalizedOutcome,
+    nextCheckAt: addMilliseconds(
+      Date.parse(at),
+      normalizedOutcome === "confirmed" ? PULSE2_MONITOR_RECHECK_MS : PULSE2_MONITOR_ERROR_RETRY_MS
+    ),
+    lastError: normalizedOutcome === "confirmed"
+      ? null
+      : "Отправка нажата, но DOM не подтвердил сообщение. Счётчик не увеличен; повтор для этого ответа заблокирован до появления нового ответа."
+  });
+}
+
+function creditPulse2Continuation(route, state, outcome) {
+  const cycleContinuationCount = route.cycleContinuationCount + 1;
+  return {
     ...route,
     cycleContinuationCount,
     totalContinuationCount: route.totalContinuationCount + 1,
-    rotationPending: cycleContinuationCount >= current.messagesPerCycle,
-    lastCommandedFingerprint: String(fingerprint || "") || route.lastCommandedFingerprint,
-    lastCommandAt: at,
-    lastDispatchOutcome: String(outcome || "submitted-unconfirmed"),
-    nextCheckAt: addMilliseconds(Date.parse(at), PULSE2_MONITOR_RECHECK_MS),
-    lastError: outcome === "confirmed" ? null : "Отправка нажата, но DOM не подтвердил сообщение. Повтор для этого ответа заблокирован."
-  });
+    rotationPending: cycleContinuationCount >= state.messagesPerCycle,
+    lastDispatchOutcome: outcome,
+    lastError: null
+  };
 }
 
 export function beginPulse2Rotation(state, routeId, at = new Date().toISOString()) {
