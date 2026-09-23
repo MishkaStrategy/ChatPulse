@@ -79,6 +79,7 @@ assert.ok(engine.includes("reusablePulse2RouteTab"), "Stop/Start must reuse a st
 assert.ok(engine.includes("pulse2TabReadyForTarget"), "replacement tabs must reach the expected ChatGPT URL before inspection");
 assert.ok(engine.includes("inspectPulse2TabAfterHydration"), "ChatGPT DOM hydration must be retried before auth decisions");
 assert.ok(engine.includes("CHAT_HYDRATION_TIMEOUT_MS = 8_000"), "ChatGPT hydration wait must remain bounded");
+assert.ok(engine.includes("Close the gap between the pre-listener read and listener registration"), "tab readiness listener gap must stay closed");
 assert.ok(engine.includes("PULSE2_MONITOR_ERROR_RETRY_MS"), "unexpected monitoring failures need bounded retry backoff");
 assert.ok(ui.includes('runAction("OPEN_CURRENT_CHAT", { routeId: selectedRouteId }, false)'), "Open Current Chat must go through the background engine");
 assert.ok(engine.includes('const PULSE1_STORAGE_KEY = "chatpulseState"'));
