@@ -2,6 +2,7 @@ import { normalizeChatURL } from "../lib/model-v2.js";
 import {
   PULSE2_CAPTURE_RETRY_MS,
   PULSE2_MAX_CAPTURE_ATTEMPTS,
+  PULSE2_MONITOR_ERROR_RETRY_MS,
   applyPulse2SettingsPatch,
   beginPulse2Rotation,
   capturePulse2Chat,
@@ -165,14 +166,19 @@ async function startPulse2() {
     for (const route of state.routes) {
       if (!route.projectUrl) throw new Error(`Укажите ссылку проекта для «${route.name}».`);
       const targetUrl = route.currentChatUrl || route.projectUrl;
-      const tab = await chrome.tabs.create({
-        url: targetUrl,
-        active: !route.currentChatUrl,
-        pinned: false
-      });
-      if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
+      let tab = await reusablePulse2RouteTab(route, targetUrl);
+      if (!tab?.id) {
+        tab = await chrome.tabs.create({
+          url: targetUrl,
+          active: !route.currentChatUrl,
+          pinned: false
+        });
+        if (!Number.isInteger(tab?.id)) throw new Error(`Chrome не вернул вкладку для «${route.name}».`);
+        createdTabIds.push(tab.id);
+      } else if (!route.currentChatUrl) {
+        tab = await activatePulse2ManagedTab(tab.id);
+      }
       tabIds[route.id] = tab.id;
-      createdTabIds.push(tab.id);
       await protectManagedTab(tab.id);
     }
     state = startPulse2State(state, { tabIds });
@@ -313,7 +319,8 @@ async function performPulse2RouteCheck(routeId) {
       state = replacePulse2Route(latest, routeId, {
         ...latestRoute,
         lastError: error instanceof Error ? error.message : String(error),
-        lastCheckAt: new Date().toISOString()
+        lastCheckAt: new Date().toISOString(),
+        nextCheckAt: new Date(Date.now() + PULSE2_MONITOR_ERROR_RETRY_MS).toISOString()
       });
       await persistPulse2State(state);
     }
@@ -519,6 +526,7 @@ async function openPulse2CurrentChat(routeId) {
   if (Number.isInteger(tab?.windowId)) {
     try { await chrome.windows.update(tab.windowId, { focused: true }); } catch { /* optional */ }
   }
+  if (Number.isInteger(tab?.id)) await protectManagedTab(tab.id);
   route = { ...route, tabId: tab?.id ?? route.tabId };
   state = replacePulse2Route(state, routeId, route);
   await persistPulse2State(state);
@@ -565,6 +573,19 @@ function assertPulse2ExecutionStillCurrent(state, routeId, expected) {
   const route = requireRoute(state, routeId);
   if (expected.phase && route.phase !== expected.phase) throw new Error(`Фаза маршрута «${route.name}» изменилась во время операции.`);
   return route;
+}
+
+async function reusablePulse2RouteTab(route, targetUrl) {
+  if (!Number.isInteger(route?.tabId)) return null;
+  try {
+    const tab = await chrome.tabs.get(route.tabId);
+    const matches = route.currentChatUrl
+      ? normalizeChatURL(tab?.url) === normalizeChatURL(targetUrl)
+      : normalizePulse2ProjectURL(tab?.url) === normalizePulse2ProjectURL(targetUrl);
+    return matches ? tab : null;
+  } catch {
+    return null;
+  }
 }
 
 async function ensurePulse2ChatTab(state, routeId) {
