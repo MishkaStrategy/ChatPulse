@@ -13,6 +13,7 @@
 - if a correct loaded chat still appears unauthenticated after that bounded hydration window, perform exactly one foreground reload and repeat target-URL + hydration checks before recording an auth failure;
 - close the event gap between the initial tab-state read and `tabs.onUpdated` listener registration so a fast load cannot be missed and turn into a false 45-second timeout;
 - reject unrelated ChatGPT chats during the two-minute URL capture window so manual navigation cannot attach a route to the wrong project;
+- treat the content snapshot `location.href` as authoritative during URL capture so SPA `history.replaceState()` cannot race lagging `chrome.tabs.get().url` metadata;
 - refuse to adopt an arbitrary ChatGPT chat during rotation recovery unless its project-scoped URL belongs to the configured Project; otherwise return to the configured Project and create the correct chat;
 - if a managed monitoring tab is lost, create a fresh route-owned replacement instead of hijacking an arbitrary user-owned tab that happens to show the same current chat;
 - foreground a due new-chat tab during permanent URL capture, then safely restore the user's previous tab after the capture check;
