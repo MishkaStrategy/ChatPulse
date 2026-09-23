@@ -78,6 +78,7 @@ export function defaultPulse2Route(index = 0) {
     lastPageVisibility: null,
     nextCheckAt: null,
     rotationStartedAt: null,
+    rotationDispatchAt: null,
     captureDueAt: null,
     captureAttempts: 0,
     lastCreatedChatAt: null,
@@ -197,6 +198,7 @@ export function startPulse2State(state, { tabIds = {}, at = new Date().toISOStri
       lastPageVisibility: null,
       nextCheckAt: hasChat ? at : null,
       rotationStartedAt: !hasChat ? at : null,
+      rotationDispatchAt: null,
       captureDueAt: null,
       captureAttempts: 0,
       lastCreatedChatAt: null,
@@ -379,9 +381,20 @@ export function beginPulse2Rotation(state, routeId, at = new Date().toISOString(
     checkInProgress: false,
     completedCycles: Math.max(route.completedCycles, route.cycleNumber),
     rotationStartedAt: at,
+    rotationDispatchAt: null,
     nextCheckAt: null,
     captureDueAt: null,
     captureAttempts: 0,
+    lastError: null
+  });
+}
+
+export function markPulse2RotationDispatch(state, routeId, at = new Date().toISOString()) {
+  const current = normalizePulse2State(state);
+  const route = requireRoute(current, routeId);
+  return replaceRoute(current, routeId, {
+    ...route,
+    rotationDispatchAt: at,
     lastError: null
   });
 }
@@ -448,6 +461,7 @@ export function capturePulse2Chat(state, routeId, url, {
     lastPageVisibility: normalizePageVisibility(visibilityState) || route.lastPageVisibility,
     nextCheckAt: addMilliseconds(Date.parse(at), PULSE2_MONITOR_RECHECK_MS),
     rotationStartedAt: null,
+    rotationDispatchAt: null,
     captureDueAt: null,
     captureAttempts: 0,
     lastCreatedChatAt: at,
@@ -555,6 +569,7 @@ function normalizePulse2Route(raw, index) {
     lastPageVisibility: normalizePageVisibility(raw?.lastPageVisibility),
     nextCheckAt: timestampOrNull(raw?.nextCheckAt),
     rotationStartedAt: timestampOrNull(raw?.rotationStartedAt),
+    rotationDispatchAt: timestampOrNull(raw?.rotationDispatchAt),
     captureDueAt: timestampOrNull(raw?.captureDueAt),
     captureAttempts: nonNegativeInteger(raw?.captureAttempts, PULSE2_MAX_CAPTURE_ATTEMPTS),
     lastCreatedChatAt: timestampOrNull(raw?.lastCreatedChatAt),
