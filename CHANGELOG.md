@@ -15,6 +15,8 @@
 - reject unrelated ChatGPT chats during the two-minute URL capture window so manual navigation cannot attach a route to the wrong project;
 - treat the content snapshot `location.href` as authoritative during URL capture so SPA `history.replaceState()` cannot race lagging `chrome.tabs.get().url` metadata;
 - refuse to adopt an arbitrary ChatGPT chat during rotation recovery unless its project-scoped URL belongs to the configured Project; otherwise return to the configured Project and create the correct chat;
+- persist a confirmed start-message checkpoint before entering capture-wait and require that checkpoint for crash-recovery adoption, preventing an arbitrary same-project chat from being mistaken for the newly created cycle;
+- reject any recovery URL already present in that route's history;
 - if a managed monitoring tab is lost, create a fresh route-owned replacement instead of hijacking an arbitrary user-owned tab that happens to show the same current chat;
 - foreground a due new-chat tab during permanent URL capture, then safely restore the user's previous tab after the capture check;
 - verify automatic recovery when the user manually closes a managed chat tab while Pulse is running;
