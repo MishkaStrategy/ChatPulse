@@ -241,6 +241,11 @@ try {
     return route?.cycleContinuationCount === 1 && route.rotationPending === true ? route : null;
   }, "Pulse 2.0 did not record the configured N=1 auto-response");
   assert.equal(firstDispatch.totalContinuationCount, 1);
+  assert.equal(
+    firstDispatch.lastDispatchOutcome,
+    "confirmed",
+    "controlled fixture dispatch advanced counters without confirmed DOM delivery"
+  );
   assert.notEqual(firstDispatch.tabId, retainedTabId, "closed managed chat tab id was not replaced");
   assert.equal(
     firstDispatch.tabId,
@@ -248,7 +253,10 @@ try {
     "Pulse 2.0 did not adopt the existing unclaimed copy of the lost current chat"
   );
   const recoveredMonitoringPage = recoverySparePage;
-  assert.equal(await latestUserMessage(recoveredMonitoringPage), AUTO_COMMAND, "Pulse 2.0 auto-response text mismatch after managed-tab recovery");
+  await waitFor(
+    async () => await latestUserMessage(recoveredMonitoringPage) === AUTO_COMMAND,
+    "Pulse 2.0 auto-response text mismatch after managed-tab recovery"
+  );
   assert.equal(
     firstDispatch.lastPageVisibility,
     "visible",
