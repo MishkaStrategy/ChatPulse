@@ -144,7 +144,11 @@ test("capture and dispatch use a short recheck while configured delay remains re
     { id: "route-a", name: "A", currentChatUrl: "", projectUrl: PROJECT_A }
   ], { intervalMinutes: 60 }), { at: "2026-09-22T10:00:00.000Z" });
   state = markPulse2CaptureWait(state, "route-a", "2026-09-22T10:00:30.000Z");
-  state = capturePulse2Chat(state, "route-a", CHAT_A, { at: "2026-09-22T10:02:30.000Z" });
+  state = capturePulse2Chat(state, "route-a", CHAT_A, {
+    at: "2026-09-22T10:02:30.000Z",
+    visibilityState: "visible"
+  });
+  assert.equal(route(state, "route-a").lastPageVisibility, "visible");
   assert.equal(
     Date.parse(route(state, "route-a").nextCheckAt) - Date.parse("2026-09-22T10:02:30.000Z"),
     30_000
