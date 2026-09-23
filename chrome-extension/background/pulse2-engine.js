@@ -817,7 +817,6 @@ async function capturePulse2PreviousFocus(managedTabId) {
 }
 
 async function restorePulse2PreviousFocus(previousFocus, managedTabId) {
-  if (!Number.isInteger(previousFocus?.tabId)) return;
   try {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (activeTab?.id !== managedTabId) {
@@ -827,6 +826,7 @@ async function restorePulse2PreviousFocus(previousFocus, managedTabId) {
       );
       return;
     }
+    if (!Number.isInteger(previousFocus?.tabId)) return;
     const previousTab = await chrome.tabs.get(previousFocus.tabId);
     await chrome.tabs.update(previousTab.id, { active: true });
     if (Number.isInteger(previousTab.windowId)) {
