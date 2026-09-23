@@ -85,6 +85,8 @@ assert.ok(engine.includes("reloadAndInspectPulse2Tab"), "capture/auth reload rec
 assert.ok(engine.includes("restorePulse2PreviousFocus"), "due monitoring must restore the previous user tab when safe");
 assert.ok(engine.includes("pulse2ManagedTabIsActive"), "monitor recheck must detect a manual user tab switch");
 assert.ok(engine.includes("deferPulse2MonitoringForUserFocus"), "monitor recheck must defer instead of stealing focus back");
+assert.ok(engine.includes("USER_FOCUS_GRACE_MS = 10_000"), "manual focus change needs a bounded alarm suppression grace");
+assert.ok(engine.includes("monitorFocusSuppressedUntil"), "queued monitor alarms must respect a detected manual focus switch");
 assert.ok(engine.includes("MONITOR_ALARM_PERIOD_MINUTES = 0.5"), "monitor scheduler must wake frequently enough to observe assistant completion promptly");
 assert.ok(model.includes("PULSE2_MONITOR_RECHECK_MS = 30_000"), "post-capture and post-dispatch monitoring must recheck promptly");
 assert.ok(model.includes("PULSE2_MONITOR_ERROR_RETRY_MS = 5 * 60_000"), "monitor errors need a bounded retry backoff");
