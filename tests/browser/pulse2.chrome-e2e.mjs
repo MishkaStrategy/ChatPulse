@@ -140,6 +140,9 @@ try {
   );
   assert.ok(Date.parse(recoveredCaptureWait.captureDueAt) - Date.parse(recoveredCaptureWait.lastCheckAt) >= 119_000);
 
+  const recoveryPulseUiTabId = await tabIdForUrl(pulse2Page, pulse2Page.url());
+  assert.ok(Number.isInteger(recoveryPulseUiTabId), "Pulse 2.0 UI tab id missing before recovery capture");
+  await pulse2Page.bringToFront();
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const recoveredInitialChat = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -153,6 +156,15 @@ try {
   }, "Pulse 2.0 did not adopt the recovered first project chat as cycle 1");
   assert.equal(recoveredInitialChat.history.length, 1);
   assert.equal(recoveredInitialChat.history[0].source, "project-initial");
+  assert.equal(
+    recoveredInitialChat.lastPageVisibility,
+    "visible",
+    "recovery URL capture inspected the new chat while it was still backgrounded"
+  );
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === recoveryPulseUiTabId,
+    "recovery URL capture did not restore the previous Pulse 2.0 UI tab"
+  );
 
   await sendPulse2Request(pulse2Page, "STOP");
   await waitFor(async () => (await getPulse2State(pulse2Page))?.enabled === false, "Pulse 2.0 did not stop after recovery regression");
@@ -301,6 +313,7 @@ try {
   assert.match(rejectedUnrelatedCapture.lastError || "", /Новая ссылка чата ещё не появилась/);
 
   await projectTab.evaluate((url) => history.replaceState({}, "", url), CREATED_CHAT_URL);
+  await pulse2Page.bringToFront();
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const captured = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
@@ -311,6 +324,15 @@ try {
   assert.equal(captured.cycleContinuationCount, 0);
   assert.equal(captured.history.length, 2);
   assert.equal(captured.history.at(-1).source, "project");
+  assert.equal(
+    captured.lastPageVisibility,
+    "visible",
+    "URL capture inspected the newly created chat while it was still backgrounded"
+  );
+  await waitFor(
+    async () => await activeTabId(pulse2Page) === pulse2TabId,
+    "URL capture did not restore the previous Pulse 2.0 UI tab"
+  );
 
   // Adversarial regression: if the user switches tabs during a service check,
   // focus restoration must not steal focus back afterwards.
@@ -380,6 +402,8 @@ try {
   console.log("pulse2_browser_e2e_project_foreground=PASS");
   console.log("pulse2_browser_e2e_overnight_monitor_alarm=PASS");
   console.log("pulse2_browser_e2e_monitor_focus_restore=PASS");
+  console.log("pulse2_browser_e2e_capture_foreground=PASS");
+  console.log("pulse2_browser_e2e_capture_focus_restore=PASS");
   console.log("pulse2_browser_e2e_closed_tab_recovery=PASS");
   console.log("pulse2_browser_e2e_lost_tab_adoption=PASS");
   console.log("pulse2_browser_e2e_manual_focus_guard=PASS");
