@@ -313,37 +313,40 @@ try {
     "ordinary rotation must foreground the managed Project tab before composer lookup"
   );
 
-  // Adversarial regression: capture-wait must never adopt a chat outside the selected project.
-  await projectTab.evaluate((url) => history.replaceState({}, "", url), UNRELATED_CHAT_URL);
+  // Adversarial regression: capture-wait must never adopt a real navigation
+  // to a chat outside the selected project.
+  await navigateManagedTab(pulse2Page, captureWait.tabId, UNRELATED_CHAT_URL);
+  await waitFor(
+    async () => projectTab.url() === UNRELATED_CHAT_URL
+      && await projectTab.locator("[data-testid='profile-button']").count() === 1,
+    "managed capture tab did not navigate to the unrelated ChatGPT fixture"
+  );
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const rejectedUnrelatedCapture = await waitFor(async () => {
     const running = await getPulse2State(pulse2Page);
     const route = running?.routes?.find((item) => item.id === routeId);
     if (!route) return null;
-    if (route.captureAttempts >= 1
-      || route.phase !== "capture-wait"
-      || route.currentChatUrl !== CHAT_URL) {
-      return route;
+    if (route.currentChatUrl === UNRELATED_CHAT_URL) {
+      throw new Error("Pulse 2.0 persisted an unrelated ChatGPT chat during capture-wait");
     }
-    return null;
-  }, "Pulse 2.0 capture alarm did not produce an observable state transition");
-  assert.equal(
-    rejectedUnrelatedCapture.phase,
-    "capture-wait",
-    `unexpected capture phase: ${JSON.stringify(rejectedUnrelatedCapture)}`
-  );
-  assert.equal(
-    rejectedUnrelatedCapture.currentChatUrl,
-    CHAT_URL,
-    `Pulse 2.0 persisted the wrong chat during unrelated capture: ${JSON.stringify(rejectedUnrelatedCapture)}`
-  );
-  assert.ok(
-    rejectedUnrelatedCapture.captureAttempts >= 1,
-    `unrelated capture did not increment retry state: ${JSON.stringify(rejectedUnrelatedCapture)}`
-  );
+    if (route.phase === "error") {
+      throw new Error(`Pulse 2.0 failed instead of retrying unrelated capture: ${route.lastError || "unknown error"}`);
+    }
+    return route.phase === "capture-wait"
+      && route.captureAttempts >= 1
+      && route.currentChatUrl === CHAT_URL
+      ? route
+      : null;
+  }, "Pulse 2.0 capture-wait did not retain the prior chat while rejecting a real unrelated navigation");
   assert.match(rejectedUnrelatedCapture.lastError || "", /Новая ссылка чата ещё не появилась/);
 
-  await projectTab.evaluate((url) => history.replaceState({}, "", url), CREATED_CHAT_URL);
+  await navigateManagedTab(pulse2Page, captureWait.tabId, CREATED_CHAT_URL);
+  await waitFor(
+    async () => projectTab.url() === CREATED_CHAT_URL
+      && await projectTab.locator("[data-testid='profile-button']").count() === 1,
+    "managed capture tab did not return to the correct project-scoped chat"
+  );
+  await appendUserMessage(projectTab, "restored-start-message", START_MESSAGE);
   await pulse2Page.bringToFront();
   await expireCaptureDelayAndTrigger(serviceWorker, routeId);
   const captured = await waitFor(async () => {
@@ -599,6 +602,16 @@ async function appendAssistantMessage(page, id, text) {
   await page.evaluate(({ messageId, messageText }) => {
     const message = document.createElement("article");
     message.setAttribute("data-message-author-role", "assistant");
+    message.setAttribute("data-message-id", messageId);
+    message.textContent = messageText;
+    document.querySelector("#messages").append(message);
+  }, { messageId: id, messageText: text });
+}
+
+async function appendUserMessage(page, id, text) {
+  await page.evaluate(({ messageId, messageText }) => {
+    const message = document.createElement("article");
+    message.setAttribute("data-message-author-role", "user");
     message.setAttribute("data-message-id", messageId);
     message.textContent = messageText;
     document.querySelector("#messages").append(message);
