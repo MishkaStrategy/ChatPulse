@@ -13,6 +13,7 @@ import {
   getPulse2Route,
   isPulse2RouteTerminal,
   markPulse2CaptureWait,
+  markPulse2RotationDispatch,
   normalizePulse2ProjectURL,
   normalizePulse2State,
   observePulse2Snapshot,
@@ -421,6 +422,17 @@ async function performPulse2Rotation(routeId) {
     }, { attempts: 2, timeoutMs: START_MESSAGE_TIMEOUT_MS });
     if (!response?.ok) throw new Error(response?.error || "Стартовое сообщение нового чата не отправлено.");
 
+    state = await loadPulse2State();
+    route = assertPulse2ExecutionStillCurrent(state, routeId, {
+      expectedSessionId,
+      expectedRevision,
+      phase: "rotating"
+    });
+    if (response.outcome === "confirmed") {
+      state = markPulse2RotationDispatch(state, routeId);
+      await persistPulse2State(state);
+    }
+
     state = markPulse2CaptureWait(state, routeId);
     state = await configurePulse2Alarms(state);
     await persistPulse2State(state);
@@ -439,8 +451,10 @@ async function recoverPulse2RotationAfterDispatch(state, routeId, tab, expected)
     phase: "rotating"
   });
   const concreteChatUrl = normalizeChatURL(tab?.url);
-  if (!concreteChatUrl
+  if (!route.rotationDispatchAt
+    || !concreteChatUrl
     || concreteChatUrl === route.currentChatUrl
+    || pulse2RouteHistoryIncludesChat(route, concreteChatUrl)
     || !pulse2ChatBelongsToProject(concreteChatUrl, route.projectUrl)) {
     return false;
   }
@@ -604,6 +618,13 @@ function assertPulse2ExecutionStillCurrent(state, routeId, expected) {
   const route = requireRoute(state, routeId);
   if (expected.phase && route.phase !== expected.phase) throw new Error(`Фаза маршрута «${route.name}» изменилась во время операции.`);
   return route;
+}
+
+function pulse2RouteHistoryIncludesChat(route, chatUrl) {
+  const target = normalizeChatURL(chatUrl);
+  if (!target) return false;
+  return Array.isArray(route?.history)
+    && route.history.some((item) => normalizeChatURL(item?.url) === target);
 }
 
 function pulse2ChatBelongsToProject(chatUrl, projectUrl) {
