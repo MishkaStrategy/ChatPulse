@@ -72,6 +72,9 @@ test("due monitoring foregrounds the route tab and restores the user's previous 
   assert.match(engine, /previousFocus = await capturePulse2PreviousFocus\(tab\.id\)/);
   assert.match(engine, /tab = await activatePulse2ManagedTab\(tab\.id\)/);
   assert.match(engine, /await restorePulse2PreviousFocus\(previousFocus, managedTabId\)/);
+  assert.match(engine, /pulse2ManagedTabIsActive/);
+  assert.match(engine, /deferPulse2MonitoringForUserFocus/);
+  assert.match(engine, /PULSE2_MONITOR_RECHECK_MS/);
   assert.match(engine, /periodInMinutes: MONITOR_ALARM_PERIOD_MINUTES/);
   assert.match(model, /PULSE2_MONITOR_RECHECK_MS = 30_000/);
   assert.match(model, /PULSE2_MONITOR_ERROR_RETRY_MS = 5 \* 60_000/);
