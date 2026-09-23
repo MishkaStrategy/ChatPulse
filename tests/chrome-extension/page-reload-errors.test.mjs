@@ -132,4 +132,8 @@ test("Pulse 2 reloads the managed chat before normal observation", () => {
     pulse2Engine,
     /let snapshot = await inspectPulse2TabAfterHydration\(tab\.id\);\s*if \(snapshot\?\.reloadRequested === true\) \{\s*snapshot = await reloadAndInspectPulse2Tab\(tab\.id\);\s*\}/
   );
+  assert.match(
+    pulse2Engine,
+    /let snapshot = await inspectPulse2TabAfterHydration\(tab\.id\);\s*if \(snapshot\?\.reloadRequested === true\) \{\s*snapshot = await reloadAndInspectPulse2Tab\(tab\.id\);\s*\}\s*concreteChatUrl = normalizeChatURL/
+  );
 });
